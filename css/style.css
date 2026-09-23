@@ -64,6 +64,10 @@ h2 { font-size: 16px; margin: 18px 16px 8px; }
 .price-real { font-weight: 700; color: var(--accent); font-size: 15px; }
 .price-raw { color: #999; font-size: 12px; }
 .muted { color: #999; font-size: 12px; }
+.group-title {
+    font-weight: 700; color: var(--brand); font-size: 14px; margin: 14px 4px 6px;
+    padding-bottom: 4px; border-bottom: 2px solid #e8d9cc;
+}
 .empty-state { text-align: center; color: #999; padding: 40px 16px; font-size: 14px; }
 
 .field { margin-bottom: 12px; }
