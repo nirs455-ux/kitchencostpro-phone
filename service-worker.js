@@ -1,4 +1,4 @@
-const CACHE_NAME = "kcp-v1";
+const CACHE_NAME = "kcp-v2";
 const ASSETS = [
     "./",
     "./index.html",
@@ -49,16 +49,14 @@ self.addEventListener("fetch", (event) => {
     // בקשות ל-Gemini API תמיד ישירות לרשת - לא לשמור במטמון תוצאות סריקה
     if (url.hostname.includes("generativelanguage.googleapis.com")) return;
 
+    // קודם רשת (כדי שעדכונים יגיעו מיד), ואם אין אינטרנט - מהמטמון
     event.respondWith(
-        caches.match(event.request).then((cached) => {
-            if (cached) return cached;
-            return fetch(event.request).then((response) => {
-                if (response.ok && url.origin === location.origin) {
-                    const clone = response.clone();
-                    caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
-                }
-                return response;
-            }).catch(() => cached);
-        })
+        fetch(event.request).then((response) => {
+            if (response.ok && url.origin === location.origin) {
+                const clone = response.clone();
+                caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+            }
+            return response;
+        }).catch(() => caches.match(event.request))
     );
 });
