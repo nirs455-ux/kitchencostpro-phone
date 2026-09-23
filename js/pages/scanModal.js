@@ -17,7 +17,7 @@ export async function openScanModal({ supplierAware, onDone }) {
         <h2>סריקת חשבונית</h2>
         <div id="scan-upload-area">
             <div class="hint" style="margin-bottom:10px;">צלם או העלה תמונה של חשבונית - נזהה ממנה ${supplierAware ? "ספק, תאריך ו" : ""}מוצרים אוטומטית.</div>
-            <input type="file" id="scan-file-input" accept="image/*" capture="environment">
+            <input type="file" id="scan-file-input" accept="image/*">
             <div class="error-msg"></div>
         </div>
         <div id="scan-loading" style="display:none;text-align:center;padding:24px;color:#666;">קורא את החשבונית...</div>
