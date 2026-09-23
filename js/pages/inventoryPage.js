@@ -1,6 +1,6 @@
 import { buildInventoryView, saveInventoryCounts } from "../repo/inventoryRepo.js";
 import { h, toast, escapeHtml } from "../ui.js";
-import { getFilter, mountFilterBar, groupBySection, groupTitleEl } from "../filters.js";
+import { getFilter, mountFilterBar, groupBySection, groupTitleEl, isVisible } from "../filters.js";
 
 function todayLocal() {
     const d = new Date();
@@ -66,9 +66,7 @@ export async function renderInventoryPage(container) {
     const filter = getFilter("inventory");
     function applyVisibility() {
         for (const s of sections) {
-            const okCat = !filter.category || s.dataset.cat === filter.category;
-            const okSub = !filter.subcategory || s.dataset.sub === filter.subcategory;
-            s.style.display = okCat && okSub ? "" : "none";
+            s.style.display = isVisible({ category: s.dataset.cat, subcategory: s.dataset.sub }, filter) ? "" : "none";
         }
     }
     mountFilterBar(container.querySelector("#inventory-filter"), items, filter, applyVisibility);
