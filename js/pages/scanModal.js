@@ -1,7 +1,7 @@
 import { scanInvoiceImage, applyScannedInvoice } from "../repo/scanRepo.js";
 import { getSetting } from "../repo/settingsRepo.js";
 import { listSuppliers } from "../repo/suppliersRepo.js";
-import { CATEGORY_GROUPS } from "../constants.js";
+import { CATEGORY_GROUPS, UNIT_TYPES, UNIT_TYPE_LABELS } from "../constants.js";
 import { h, openModal, closeModal, toast, escapeHtml } from "../ui.js";
 
 function todayLocal() {
@@ -54,11 +54,48 @@ export async function openScanModal({ supplierAware, onDone }) {
 
     let scannedItems = [];
 
-    overlay.querySelector("#btn-pick-camera").onclick = () => overlay.querySelector("#scan-file-camera").click();
+    overlay.querySelector("#btn-pick-camera").onclick = () => openInAppCamera();
     overlay.querySelector("#btn-pick-gallery").onclick = () => overlay.querySelector("#scan-file-gallery").click();
 
-    const onFileChosen = async (e) => {
-        const file = e.target.files[0];
+    // מצלמה בתוך האפליקציה (מבקשת הרשאה בעצמה). אם היא לא זמינה/נדחתה - חוזרים לשיטת הקלט הרגילה.
+    async function openInAppCamera() {
+        const fallback = () => overlay.querySelector("#scan-file-camera").click();
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return fallback();
+        let stream;
+        try {
+            stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } }, audio: false });
+        } catch (e) {
+            return fallback();
+        }
+        const cam = document.createElement("div");
+        cam.style.cssText = "position:fixed;inset:0;z-index:100;background:#000;display:flex;flex-direction:column;";
+        cam.innerHTML = `
+            <video autoplay playsinline muted style="flex:1;min-height:0;width:100%;object-fit:contain;"></video>
+            <div style="display:flex;gap:10px;padding:14px;background:#111;">
+                <button type="button" class="btn btn-secondary" style="flex:1;" id="cam-cancel">ביטול</button>
+                <button type="button" class="btn btn-primary" style="flex:2;" id="cam-shoot">📸 צלם</button>
+            </div>`;
+        document.body.appendChild(cam);
+        const video = cam.querySelector("video");
+        video.srcObject = stream;
+        const stop = () => { stream.getTracks().forEach((t) => t.stop()); cam.remove(); };
+        cam.querySelector("#cam-cancel").onclick = stop;
+        cam.querySelector("#cam-shoot").onclick = () => {
+            if (!video.videoWidth) return;
+            const canvas = document.createElement("canvas");
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            canvas.getContext("2d").drawImage(video, 0, 0);
+            canvas.toBlob((blob) => {
+                stop();
+                if (blob) processFile(new File([blob], "invoice.jpg", { type: "image/jpeg" }));
+            }, "image/jpeg", 0.92);
+        };
+    }
+
+    const onFileChosen = (e) => processFile(e.target.files[0]);
+
+    const processFile = async (file) => {
         if (!file) return;
         overlay.querySelector("#scan-upload-area").style.display = "none";
         overlay.querySelector("#scan-loading").style.display = "block";
@@ -87,6 +124,22 @@ export async function openScanModal({ supplierAware, onDone }) {
     };
     overlay.querySelector("#scan-file-camera").addEventListener("change", onFileChosen);
     overlay.querySelector("#scan-file-gallery").addEventListener("change", onFileChosen);
+
+    // שומר את מה שהוקלד בשדות לפני ציור מחדש (כדי שלחיצה על "כן/לא" לא תמחק עריכות)
+    function captureInputs() {
+        scannedItems.forEach((it, idx) => {
+            const g = (id) => overlay.querySelector(`#${id}-${idx}`);
+            if (!g("scan-name")) return;
+            it.name = g("scan-name").value;
+            it.quantity = g("scan-qty").value;
+            it.unit_price = parseFloat(g("scan-price").value) || 0;
+            it._case = g("scan-case").value;
+            it._frozen = g("scan-frozen").checked;
+            if (g("scan-cat") && !g("scan-cat").disabled) it._cat = g("scan-cat").value;
+            if (g("scan-unit")) it._unit = g("scan-unit").value;
+            if (g("scan-unit-amount")) it._unitAmount = g("scan-unit-amount").value;
+        });
+    }
 
     function renderResults() {
         overlay.querySelector("#scan-loading").style.display = "none";
@@ -122,13 +175,26 @@ export async function openScanModal({ supplierAware, onDone }) {
                         <label>קטגוריה${it.matched_pantry_item_id ? "" : " (חובה למוצר חדש)"}</label>
                         <select id="scan-cat-${idx}" ${it.matched_pantry_item_id ? "disabled" : ""}>
                             ${it.matched_pantry_item_id ? `<option>${escapeHtml(it.matched_category)}</option>` :
-                              '<option value="">בחר קטגוריה...</option>' + Object.keys(CATEGORY_GROUPS).map((c) => `<option value="${c}">${c}</option>`).join("")}
+                              '<option value="">בחר קטגוריה...</option>' + Object.keys(CATEGORY_GROUPS).map((c) => `<option value="${c}" ${it._cat === c ? "selected" : ""}>${c}</option>`).join("")}
                         </select>
                     </div>
-                    <div class="field"><label>יחידות בארגז (אופציונלי)</label><input type="number" step="any" id="scan-case-${idx}" placeholder="לדוגמה: 8"></div>
+                    ${it.matched_pantry_item_id ? "" : `
+                    <div class="form-row">
+                        <div class="field">
+                            <label>יחידת מידה</label>
+                            <select id="scan-unit-${idx}">
+                                ${UNIT_TYPES.map((u) => `<option value="${u}" ${(it._unit || "weight") === u ? "selected" : ""}>${UNIT_TYPE_LABELS[u]}</option>`).join("")}
+                            </select>
+                        </div>
+                        <div class="field" id="scan-unit-amount-wrap-${idx}" style="display:none;">
+                            <label>משקל/נפח ליחידה (גרם/מ"ל)</label>
+                            <input type="number" step="any" id="scan-unit-amount-${idx}" value="${it._unitAmount ?? ""}">
+                        </div>
+                    </div>`}
+                    <div class="field"><label>יחידות בארגז (אופציונלי)</label><input type="number" step="any" id="scan-case-${idx}" placeholder="לדוגמה: 8" value="${it._case ?? ""}"></div>
                     <span class="hint" id="scan-pantry-price-${idx}"></span>
                     <div class="checkbox-field" style="margin-top:6px;">
-                        <input type="checkbox" id="scan-frozen-${idx}">
+                        <input type="checkbox" id="scan-frozen-${idx}" ${it._frozen ? "checked" : ""}>
                         <label for="scan-frozen-${idx}">❄ מוצר קפוא</label>
                     </div>
                     <div class="hint">${it.matched_pantry_item_id ? "מוצר קיים - יעודכן מחיר" : "מוצר חדש - יתווסף למזווה"}</div>
@@ -144,10 +210,20 @@ export async function openScanModal({ supplierAware, onDone }) {
             };
             row.querySelector(`#scan-price-${idx}`).addEventListener("input", updatePreview);
             row.querySelector(`#scan-case-${idx}`).addEventListener("input", updatePreview);
+            updatePreview();
+
+            const unitSel = row.querySelector(`#scan-unit-${idx}`);
+            if (unitSel) {
+                const wrap = row.querySelector(`#scan-unit-amount-wrap-${idx}`);
+                const syncUnit = () => { wrap.style.display = unitSel.value === "unit" ? "block" : "none"; };
+                unitSel.addEventListener("change", syncUnit);
+                syncUnit();
+            }
 
             const acceptBtn = row.querySelector("[data-accept]");
             if (acceptBtn) {
                 acceptBtn.onclick = () => {
+                    captureInputs();
                     it.matched_pantry_item_id = it.suggested_pantry_item_id;
                     it.matched_category = it.suggested_category;
                     it.matched_price = it.suggested_price;
@@ -158,6 +234,7 @@ export async function openScanModal({ supplierAware, onDone }) {
             const rejectBtn = row.querySelector("[data-reject]");
             if (rejectBtn) {
                 rejectBtn.onclick = () => {
+                    captureInputs();
                     it.suggested_pantry_item_id = null;
                     renderResults();
                 };
@@ -175,6 +252,8 @@ export async function openScanModal({ supplierAware, onDone }) {
             category: it.matched_pantry_item_id ? it.matched_category : overlay.querySelector(`#scan-cat-${idx}`).value,
             is_frozen: overlay.querySelector(`#scan-frozen-${idx}`).checked,
             pantry_item_id: it.matched_pantry_item_id,
+            unit_type: it.matched_pantry_item_id ? undefined : overlay.querySelector(`#scan-unit-${idx}`).value,
+            unit_amount: it.matched_pantry_item_id ? undefined : overlay.querySelector(`#scan-unit-amount-${idx}`).value,
         }));
         const supplierId = supplierAware ? overlay.querySelector("#scan-supplier").value || null : null;
         const invoiceDate = supplierAware ? overlay.querySelector("#scan-date").value : null;

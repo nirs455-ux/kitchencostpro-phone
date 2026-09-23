@@ -2,6 +2,7 @@ import { listTopLevelPantryItems, addPantryItem, updatePantryItem, deletePantryI
 import { CATEGORY_GROUPS, UNIT_TYPES, UNIT_TYPE_LABELS } from "../constants.js";
 import { h, openModal, closeModal, confirmDialog, toast, escapeHtml } from "../ui.js";
 import { openScanModal } from "./scanModal.js";
+import { getFilter, applyFilter, mountFilterBar, groupBySection, groupTitleEl } from "../filters.js";
 
 export async function renderPantryPage(container) {
     const items = await listTopLevelPantryItems();
@@ -12,41 +13,46 @@ export async function renderPantryPage(container) {
         <div class="btn-row">
             <button class="btn btn-accent" id="btn-scan">📷 סרוק חשבונית</button>
         </div>
+        <div id="pantry-filter"></div>
         <div id="pantry-list"></div>
         <button class="fab-add" id="btn-add">+</button>
     `;
 
     const list = container.querySelector("#pantry-list");
-    if (items.length === 0) {
-        list.innerHTML = '<div class="empty-state">אין עדיין מוצרים במזווה - לחץ על + כדי להוסיף.</div>';
-    } else {
-        for (const it of items) {
-            list.appendChild(renderPantryCard(it));
+    const filter = getFilter("pantry");
+
+    function renderList() {
+        list.innerHTML = "";
+        if (items.length === 0) {
+            list.innerHTML = '<div class="empty-state">אין עדיין מוצרים במזווה - לחץ על + כדי להוסיף.</div>';
+            return;
         }
+        for (const g of groupBySection(applyFilter(items, filter))) {
+            list.appendChild(groupTitleEl(g.title, g.items.length));
+            for (const it of g.items) list.appendChild(renderPantryCard(it));
+        }
+        list.querySelectorAll("[data-edit]").forEach((btn) => {
+            btn.onclick = () => openPantryModal(items.find((i) => i.id === Number(btn.dataset.edit)), container);
+        });
+        list.querySelectorAll("[data-delete]").forEach((btn) => {
+            btn.onclick = async () => {
+                if (!(await confirmDialog("למחוק את המוצר?"))) return;
+                try {
+                    await deletePantryItem(Number(btn.dataset.delete));
+                    toast("נמחק");
+                    renderPantryPage(container);
+                } catch (e) {
+                    toast(e.message);
+                }
+            };
+        });
     }
+
+    mountFilterBar(container.querySelector("#pantry-filter"), items, filter, renderList);
+    renderList();
 
     container.querySelector("#btn-add").onclick = () => openPantryModal(null, container);
     container.querySelector("#btn-scan").onclick = () => openScanModal({ supplierAware: false, onDone: () => renderPantryPage(container) });
-
-    list.querySelectorAll("[data-edit]").forEach((btn) => {
-        btn.onclick = () => {
-            const item = items.find((i) => i.id === Number(btn.dataset.edit));
-            openPantryModal(item, container);
-        };
-    });
-    list.querySelectorAll("[data-delete]").forEach((btn) => {
-        btn.onclick = async () => {
-            const ok = await confirmDialog("למחוק את המוצר?");
-            if (!ok) return;
-            try {
-                await deletePantryItem(Number(btn.dataset.delete));
-                toast("נמחק");
-                renderPantryPage(container);
-            } catch (e) {
-                toast(e.message);
-            }
-        };
-    });
 }
 
 function renderPantryCard(it) {

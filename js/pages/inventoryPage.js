@@ -1,5 +1,6 @@
 import { buildInventoryView, saveInventoryCounts } from "../repo/inventoryRepo.js";
 import { h, toast, escapeHtml } from "../ui.js";
+import { getFilter, mountFilterBar, groupBySection, groupTitleEl } from "../filters.js";
 
 function todayLocal() {
     const d = new Date();
@@ -12,6 +13,7 @@ export async function renderInventoryPage(container) {
     container.innerHTML = `
         <div class="subtitle">הזן את הכמות שנספרה בפועל - המערכת מחשבת לבד את היתרה התיאורטית ומציגה את ההפרש.</div>
         <div class="field"><label>תאריך הספירה</label><input type="date" id="count-date" value="${todayLocal()}"></div>
+        <div id="inventory-filter"></div>
         <div id="inventory-list"></div>
         <div class="btn-row" style="position:sticky;bottom:60px;">
             <button class="btn btn-primary btn-block" id="btn-save">שמירת ספירה</button>
@@ -23,7 +25,15 @@ export async function renderInventoryPage(container) {
     if (items.length === 0) {
         list.innerHTML = '<div class="empty-state">אין עדיין מוצרים במזווה - הוסף מוצרים בעמוד "מזווה" תחילה.</div>';
     }
-    for (const it of items) {
+    const sections = [];
+    for (const g of groupBySection(items)) {
+      const section = document.createElement("div");
+      section.dataset.cat = g.category;
+      section.dataset.sub = g.sub;
+      section.appendChild(groupTitleEl(g.title, g.items.length));
+      list.appendChild(section);
+      sections.push(section);
+      for (const it of g.items) {
         const card = h(`
             <div class="card">
                 <div class="card-title">${escapeHtml(it.name)}</div>
@@ -38,7 +48,7 @@ export async function renderInventoryPage(container) {
                 </div>
             </div>
         `);
-        list.appendChild(card);
+        section.appendChild(card);
         const input = card.querySelector(`#count-${it.id}`);
         const varEl = card.querySelector(`#variance-${it.id}`);
         input.addEventListener("input", () => {
@@ -49,7 +59,20 @@ export async function renderInventoryPage(container) {
             const color = diff > 0 ? "#2e7d32" : diff < 0 ? "#c0392b" : "#666";
             varEl.innerHTML = `<span style="color:${color};font-weight:700;">הפרש: ${diff > 0 ? "+" : ""}${diff}</span>`;
         });
+      }
     }
+
+    // סינון בלי לצייר מחדש - כדי שכמויות שכבר הוזנו לא יימחקו
+    const filter = getFilter("inventory");
+    function applyVisibility() {
+        for (const s of sections) {
+            const okCat = !filter.category || s.dataset.cat === filter.category;
+            const okSub = !filter.subcategory || s.dataset.sub === filter.subcategory;
+            s.style.display = okCat && okSub ? "" : "none";
+        }
+    }
+    mountFilterBar(container.querySelector("#inventory-filter"), items, filter, applyVisibility);
+    applyVisibility();
 
     container.querySelector("#btn-save").onclick = async () => {
         const errEl = container.querySelector("#save-error");

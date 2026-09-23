@@ -2,6 +2,7 @@ import { listAllPantryItems, updatePantryItemYield, addBreakdownProduct } from "
 import { CATEGORY_GROUPS } from "../constants.js";
 import { effectivePrice } from "../formulas.js";
 import { h, openModal, closeModal, toast, escapeHtml } from "../ui.js";
+import { getFilter, applyFilter, mountFilterBar, groupBySection, groupTitleEl } from "../filters.js";
 
 export async function renderProcessingPage(container) {
     const all = await listAllPantryItems();
@@ -10,6 +11,7 @@ export async function renderProcessingPage(container) {
 
     container.innerHTML = `
         <div class="subtitle">כאן קובעים ניצולת/קפוא לכל מוצר, או יוצרים ממנו תוצר מפורק (למשל: דג שלם → פילה). המחיר האמיתי מוצג רק כאן.</div>
+        <div id="processing-filter"></div>
         <div id="processing-list"></div>
     `;
     const list = container.querySelector("#processing-list");
@@ -18,12 +20,21 @@ export async function renderProcessingPage(container) {
         return;
     }
 
-    for (const p of topLevel) {
-        list.appendChild(renderParentCard(p, container));
-        for (const c of p.children) {
-            list.appendChild(renderChildCard(c, p, container));
+    const filter = getFilter("processing");
+    function renderList() {
+        list.innerHTML = "";
+        for (const g of groupBySection(applyFilter(topLevel, filter))) {
+            list.appendChild(groupTitleEl(g.title, g.items.length));
+            for (const p of g.items) {
+                list.appendChild(renderParentCard(p, container));
+                for (const c of p.children) {
+                    list.appendChild(renderChildCard(c, p, container));
+                }
+            }
         }
     }
+    mountFilterBar(container.querySelector("#processing-filter"), topLevel, filter, renderList);
+    renderList();
 }
 
 function priceLine(it) {
