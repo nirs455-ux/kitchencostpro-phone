@@ -10,6 +10,7 @@ const ASSETS = [
     "./js/constants.js",
     "./js/formulas.js",
     "./js/fuzzyMatch.js",
+    "./js/filters.js",
     "./js/export.js",
     "./js/repo/pantryRepo.js",
     "./js/repo/recipesRepo.js",
