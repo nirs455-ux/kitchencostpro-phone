@@ -64,6 +64,24 @@ h2 { font-size: 16px; margin: 18px 16px 8px; }
 .price-real { font-weight: 700; color: var(--accent); font-size: 15px; }
 .price-raw { color: #999; font-size: 12px; }
 .muted { color: #999; font-size: 12px; }
+.cat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 6px 0 14px; }
+.cat-tile {
+    background: #fff; border-radius: 14px; padding: 18px 14px; cursor: pointer;
+    display: flex; flex-direction: column; gap: 6px; align-items: flex-start;
+    box-shadow: 0 1px 4px rgba(0,0,0,.08); border-right: 4px solid var(--brand);
+}
+.cat-tile:active { background: #fbf3ea; }
+.cat-tile .cat-name { font-weight: 700; font-size: 16px; }
+.cat-tile .cat-count { color: var(--brand); font-size: 22px; font-weight: 700; line-height: 1; }
+.cat-tile.cat-all { grid-column: 1 / -1; flex-direction: row; justify-content: space-between; align-items: center; border-right-color: #bbb; }
+.cat-bar { display: flex; align-items: center; gap: 12px; margin: 4px 0 10px; }
+.cat-back {
+    border: none; background: #fbf3ea; color: var(--brand); font-weight: 700; font-size: 13px;
+    padding: 8px 12px; border-radius: 18px; cursor: pointer;
+}
+.cat-title { font-size: 18px; font-weight: 700; }
+.sub-scroll { display: flex; gap: 6px; overflow-x: auto; white-space: nowrap; padding-bottom: 8px; margin-bottom: 6px; }
+.sub-scroll .chip { flex: 0 0 auto; }
 .group-title {
     font-weight: 700; color: var(--brand); font-size: 14px; margin: 14px 4px 6px;
     padding-bottom: 4px; border-bottom: 2px solid #e8d9cc;
