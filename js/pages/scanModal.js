@@ -17,7 +17,12 @@ export async function openScanModal({ supplierAware, onDone }) {
         <h2>סריקת חשבונית</h2>
         <div id="scan-upload-area">
             <div class="hint" style="margin-bottom:10px;">צלם או העלה תמונה של חשבונית - נזהה ממנה ${supplierAware ? "ספק, תאריך ו" : ""}מוצרים אוטומטית.</div>
-            <input type="file" id="scan-file-input" accept="image/*">
+            <div class="btn-row">
+                <button type="button" class="btn btn-accent" id="btn-pick-camera">📷 צלם חשבונית</button>
+                <button type="button" class="btn btn-secondary" id="btn-pick-gallery">🖼️ בחר מהגלריה / קבצים</button>
+            </div>
+            <input type="file" id="scan-file-camera" accept="image/*" capture="environment" style="display:none">
+            <input type="file" id="scan-file-gallery" accept="image/*" style="display:none">
             <div class="error-msg"></div>
         </div>
         <div id="scan-loading" style="display:none;text-align:center;padding:24px;color:#666;">קורא את החשבונית...</div>
@@ -49,7 +54,10 @@ export async function openScanModal({ supplierAware, onDone }) {
 
     let scannedItems = [];
 
-    overlay.querySelector("#scan-file-input").addEventListener("change", async (e) => {
+    overlay.querySelector("#btn-pick-camera").onclick = () => overlay.querySelector("#scan-file-camera").click();
+    overlay.querySelector("#btn-pick-gallery").onclick = () => overlay.querySelector("#scan-file-gallery").click();
+
+    const onFileChosen = async (e) => {
         const file = e.target.files[0];
         if (!file) return;
         overlay.querySelector("#scan-upload-area").style.display = "none";
@@ -76,7 +84,9 @@ export async function openScanModal({ supplierAware, onDone }) {
             el.textContent = err.message;
             el.style.display = "block";
         }
-    });
+    };
+    overlay.querySelector("#scan-file-camera").addEventListener("change", onFileChosen);
+    overlay.querySelector("#scan-file-gallery").addEventListener("change", onFileChosen);
 
     function renderResults() {
         overlay.querySelector("#scan-loading").style.display = "none";
