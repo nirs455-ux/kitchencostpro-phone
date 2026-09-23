@@ -1,4 +1,4 @@
-const CACHE_NAME = "kcp-v2";
+const CACHE_NAME = "kcp-v3";
 const ASSETS = [
     "./",
     "./index.html",
@@ -52,7 +52,7 @@ self.addEventListener("fetch", (event) => {
 
     // קודם רשת (כדי שעדכונים יגיעו מיד), ואם אין אינטרנט - מהמטמון
     event.respondWith(
-        fetch(event.request).then((response) => {
+        fetch(event.request, { cache: "no-cache" }).then((response) => {
             if (response.ok && url.origin === location.origin) {
                 const clone = response.clone();
                 caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
