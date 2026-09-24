@@ -4,6 +4,8 @@ import { dbGetAll, dbGet, dbPut } from "../db.js";
 import { getCloseMatches } from "../fuzzyMatch.js";
 import { CATEGORY_GROUPS, UNIT_TYPES } from "../constants.js";
 import { saveInvoice } from "./suppliersRepo.js";
+import { NON_FOOD_CATEGORIES } from "../constants.js";
+import { RECIPE_SCAN_PROMPT, buildRecipeDraft } from "../recipeParse.js";
 
 const PROMPT = (
     "אתה מערכת לניתוח חשבוניות ספק של מסעדה. נתח את התמונה הזו וחלץ ממנה מידע.\n" +
@@ -160,4 +162,53 @@ export async function applyScannedInvoice({ items, supplierId, invoiceDate }) {
         });
     }
     return { pantry_item_ids: resolvedPantryIds, invoice_id: invoiceId };
+}
+
+
+// סריקת מתכון מתמונה: מחזיר טיוטה (name, category, final_weight, ingredients) - שום דבר לא נשמר.
+export async function scanRecipeImage(apiKey, file) {
+    if (!apiKey) throw new Error("לא הוגדר מפתח API של Gemini. הזן אותו במסך ההגדרות.");
+    const imageData = await fileToBase64(file);
+    const mimeType = file.type || "image/jpeg";
+
+    let response;
+    for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+            response = await fetch(
+                `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${apiKey}`,
+                {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        contents: [{ parts: [{ text: RECIPE_SCAN_PROMPT }, { inline_data: { mime_type: mimeType, data: imageData } }] }],
+                    }),
+                }
+            );
+        } catch (e) {
+            throw new Error(`שגיאת רשת בפנייה ל-API: ${e.message}`);
+        }
+        if ((response.status === 429 || response.status === 503) && attempt < 2) {
+            await new Promise((r) => setTimeout(r, 2000));
+            continue;
+        }
+        break;
+    }
+    if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`שגיאה מה-API (${response.status}): ${text.slice(0, 300)}`);
+    }
+    let parsed;
+    try {
+        const result = await response.json();
+        let text = result.candidates[0].content.parts[0].text.trim();
+        if (text.startsWith("```")) {
+            text = text.split("```")[1];
+            if (text.startsWith("json")) text = text.slice(4);
+        }
+        parsed = JSON.parse(text.trim());
+    } catch (e) {
+        throw new Error(`לא הצלחתי לפרש את התשובה: ${e.message}`);
+    }
+    const pantry = (await dbGetAll("pantryItems")).filter((r) => !NON_FOOD_CATEGORIES.has(r.category));
+    return buildRecipeDraft(parsed, pantry);
 }
