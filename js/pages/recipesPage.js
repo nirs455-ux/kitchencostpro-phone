@@ -3,6 +3,9 @@ import { listAllPantryItems } from "../repo/pantryRepo.js";
 import { RECIPE_CATEGORIES, NON_FOOD_CATEGORIES } from "../constants.js";
 import { pricePerGram, itemCost as calcItemCost, recipeCostPerGram } from "../formulas.js";
 import { h, openModal, closeModal, confirmDialog, toast, escapeHtml, money } from "../ui.js";
+import { openImagePicker } from "../imagePicker.js";
+import { scanRecipeImage } from "../repo/scanRepo.js";
+import { getSetting } from "../repo/settingsRepo.js";
 
 async function ingredientSources() {
     const all = (await listAllPantryItems()).filter((it) => !NON_FOOD_CATEGORIES.has(it.category));
@@ -21,7 +24,9 @@ export async function renderRecipesPage(container) {
     const recipes = await listRecipesWithItems();
     recipes.sort((a, b) => a.category.localeCompare(b.category, "he") || a.name.localeCompare(b.name, "he"));
 
-    container.innerHTML = `<div class="subtitle">מתכוני בסיס (רטבים, מרקים וכו') שמשמשים כמרכיבים במנות.</div><div id="recipes-list"></div><button class="fab-add" id="btn-add">+</button>`;
+    container.innerHTML = `<div class="subtitle">מתכוני בסיס (רטבים, מרקים וכו') שמשמשים כמרכיבים במנות.</div>
+        <div class="btn-row"><button class="btn btn-accent" id="btn-scan-recipe">📷 סרוק מתכון (תמונה / קובץ)</button></div>
+        <div id="recipes-list"></div><button class="fab-add" id="btn-add">+</button>`;
     const list = container.querySelector("#recipes-list");
     if (recipes.length === 0) {
         list.innerHTML = '<div class="empty-state">אין עדיין מתכונים - לחץ על + כדי להוסיף.</div>';
@@ -29,6 +34,22 @@ export async function renderRecipesPage(container) {
         for (const r of recipes) list.appendChild(renderRecipeCard(r, container));
     }
     container.querySelector("#btn-add").onclick = () => openRecipeModal(null, container);
+    container.querySelector("#btn-scan-recipe").onclick = () => openImagePicker({
+        title: "סריקת מתכון",
+        hint: "צלם או העלה תמונה/PDF של מתכון - נזהה שם, מרכיבים וכמויות, ותוכל לבדוק ולתקן לפני שמירה.",
+        onFile: async (file) => {
+            const apiKey = await getSetting("gemini_api_key");
+            openModal('<div style="text-align:center;padding:24px;color:#666;">קורא את המתכון...</div>');
+            try {
+                const draft = await scanRecipeImage(apiKey, file);
+                closeModal();
+                openRecipeModal(null, container, draft);
+            } catch (e) {
+                const overlay = openModal(`<h2>שגיאה בסריקה</h2><div class="error-msg" style="display:block;">${escapeHtml(e.message)}</div><div class="modal-actions"><button class="btn btn-secondary" id="err-close">סגור</button></div>`);
+                overlay.querySelector("#err-close").onclick = closeModal;
+            }
+        },
+    });
 }
 
 function renderRecipeCard(r, container) {
@@ -56,24 +77,43 @@ function renderRecipeCard(r, container) {
     return card;
 }
 
-async function openRecipeModal(existing, container) {
+function scanNoticeHtml(draft) {
+    const unmatched = [], fuzzy = [], noQty = [];
+    for (const ing of draft.ingredients) {
+        if (!ing.pantry_item_id) {
+            unmatched.push(`${ing.original_name}${ing.original_quantity ? ` (${ing.original_quantity} ${ing.original_unit || ""})` : ""}`);
+        } else if (ing.fuzzy) {
+            fuzzy.push(`"${ing.original_name}" ← "${ing.matched_name}"`);
+        }
+        if (ing.pantry_item_id && !ing.quantity_g) noQty.push(ing.original_name);
+    }
+    let html = "";
+    if (unmatched.length) html += `<div><b>לא נמצאו במזווה (בחר ידנית, או הוסף קודם למזווה - אחרת לא ישמרו):</b> ${unmatched.map(escapeHtml).join(", ")}</div>`;
+    if (fuzzy.length) html += `<div style="margin-top:6px;"><b>התאמות משוערות - בדוק:</b> ${fuzzy.map(escapeHtml).join(", ")}</div>`;
+    if (noQty.length) html += `<div style="margin-top:6px;"><b>חסרה כמות:</b> ${noQty.map(escapeHtml).join(", ")}</div>`;
+    return `<div class="hint-warn">${html || "כל המרכיבים זוהו. בדוק את הכמויות לפני שמירה."}</div>`;
+}
+
+async function openRecipeModal(existing, container, draft = null) {
     const sources = await ingredientSources();
     const isEdit = !!existing;
+    const src = existing || draft;
     let rowCounter = 0;
 
     const overlay = openModal(`
-        <h2>${isEdit ? "עריכת מתכון" : "מתכון חדש"}</h2>
-        <div class="field"><label>שם מתכון</label><input type="text" id="f-name" value="${existing ? escapeHtml(existing.name) : ""}"></div>
+        <h2>${isEdit ? "עריכת מתכון" : draft ? "מתכון חדש (מסריקה - בדוק לפני שמירה)" : "מתכון חדש"}</h2>
+        ${draft ? scanNoticeHtml(draft) : ""}
+        <div class="field"><label>שם מתכון</label><input type="text" id="f-name" value="${src ? escapeHtml(src.name) : ""}"></div>
         <div class="field">
             <label>קטגוריה</label>
             <select id="f-category">
                 <option value="">בחר...</option>
-                ${RECIPE_CATEGORIES.map((c) => `<option value="${c}" ${existing && existing.category === c ? "selected" : ""}>${c}</option>`).join("")}
+                ${RECIPE_CATEGORIES.map((c) => `<option value="${c}" ${src && src.category === c ? "selected" : ""}>${c}</option>`).join("")}
             </select>
         </div>
         <div id="ingredients-box"></div>
         <button type="button" class="btn btn-secondary btn-small" id="btn-add-row">+ הוסף מרכיב</button>
-        <div class="field" style="margin-top:12px;"><label>משקל סופי ידני (גרם, אופציונלי - ריק = סכום המרכיבים)</label><input type="number" step="any" id="f-manual-weight" value="${existing && !existing.is_auto_weight ? existing.final_weight : ""}"></div>
+        <div class="field" style="margin-top:12px;"><label>משקל סופי ידני (גרם, אופציונלי - ריק = סכום המרכיבים)</label><input type="number" step="any" id="f-manual-weight" value="${existing ? (!existing.is_auto_weight ? existing.final_weight : "") : (draft && draft.final_weight ? draft.final_weight : "")}"></div>
         <div class="card-row" style="font-weight:700;"><span>עלות כוללת:</span><span id="total-cost-display">₪0.00</span></div>
         <div class="error-msg"></div>
         <div class="modal-actions">
@@ -93,7 +133,7 @@ async function openRecipeModal(existing, container) {
                         <option value="">בחר מרכיב...</option>
                         ${sources.map((s) => `<option value="${s.id}" ${prefill && prefill.pantry_item_id === s.id ? "selected" : ""}>${s.indent ? "↳ " : ""}${escapeHtml(s.name)}</option>`).join("")}
                     </select>
-                    <input type="number" step="any" id="ing-qty-${id}" placeholder="גרם" style="width:80px;" value="${prefill ? prefill.quantity_g : ""}">
+                    <input type="number" step="any" id="ing-qty-${id}" placeholder="גרם" style="width:80px;" value="${prefill && prefill.quantity_g != null ? prefill.quantity_g : ""}">
                     <button type="button" class="remove-row-btn" data-remove="${id}">✕</button>
                 </div>
                 <div class="line-total" id="ing-line-${id}"></div>
@@ -128,6 +168,8 @@ async function openRecipeModal(existing, container) {
 
     if (existing) {
         for (const it of existing.items) addRow(it);
+    } else if (draft && draft.ingredients.length) {
+        for (const ing of draft.ingredients) addRow({ pantry_item_id: ing.pantry_item_id, quantity_g: ing.quantity_g });
     } else {
         addRow();
     }
