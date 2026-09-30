@@ -76,10 +76,14 @@ async function openDishModal(existing, container) {
         <div class="field"><label>שם מנה</label><input type="text" id="f-name" value="${existing ? escapeHtml(existing.name) : ""}"></div>
         <div id="ingredients-box"></div>
         <button type="button" class="btn btn-secondary btn-small" id="btn-add-row">+ הוסף מרכיב</button>
+        <div class="card-row" style="font-weight:700;margin-top:10px;"><span>עלות כוללת:</span><span id="cost-display">₪0.00</span></div>
         <div class="form-row" style="margin-top:12px;">
-            <div class="field"><label>מחיר מכירה (כולל מע"מ)</label><input type="number" step="any" id="f-price" value="${existing ? existing.selling_price : ""}"></div>
-            <div class="field"><label>מע"מ (%)</label><input type="number" step="any" id="f-vat" value="${existing ? existing.vat_pct : 18}"></div>
+            <div class="field"><label>מכפיל עלות (ידני, אופציונלי)</label><input type="number" step="any" id="f-multiplier" placeholder="לדוגמה: 3.5" value="${existing && existing.multiplier ? existing.multiplier : ""}"></div>
+            <div class="field"><label>יעד אחוז עלות מזון % (אופציונלי)</label><input type="number" step="any" id="f-target" placeholder="לדוגמה: 25" value="${existing && existing.target_profit_pct ? existing.target_profit_pct : ""}"></div>
         </div>
+        <div class="hint" style="margin-top:-8px;margin-bottom:12px;">יעד 25% = מכפיל ×4. המחיר למטה מתמלא אוטומטית ברגע שמזינים מכפיל או יעד, ועדיין אפשר לערוך אותו ידנית.</div>
+        <div class="field"><label>מחיר (₪, לפני מע"מ)</label><input type="number" step="any" id="f-price" value="${existing ? existing.price_before_vat : ""}"></div>
+        <div class="field"><label>מע"מ (%)</label><input type="number" step="any" id="f-vat" value="${existing ? existing.vat_pct : 18}"></div>
         <div class="card" id="pricing-preview" style="background:#f4f5f7;"></div>
         <div class="error-msg"></div>
         <div class="modal-actions">
@@ -128,19 +132,30 @@ async function openDishModal(existing, container) {
                 lineEl.textContent = "";
             }
         });
-        const sellingPrice = parseFloat(overlay.querySelector("#f-price").value) || 0;
+        overlay.querySelector("#cost-display").textContent = money(total);
+
+        const multiplier = parseFloat(overlay.querySelector("#f-multiplier").value) || 0;
+        const target = parseFloat(overlay.querySelector("#f-target").value) || 0;
+        // מחיר לפני מע"מ מתמלא אוטומטית מהמכפיל או מהיעד (עדיפות למכפיל), ועדיין ניתן לעריכה ידנית
+        if (multiplier > 0 && total > 0) {
+            overlay.querySelector("#f-price").value = (total * multiplier).toFixed(2);
+        } else if (target > 0 && target < 100 && total > 0) {
+            overlay.querySelector("#f-price").value = (total / (target / 100)).toFixed(2);
+        }
+
+        const priceBeforeVat = parseFloat(overlay.querySelector("#f-price").value) || 0;
         const vatPct = parseFloat(overlay.querySelector("#f-vat").value) || 0;
+        const sellingPrice = priceBeforeVat * (1 + vatPct / 100);
         const preview = overlay.querySelector("#pricing-preview");
-        if (sellingPrice > 0) {
+        if (priceBeforeVat > 0) {
             const r = computeDishPricing(total, sellingPrice, vatPct);
             preview.innerHTML = `
-                <div class="card-row"><span>עלות מרכיבים</span><span>${money(total)}</span></div>
-                <div class="card-row"><span>מחיר לפני מע"מ</span><span>${money(r.price_before_vat)}</span></div>
+                <div class="card-row"><span>מחיר מכירה (כולל מע"מ)</span><span>${money(sellingPrice)}</span></div>
                 <div class="card-row"><span>רווח</span><span>${money(r.profit_amount)} (${r.profit_pct.toFixed(1)}%)</span></div>
                 <div class="card-row"><span>Food Cost %</span><span>${r.food_cost_pct.toFixed(1)}%</span></div>
             `;
         } else {
-            preview.innerHTML = `<div class="card-row"><span>עלות מרכיבים</span><span>${money(total)}</span></div>`;
+            preview.innerHTML = `<div class="card-row"><span class="muted">הזן מחיר (ידנית או דרך מכפיל/יעד למעלה) כדי לראות רווחיות</span></div>`;
         }
         return total;
     }
@@ -154,6 +169,8 @@ async function openDishModal(existing, container) {
     overlay.querySelector("#btn-add-row").onclick = () => addRow();
     overlay.querySelector("#f-price").addEventListener("input", recalc);
     overlay.querySelector("#f-vat").addEventListener("input", recalc);
+    overlay.querySelector("#f-multiplier").addEventListener("input", recalc);
+    overlay.querySelector("#f-target").addEventListener("input", recalc);
 
     overlay.querySelector("#btn-cancel").onclick = closeModal;
     overlay.querySelector("#btn-save").onclick = async () => {
@@ -167,11 +184,16 @@ async function openDishModal(existing, container) {
                 items.push({ source_type: src.source_type, source_id: src.source_id, quantity_g: qty });
             }
         });
+        const priceBeforeVat = parseFloat(overlay.querySelector("#f-price").value) || 0;
+        const vatPct = parseFloat(overlay.querySelector("#f-vat").value) || 0;
         const data = {
             name: overlay.querySelector("#f-name").value,
             items,
-            selling_price: overlay.querySelector("#f-price").value,
-            vat_pct: overlay.querySelector("#f-vat").value,
+            // הבקאנד מצפה למחיר כולל מע"מ - מחשבים אותו כאן מהמחיר לפני מע"מ שהוזן, כמו בגרסת המחשב
+            selling_price: priceBeforeVat * (1 + vatPct / 100),
+            vat_pct: vatPct,
+            multiplier: overlay.querySelector("#f-multiplier").value,
+            target_profit_pct: overlay.querySelector("#f-target").value,
         };
         try {
             await saveDish(existing ? existing.id : null, data);
