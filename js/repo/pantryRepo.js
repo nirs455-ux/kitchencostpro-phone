@@ -143,10 +143,59 @@ export async function updatePantryItemYield(id, data) {
     await dbPut("pantryItems", existing);
 }
 
-export async function deletePantryItem(id) {
-    const children = await getChildren(id);
-    if (children.length > 0) {
-        throw new Error("לא ניתן למחוק חומר גלם שיש לו תוצרים מפורקים - מחק קודם את התוצרים");
+// מוחק פריט מזווה אחד וכל מה שתלוי בו ישירות (ספירות מלאי), ומנתק אותו משורות חשבונית.
+// מתכונים/מנות שהשתמשו בו נשארים עם העלות ששמורה בהם (תמונת מצב) - לא נמחקים.
+async function purgePantryItem(id) {
+    for (const c of await dbGetByIndex("inventoryCounts", "pantry_item_id", id)) {
+        await dbDelete("inventoryCounts", c.id);
+    }
+    for (const it of await dbGetByIndex("invoiceItems", "pantry_item_id", id)) {
+        await dbPut("invoiceItems", { ...it, pantry_item_id: null });
     }
     await dbDelete("pantryItems", id);
+}
+
+// מה יקרה אם מוחקים את הפריט: אילו תוצרים מפורקים יימחקו איתו, ובכמה מתכונים/מנות הוא משמש.
+export async function getDeleteInfo(id) {
+    const item = await dbGet("pantryItems", id);
+    if (!item) throw new Error("מוצר לא נמצא");
+    const children = await getChildren(id);
+    const ids = new Set([id, ...children.map((c) => c.id)]);
+    const recipeIds = new Set((await dbGetAll("recipeItems")).filter((r) => ids.has(r.pantry_item_id)).map((r) => r.recipe_id));
+    const dishIds = new Set((await dbGetAll("dishItems")).filter((d) => d.source_type === "pantry" && ids.has(d.source_id)).map((d) => d.dish_id));
+    return {
+        id, name: item.name, is_child: !!item.parent_id,
+        children: children.map((c) => ({ id: c.id, name: c.name })),
+        recipe_count: recipeIds.size, dish_count: dishIds.size,
+    };
+}
+
+const escHtml = (t) => String(t ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+export function deleteConfirmText(info) {
+    let msg = `למחוק את "${escHtml(info.name)}"?`;
+    if (info.children.length) {
+        msg += `<br><br>יימחקו גם ${info.children.length} תוצרים מפורקים שלו: ${info.children.map((c) => escHtml(c.name)).join(", ")}`;
+    }
+    if (info.recipe_count || info.dish_count) {
+        msg += `<br><br>המוצר משמש ב-${info.recipe_count} מתכונים וב-${info.dish_count} מנות. הם לא יימחקו והעלות ששמורה בהם נשארת, אבל המרכיב הזה יוסר מהם בפעם הבאה שתערוך אותם.`;
+    }
+    return msg;
+}
+
+// מחיקה בכל שלב: חומר גלם נמחק יחד עם התוצרים המפורקים שלו (האישור מציג מה יימחק).
+export async function deletePantryItem(id) {
+    for (const child of await getChildren(id)) {
+        await purgePantryItem(child.id);
+    }
+    await purgePantryItem(id);
+}
+
+// מוחק רק את כל התוצרים המפורקים של חומר גלם (העיבוד), וחומר הגלם עצמו נשאר.
+export async function deleteAllChildren(id) {
+    const children = await getChildren(id);
+    for (const child of children) {
+        await purgePantryItem(child.id);
+    }
+    return children.length;
 }
