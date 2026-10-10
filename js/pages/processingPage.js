@@ -1,7 +1,7 @@
-import { listAllPantryItems, updatePantryItemYield, addBreakdownProduct } from "../repo/pantryRepo.js";
+import { listAllPantryItems, updatePantryItemYield, addBreakdownProduct, deletePantryItem, deleteAllChildren, getDeleteInfo, deleteConfirmText } from "../repo/pantryRepo.js";
 import { CATEGORY_GROUPS } from "../constants.js";
 import { effectivePrice } from "../formulas.js";
-import { h, openModal, closeModal, toast, escapeHtml } from "../ui.js";
+import { h, openModal, closeModal, confirmDialog, toast, escapeHtml } from "../ui.js";
 import { getFilter, applyFilter, mountFilterBar, groupBySection, groupTitleEl } from "../filters.js";
 
 export async function renderProcessingPage(container) {
@@ -50,12 +50,35 @@ function renderParentCard(it, container) {
             <div class="card-actions">
                 <button class="btn btn-secondary btn-small" data-process>עיבוד</button>
                 <button class="btn btn-primary btn-small" data-breakdown>+ תוצר</button>
+                ${it.children && it.children.length ? '<button class="btn btn-secondary btn-small" data-delete-children>מחק את כל התוצרים</button>' : ""}
+                <button class="btn btn-danger btn-small" data-delete>מחיקה</button>
             </div>
         </div>
     `);
     card.querySelector("[data-process]").onclick = () => openYieldModal(it, container);
     card.querySelector("[data-breakdown]").onclick = () => openBreakdownModal(it, container);
+    card.querySelector("[data-delete]").onclick = () => confirmAndDelete(it, container);
+    const delKids = card.querySelector("[data-delete-children]");
+    if (delKids) {
+        delKids.onclick = async () => {
+            if (!(await confirmDialog(`למחוק את כל ${it.children.length} התוצרים המפורקים של "${escapeHtml(it.name)}"?<br><br>חומר הגלם עצמו יישאר במזווה.`))) return;
+            await deleteAllChildren(it.id);
+            toast("נמחק");
+            renderProcessingPage(container);
+        };
+    }
     return card;
+}
+
+async function confirmAndDelete(it, container) {
+    try {
+        if (!(await confirmDialog(deleteConfirmText(await getDeleteInfo(it.id))))) return;
+        await deletePantryItem(it.id);
+        toast("נמחק");
+        renderProcessingPage(container);
+    } catch (e) {
+        toast(e.message);
+    }
 }
 
 function renderChildCard(it, parent, container) {
@@ -65,10 +88,12 @@ function renderChildCard(it, parent, container) {
             <div class="card-row"><span class="muted">מתוך: ${escapeHtml(parent.name)}</span> ${priceLine(it)}</div>
             <div class="card-actions">
                 <button class="btn btn-secondary btn-small" data-process>עיבוד</button>
+                <button class="btn btn-danger btn-small" data-delete>מחיקה</button>
             </div>
         </div>
     `);
     card.querySelector("[data-process]").onclick = () => openYieldModal(it, container);
+    card.querySelector("[data-delete]").onclick = () => confirmAndDelete(it, container);
     return card;
 }
 
