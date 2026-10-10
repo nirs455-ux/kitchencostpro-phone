@@ -1,4 +1,4 @@
-import { listTopLevelPantryItems, addPantryItem, updatePantryItem, deletePantryItem } from "../repo/pantryRepo.js";
+import { listTopLevelPantryItems, addPantryItem, updatePantryItem, deletePantryItem, getDeleteInfo, deleteConfirmText } from "../repo/pantryRepo.js";
 import { CATEGORY_GROUPS, UNIT_TYPES, UNIT_TYPE_LABELS } from "../constants.js";
 import { h, openModal, closeModal, confirmDialog, toast, escapeHtml } from "../ui.js";
 import { openScanModal } from "./scanModal.js";
@@ -36,9 +36,10 @@ export async function renderPantryPage(container) {
         });
         list.querySelectorAll("[data-delete]").forEach((btn) => {
             btn.onclick = async () => {
-                if (!(await confirmDialog("למחוק את המוצר?"))) return;
                 try {
-                    await deletePantryItem(Number(btn.dataset.delete));
+                    const id = Number(btn.dataset.delete);
+                    if (!(await confirmDialog(deleteConfirmText(await getDeleteInfo(id))))) return;
+                    await deletePantryItem(id);
                     toast("נמחק");
                     renderPantryPage(container);
                 } catch (e) {
