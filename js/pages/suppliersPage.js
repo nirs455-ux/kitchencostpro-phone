@@ -157,7 +157,7 @@ function openInvoiceModal(existing, suppliers, pantryItems, container) {
     function addRow(prefill) {
         const id = rowCounter++;
         const row = h(`
-            <div class="item-row-inputs" id="inv-row-${id}">
+            <div class="item-row-inputs" id="inv-row-${id}" data-stock-factor="${prefill && prefill.stock_factor ? prefill.stock_factor : ""}">
                 <div class="field"><input type="text" id="inv-name-${id}" placeholder="שם מוצר" value="${prefill ? escapeHtml(prefill.product_name) : ""}"></div>
                 <div class="field">
                     <select id="inv-pantry-${id}">
@@ -170,6 +170,7 @@ function openInvoiceModal(existing, suppliers, pantryItems, container) {
                     <input type="number" step="any" id="inv-price-${id}" placeholder="מחיר יח'" value="${prefill ? prefill.unit_price : ""}">
                     <button type="button" class="remove-row-btn" data-remove="${id}">✕</button>
                 </div>
+                ${prefill && prefill.stock_factor ? `<div class="hint">כל יחידה בחשבונית = ${Math.round(prefill.stock_factor * 1000) / 1000} יחידות מלאי (נשמר מהסריקה)</div>` : ""}
                 <div class="line-total" id="inv-line-${id}"></div>
             </div>
         `);
@@ -210,7 +211,7 @@ function openInvoiceModal(existing, suppliers, pantryItems, container) {
             const quantity = overlay.querySelector(`#inv-qty-${id}`).value;
             const unit_price = overlay.querySelector(`#inv-price-${id}`).value;
             const pantry_item_id = overlay.querySelector(`#inv-pantry-${id}`).value || null;
-            if (product_name && quantity && unit_price) items.push({ product_name, quantity, unit_price, pantry_item_id });
+            if (product_name && quantity && unit_price) items.push({ product_name, quantity, unit_price, pantry_item_id, stock_factor: row.dataset.stockFactor || null });
         });
         const data = {
             supplier_id: overlay.querySelector("#f-supplier").value,
