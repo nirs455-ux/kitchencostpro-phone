@@ -54,7 +54,9 @@ function parseInvoicePayload(data) {
         total += lineTotal;
         let pantryItemId = it.pantry_item_id || null;
         if (pantryItemId) pantryItemId = parseInt(pantryItemId, 10);
-        resolved.push({ product_name: name, quantity: qty, unit_price: unitPrice, line_total: lineTotal, pantry_item_id: pantryItemId });
+        const sf = parseFloat(it.stock_factor);
+        const stockFactor = Number.isFinite(sf) && sf > 0 && sf !== 1 ? sf : null;
+        resolved.push({ product_name: name, quantity: qty, unit_price: unitPrice, line_total: lineTotal, pantry_item_id: pantryItemId, stock_factor: stockFactor });
     }
     return { supplier_id: supplierId, invoice_date: invoiceDate, document_type: documentType, items: resolved, total: Math.round(total * 100) / 100 };
 }
