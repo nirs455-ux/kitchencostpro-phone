@@ -1,6 +1,6 @@
 import { scanInvoiceImage, applyScannedInvoice } from "../repo/scanRepo.js";
 import { getSetting } from "../repo/settingsRepo.js";
-import { listSuppliers } from "../repo/suppliersRepo.js";
+import { listSuppliers, addSupplier } from "../repo/suppliersRepo.js";
 import { CATEGORY_GROUPS, UNIT_TYPES, UNIT_TYPE_LABELS } from "../constants.js";
 import { h, openModal, closeModal, toast, escapeHtml } from "../ui.js";
 
@@ -35,10 +35,12 @@ export async function openScanModal({ supplierAware, onDone }) {
                     ${suppliers.map((s) => `<option value="${s.id}">${escapeHtml(s.name)}</option>`).join("")}
                 </select>
                 <div class="hint">בחירת ספק תשמור זאת גם כחשבונית בדף הספקים, ותעדכן את הקניות בדף המלאי. בלי בחירה - רק המחיר במזווה יתעדכן.</div>
+                <div class="hint-warn" id="scan-no-supplier" style="display:none;">לא נבחר ספק - החשבונית לא תישמר בדף הספקים, רק המזווה יתעדכן.</div>
             </div>
             <div class="field"><label>תאריך</label><input type="date" id="scan-date" value="${todayLocal()}"></div>
             ` : ""}
             <div id="scan-items-box"></div>
+            <div class="card-row" style="font-weight:700;margin:8px 0;"><span>סה"כ החשבונית (לפי השורות שמעל)</span><span id="scan-total">₪0.00</span></div>
             <div class="error-msg" id="scan-apply-error"></div>
             <div class="modal-actions">
                 <button class="btn btn-secondary" id="btn-cancel">ביטול</button>
@@ -53,6 +55,14 @@ export async function openScanModal({ supplierAware, onDone }) {
     overlay.querySelector("#btn-cancel2").onclick = closeModal;
 
     let scannedItems = [];
+    if (supplierAware) {
+        const supSel = overlay.querySelector("#scan-supplier");
+        const warn = overlay.querySelector("#scan-no-supplier");
+        const syncWarn = () => { warn.style.display = supSel.value ? "none" : "block"; };
+        supSel.addEventListener("change", syncWarn);
+        overlay.__syncSupplierWarn = syncWarn;
+        syncWarn();
+    }
 
     overlay.querySelector("#btn-pick-camera").onclick = () => openInAppCamera();
     overlay.querySelector("#btn-pick-gallery").onclick = () => overlay.querySelector("#scan-file-gallery").click();
@@ -107,11 +117,21 @@ export async function openScanModal({ supplierAware, onDone }) {
                 if (data.invoice_date) overlay.querySelector("#scan-date").value = data.invoice_date;
                 if (data.supplier_name) {
                     const sel = overlay.querySelector("#scan-supplier");
+                    let found = false;
                     for (const opt of sel.options) {
-                        if (opt.textContent.trim() === data.supplier_name.trim()) { sel.value = opt.value; break; }
+                        if (opt.textContent.trim() === data.supplier_name.trim()) { sel.value = opt.value; found = true; break; }
+                    }
+                    if (!found) {
+                        // ספק שזוהה בחשבונית ועדיין לא קיים - מציעים ליצור אותו (נבחר כברירת מחדל)
+                        const opt = document.createElement("option");
+                        opt.value = "__new__";
+                        opt.textContent = `➕ צור ספק חדש: ${data.supplier_name.trim()}`;
+                        sel.appendChild(opt);
+                        sel.value = "__new__";
                     }
                 }
             }
+            if (overlay.__syncSupplierWarn) overlay.__syncSupplierWarn();
             renderResults();
         } catch (err) {
             overlay.querySelector("#scan-loading").style.display = "none";
@@ -153,8 +173,20 @@ export async function openScanModal({ supplierAware, onDone }) {
 
         if (scannedItems.length === 0) {
             box.innerHTML = '<div class="muted">לא זוהו מוצרים בתמונה.</div>';
+            overlay.querySelector("#scan-total").textContent = "₪0.00";
             return;
         }
+
+        const updateTotal = () => {
+            let t = 0;
+            scannedItems.forEach((_, i) => {
+                const q = parseFloat(overlay.querySelector(`#scan-qty-${i}`)?.value) || 0;
+                const pr = parseFloat(overlay.querySelector(`#scan-price-${i}`)?.value) || 0;
+                t += q * pr;
+            });
+            overlay.querySelector("#scan-total").textContent = `₪${t.toFixed(2)}`;
+        };
+        box.oninput = updateTotal;
 
         scannedItems.forEach((it, idx) => {
             const unitPriceNum = parseFloat(it.unit_price) || 0;
@@ -166,7 +198,10 @@ export async function openScanModal({ supplierAware, onDone }) {
                 <div class="item-row-inputs" style="${priceChanged ? "border-color:#c0392b;background:#fdecea;" : ""}">
                     <div class="top-line">
                         <strong>שורה ${idx + 1}</strong>
-                        <button type="button" class="btn btn-secondary btn-small" data-remove="${idx}">✕ הסר שורה</button>
+                        <div class="btn-row">
+                            ${idx > 0 ? `<button type="button" class="btn btn-accent btn-small" data-promo="${idx}">🏷 זו שורת מבצע - הפחת מהמוצר שמעל</button>` : ""}
+                            <button type="button" class="btn btn-secondary btn-small" data-remove="${idx}">✕ הסר שורה</button>
+                        </div>
                     </div>
                     ${it.discount_applied ? `<div class="hint">כולל מבצע: הנחה ₪${it.discount_applied.toFixed(2)} שולבה במחיר (מחיר מחירון ₪${Number(it.list_unit_price).toFixed(2)} ליחידה)</div>` : ""}
                     ${nameEmpty ? '<div class="hint-warn">חסר שם מוצר - הזן שם, או לחץ "הסר שורה" אם זו לא שורת מוצר (למשל מבצע).</div>' : ""}
@@ -244,7 +279,34 @@ export async function openScanModal({ supplierAware, onDone }) {
                 row.querySelector(`#scan-pack-${idx}`).addEventListener("input", updatePreview);
                 row.querySelector(`#scan-pack-unit-${idx}`).addEventListener("change", updatePreview);
             }
-            row.querySelector("[data-remove]").onclick = () => { captureInputs(); scannedItems.splice(idx, 1); renderResults(); };
+            const promoBtn = row.querySelector("[data-promo]");
+            if (promoBtn) promoBtn.onclick = () => {
+                captureInputs();
+                const prev = scannedItems[idx - 1];
+                const cur = it;
+                const qty = parseFloat(prev.quantity) || 0;
+                const list = prev.list_unit_price ?? parseFloat(prev.unit_price) ?? 0;
+                if (!(qty > 0)) { toast("אי אפשר לחשב מבצע - הכמות במוצר שמעל לא תקינה"); return; }
+                let discount = Math.abs((parseFloat(cur.quantity) || 0) * (parseFloat(cur.unit_price) || 0));
+                // מבצע חבילה כמו "3 ב-50": המחיר המודפס הוא מחיר החבילה, ההנחה = מחיר מחירון פחות מחיר החבילה
+                const m = String(cur.name || "").match(/(\d+(?:\.\d+)?)\s*ב[-־\s]*(\d+(?:\.\d+)?)/);
+                if (m) {
+                    const bundleDiscount = qty * list - parseFloat(m[2]);
+                    if (bundleDiscount > 0) discount = bundleDiscount;
+                }
+                prev.list_unit_price = list;
+                prev.discount_applied = Math.round(((prev.discount_applied || 0) + discount) * 100) / 100;
+                prev.unit_price = String(Math.round((Math.max(qty * list - prev.discount_applied, 0) / qty) * 10000) / 10000);
+                scannedItems.splice(idx, 1);
+                renderResults();
+            };
+            row.querySelector("[data-remove]").onclick = () => {
+                captureInputs();
+                const looksPromo = idx > 0 && /מבצע|הנחה|\d\s*ב[-־\s]*\d/.test(String(it.name || ""));
+                scannedItems.splice(idx, 1);
+                renderResults();
+                if (looksPromo) toast('הסרת שורה שנראית כמו מבצע - ההנחה לא נחשבה. להפחתה מהמוצר השתמש ב"זו שורת מבצע"');
+            };
             updatePreview();
 
             const unitSel = row.querySelector(`#scan-unit-${idx}`);
@@ -275,6 +337,7 @@ export async function openScanModal({ supplierAware, onDone }) {
                 };
             }
         });
+        updateTotal();
     }
 
     overlay.querySelector("#btn-cancel").onclick = closeModal;
@@ -292,12 +355,17 @@ export async function openScanModal({ supplierAware, onDone }) {
             unit_type: it.matched_pantry_item_id ? undefined : overlay.querySelector(`#scan-unit-${idx}`).value,
             unit_amount: it.matched_pantry_item_id ? undefined : overlay.querySelector(`#scan-unit-amount-${idx}`).value,
         }));
-        const supplierId = supplierAware ? overlay.querySelector("#scan-supplier").value || null : null;
+        let supplierId = supplierAware ? overlay.querySelector("#scan-supplier").value || null : null;
         const invoiceDate = supplierAware ? overlay.querySelector("#scan-date").value : null;
         try {
+            if (supplierId === "__new__") {
+                const name = overlay.querySelector("#scan-supplier").selectedOptions[0].textContent.replace(/^➕ צור ספק חדש:\s*/, "");
+                const existing = (await listSuppliers()).find((x) => x.name === name);
+                supplierId = existing ? existing.id : await addSupplier(name);
+            }
             await applyScannedInvoice({ items, supplierId, invoiceDate });
             closeModal();
-            toast("נשמר");
+            toast(supplierId ? "נשמר גם כחשבונית בדף הספקים" : "נשמר במזווה בלבד (לא נבחר ספק)");
             if (onDone) onDone();
         } catch (e) {
             const el = overlay.querySelector("#scan-apply-error");
