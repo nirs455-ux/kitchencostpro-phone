@@ -6,21 +6,7 @@ import { CATEGORY_GROUPS, UNIT_TYPES } from "../constants.js";
 import { saveInvoice } from "./suppliersRepo.js";
 import { NON_FOOD_CATEGORIES } from "../constants.js";
 import { RECIPE_SCAN_PROMPT, buildRecipeDraft } from "../recipeParse.js";
-
-const PROMPT = (
-    "אתה מערכת לניתוח חשבוניות ספק של מסעדה. נתח את התמונה הזו וחלץ ממנה מידע.\n" +
-    "החזר אך ורק JSON תקין, בדיוק בפורמט הזה, בלי שום טקסט נוסף לפני או אחרי:\n" +
-    "{\n" +
-    '  "supplier_name": "שם הספק אם מופיע בבירור, אחרת null",\n' +
-    '  "invoice_date": "תאריך בפורמט YYYY-MM-DD אם מופיע, אחרת null",\n' +
-    '  "items": [\n' +
-    '    {"name": "שם המוצר בעברית", "quantity": 1.0, "unit_price": 10.0}\n' +
-    "  ]\n" +
-    "}\n" +
-    "quantity ו-unit_price חייבים להיות מספרים. אם לא ניתן לקרוא שורה בבירור - דלג עליה. " +
-    "אל תמציא נתונים שלא מופיעים בתמונה. " +
-    "שים לב במיוחד לשנה בתאריך: העתק אותה בדיוק כפי שהיא כתובה בתמונה, ספרה ספרה - אל תנחש ואל תעגל אותה."
-);
+import { INVOICE_SCAN_PROMPT, mergeDiscountLines, computeStockFactor } from "../invoiceParse.js";
 
 function fileToBase64(file) {
     return new Promise((resolve, reject) => {
@@ -44,7 +30,7 @@ export async function scanInvoiceImage(apiKey, file) {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    contents: [{ parts: [{ text: PROMPT }, { inline_data: { mime_type: mimeType, data: imageData } }] }],
+                    contents: [{ parts: [{ text: INVOICE_SCAN_PROMPT }, { inline_data: { mime_type: mimeType, data: imageData } }] }],
                 }),
             }
         );
@@ -70,24 +56,25 @@ export async function scanInvoiceImage(apiKey, file) {
 
     const pantryRows = (await dbGetAll("pantryItems")).filter((r) => !r.parent_id);
     const byName = new Map(pantryRows.map((r) => [r.name.trim().toLowerCase(), r]));
-    const items = parsed.items || [];
+    const items = mergeDiscountLines(parsed.items || []);
     const enrichedItems = [];
 
     for (const it of items) {
-        const name = String(it.name || "").trim();
-        const quantity = parseFloat(it.quantity);
-        const unitPrice = parseFloat(it.unit_price);
-        if (!name || Number.isNaN(quantity) || Number.isNaN(unitPrice)) continue;
+        const name = it.name;
+        const quantity = it.quantity;
+        const unitPrice = it.unit_price;
+        // שורה בלי שם נשארת (המשתמש ימלא שם או יסיר אותה במסך הבדיקה)
 
-        const match = byName.get(name.trim().toLowerCase());
+        const match = name ? byName.get(name.trim().toLowerCase()) : null;
         let suggested = null;
-        if (!match) {
+        if (!match && name) {
             const close = getCloseMatches(name.trim().toLowerCase(), [...byName.keys()], 1, 0.75);
             if (close.length) suggested = byName.get(close[0]);
         }
 
         enrichedItems.push({
             name, quantity, unit_price: unitPrice,
+            discount_applied: it.discount_applied || 0, list_unit_price: it.list_unit_price ?? null,
             matched_pantry_item_id: match ? match.id : null,
             matched_category: match ? match.category : null,
             matched_price: match ? match.price : null,
@@ -105,53 +92,69 @@ export async function scanInvoiceImage(apiKey, file) {
 
 // מחיל את שורות הסריקה על המזווה (ואופציונלית שומר כחשבונית מקושרת לספק). מקביל ל-apply_scanned_invoice.
 export async function applyScannedInvoice({ items, supplierId, invoiceDate }) {
-    const resolvedPantryIds = [];
-    const invoiceLineItems = [];
-
-    for (const it of items) {
+    // שלב 1: אימות מלא ובניית תוכנית - שום כתיבה עד שכל השורות תקינות (אין שמירה חלקית)
+    const plan = [];
+    for (let i = 0; i < items.length; i++) {
+        const it = items[i];
+        const where = `שורה ${i + 1}`;
         const name = (it.name || "").trim();
-        if (!name) throw new Error("יש למלא שם מוצר לכל שורה");
+        if (!name) throw new Error(`${where}: יש למלא שם מוצר, או להסיר את השורה`);
         const quantity = parseFloat(it.quantity);
         const unitPrice = parseFloat(it.unit_price);
-        if (Number.isNaN(quantity) || Number.isNaN(unitPrice)) throw new Error(`כמות/מחיר לא תקינים עבור '${name}'`);
+        if (Number.isNaN(quantity) || Number.isNaN(unitPrice)) throw new Error(`${where}: כמות/מחיר לא תקינים עבור '${name}'`);
 
         const unitsPerCase = it.units_per_case === "" || it.units_per_case == null ? null : parseFloat(it.units_per_case);
-        const pantryPrice = unitsPerCase && unitsPerCase > 0 ? unitPrice / unitsPerCase : unitPrice;
+        const packageSize = it.package_size === "" || it.package_size == null ? null : parseFloat(it.package_size);
+        if (packageSize !== null && (Number.isNaN(packageSize) || packageSize <= 0)) throw new Error(`${where}: גודל אריזה לא תקין עבור '${name}'`);
 
-        let pantryItemId = it.pantry_item_id || null;
-        if (pantryItemId) {
-            const existing = await dbGet("pantryItems", pantryItemId);
-            if (!existing) throw new Error(`מוצר '${name}' לא נמצא`);
-            const isFrozen = !!it.is_frozen;
+        let existing = null;
+        let category = null, unitType = null, unitAmount = null;
+        if (it.pantry_item_id) {
+            existing = await dbGet("pantryItems", it.pantry_item_id);
+            if (!existing) throw new Error(`${where}: מוצר '${name}' לא נמצא`);
+            unitType = existing.unit_type;
             if (!existing.parent_id) {
-                const category = it.category || existing.category;
-                if (!(category in CATEGORY_GROUPS)) throw new Error(`קטגוריה לא תקינה עבור '${name}'`);
-                Object.assign(existing, { price: pantryPrice, category, is_frozen: isFrozen ? 1 : 0 });
-            } else {
-                Object.assign(existing, { price: pantryPrice, is_frozen: isFrozen ? 1 : 0 });
+                category = it.category || existing.category;
+                if (!(category in CATEGORY_GROUPS)) throw new Error(`${where}: קטגוריה לא תקינה עבור '${name}'`);
             }
-            await dbPut("pantryItems", existing);
-            resolvedPantryIds.push(pantryItemId);
         } else {
-            const category = it.category;
-            if (!(category in CATEGORY_GROUPS)) throw new Error(`יש לבחור קטגוריה עבור '${name}'`);
-            const unitType = it.unit_type || "weight";
-            if (!UNIT_TYPES.includes(unitType)) throw new Error(`יחידת מידה לא תקינה עבור '${name}'`);
-            let unitAmount = null;
+            category = it.category;
+            if (!(category in CATEGORY_GROUPS)) throw new Error(`${where}: יש לבחור קטגוריה עבור '${name}'`);
+            unitType = it.unit_type || "weight";
+            if (!UNIT_TYPES.includes(unitType)) throw new Error(`${where}: יחידת מידה לא תקינה עבור '${name}'`);
             if (unitType === "unit") {
                 unitAmount = parseFloat(it.unit_amount);
-                if (Number.isNaN(unitAmount)) throw new Error(`יש להזין משקל/נפח ליחידה עבור '${name}'`);
+                if (Number.isNaN(unitAmount)) throw new Error(`${where}: יש להזין משקל/נפח ליחידה עבור '${name}'`);
             }
-            const isFrozen = !!it.is_frozen;
-            pantryItemId = await dbPut("pantryItems", {
-                name, category, subcategory: null, unit_type: unitType, unit_amount: unitAmount,
-                price: pantryPrice, yield_pct: 100, weight_before: null, weight_after: null,
-                is_frozen: isFrozen ? 1 : 0, parent_id: null,
-            });
-            resolvedPantryIds.push(pantryItemId);
         }
 
-        invoiceLineItems.push({ product_name: name, quantity, unit_price: unitPrice, pantry_item_id: pantryItemId });
+        const { factor, error } = computeStockFactor(unitType, unitsPerCase, packageSize, it.package_unit);
+        if (error) throw new Error(`${where}: ${error} ('${name}')`);
+        const stockFactor = factor && factor !== 1 ? factor : null;
+        const pantryPrice = unitPrice / (factor || 1);
+        plan.push({ it, name, quantity, unitPrice, existing, category, unitType, unitAmount, pantryPrice, stockFactor });
+    }
+
+    // שלב 2: כתיבה
+    const resolvedPantryIds = [];
+    const invoiceLineItems = [];
+    for (const p of plan) {
+        const isFrozen = p.it.is_frozen ? 1 : 0;
+        let pantryItemId;
+        if (p.existing) {
+            if (!p.existing.parent_id) Object.assign(p.existing, { price: p.pantryPrice, category: p.category, is_frozen: isFrozen });
+            else Object.assign(p.existing, { price: p.pantryPrice, is_frozen: isFrozen });
+            await dbPut("pantryItems", p.existing);
+            pantryItemId = p.existing.id;
+        } else {
+            pantryItemId = await dbPut("pantryItems", {
+                name: p.name, category: p.category, subcategory: null, unit_type: p.unitType, unit_amount: p.unitAmount,
+                price: p.pantryPrice, yield_pct: 100, weight_before: null, weight_after: null,
+                is_frozen: isFrozen, parent_id: null,
+            });
+        }
+        resolvedPantryIds.push(pantryItemId);
+        invoiceLineItems.push({ product_name: p.name, quantity: p.quantity, unit_price: p.unitPrice, pantry_item_id: pantryItemId, stock_factor: p.stockFactor });
     }
 
     let invoiceId = null;
