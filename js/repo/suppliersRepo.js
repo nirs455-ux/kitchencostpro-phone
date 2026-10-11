@@ -14,9 +14,21 @@ export async function addSupplier(name) {
     return dbPut("suppliers", { name });
 }
 
-export async function deleteSupplier(id) {
+// מה יימחק עם הספק: כמה חשבוניות ובאיזה סכום כולל.
+export async function getSupplierDeleteInfo(id) {
+    const supplier = await dbGet("suppliers", id);
+    if (!supplier) throw new Error("ספק לא נמצא");
     const invoices = await dbGetByIndex("invoices", "supplier_id", id);
-    if (invoices.length > 0) throw new Error("לא ניתן למחוק ספק שיש לו חשבוניות - מחק קודם את החשבוניות");
+    const total = invoices.reduce((n, i) => n + (i.total_amount || 0), 0);
+    return { id, name: supplier.name, invoice_count: invoices.length, invoices_total: Math.round(total * 100) / 100 };
+}
+
+// מחיקת ספק בכל שלב - נמחק יחד עם החשבוניות שלו (האישור מציג כמה).
+export async function deleteSupplier(id) {
+    for (const inv of await dbGetByIndex("invoices", "supplier_id", id)) {
+        await dbDeleteWhere("invoiceItems", "invoice_id", inv.id);
+        await dbDelete("invoices", inv.id);
+    }
     await dbDelete("suppliers", id);
 }
 
