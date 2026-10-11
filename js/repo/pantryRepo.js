@@ -173,7 +173,9 @@ export async function getDeleteInfo(id) {
 const escHtml = (t) => String(t ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
 export function deleteConfirmText(info) {
-    let msg = `למחוק את "${escHtml(info.name)}"?`;
+    let msg = info.is_child
+        ? `למחוק את התוצר "${escHtml(info.name)}"? חומר הגלם שלו יישאר במזווה.`
+        : `למחוק את "${escHtml(info.name)}" לגמרי, כולל מהמזווה?<br><br>זה מוחק את המוצר עצמו, לא רק את העיבוד. כדי להחזיר רק את הניצולת ל-100% השתמש בכפתור "אפס עיבוד" בעמוד עיבוד.`;
     if (info.children.length) {
         msg += `<br><br>יימחקו גם ${info.children.length} תוצרים מפורקים שלו: ${info.children.map((c) => escHtml(c.name)).join(", ")}`;
     }
