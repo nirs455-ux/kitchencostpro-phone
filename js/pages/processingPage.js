@@ -51,11 +51,13 @@ function renderParentCard(it, container) {
                 <button class="btn btn-secondary btn-small" data-process>עיבוד</button>
                 <button class="btn btn-primary btn-small" data-breakdown>+ תוצר</button>
                 ${it.children && it.children.length ? '<button class="btn btn-secondary btn-small" data-delete-children>מחק את כל התוצרים</button>' : ""}
-                <button class="btn btn-danger btn-small" data-delete>מחיקה</button>
+                ${isProcessed(it) ? '<button class="btn btn-secondary btn-small" data-reset>אפס עיבוד</button>' : ""}
+                <button class="btn btn-danger btn-small" data-delete>מחק מהמזווה</button>
             </div>
         </div>
     `);
     card.querySelector("[data-process]").onclick = () => openYieldModal(it, container);
+    wireReset(card, it, container);
     card.querySelector("[data-breakdown]").onclick = () => openBreakdownModal(it, container);
     card.querySelector("[data-delete]").onclick = () => confirmAndDelete(it, container);
     const delKids = card.querySelector("[data-delete-children]");
@@ -68,6 +70,26 @@ function renderParentCard(it, container) {
         };
     }
     return card;
+}
+
+function isProcessed(it) {
+    return Number(it.yield_pct) !== 100 || it.weight_before != null;
+}
+
+// מחזיר ניצולת ל-100% ומנקה משקלי לפני/אחרי. המוצר (והקפוא) נשארים.
+function wireReset(card, it, container) {
+    const btn = card.querySelector("[data-reset]");
+    if (!btn) return;
+    btn.onclick = async () => {
+        if (!(await confirmDialog("לאפס את העיבוד? הניצולת תחזור ל-100% והמחיר האמיתי יהיה שווה למחיר הקנייה.<br><br>המוצר יישאר במזווה."))) return;
+        try {
+            await updatePantryItemYield(it.id, { name: it.name, yield_pct: 100, weight_before: "", weight_after: "", is_frozen: !!it.is_frozen });
+            toast("העיבוד אופס");
+            renderProcessingPage(container);
+        } catch (e) {
+            toast(e.message);
+        }
+    };
 }
 
 async function confirmAndDelete(it, container) {
@@ -88,11 +110,13 @@ function renderChildCard(it, parent, container) {
             <div class="card-row"><span class="muted">מתוך: ${escapeHtml(parent.name)}</span> ${priceLine(it)}</div>
             <div class="card-actions">
                 <button class="btn btn-secondary btn-small" data-process>עיבוד</button>
-                <button class="btn btn-danger btn-small" data-delete>מחיקה</button>
+                ${isProcessed(it) ? '<button class="btn btn-secondary btn-small" data-reset>אפס עיבוד</button>' : ""}
+                <button class="btn btn-danger btn-small" data-delete>מחק תוצר</button>
             </div>
         </div>
     `);
     card.querySelector("[data-process]").onclick = () => openYieldModal(it, container);
+    wireReset(card, it, container);
     card.querySelector("[data-delete]").onclick = () => confirmAndDelete(it, container);
     return card;
 }
