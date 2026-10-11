@@ -132,14 +132,18 @@ export async function openScanModal({ supplierAware, onDone }) {
             if (!g("scan-name")) return;
             it.name = g("scan-name").value;
             it.quantity = g("scan-qty").value;
-            it.unit_price = parseFloat(g("scan-price").value) || 0;
+            it.unit_price = g("scan-price").value;
             it._case = g("scan-case").value;
+            if (g("scan-pack")) { it._pack = g("scan-pack").value; it._packUnit = g("scan-pack-unit").value; }
             it._frozen = g("scan-frozen").checked;
             if (g("scan-cat") && !g("scan-cat").disabled) it._cat = g("scan-cat").value;
             if (g("scan-unit")) it._unit = g("scan-unit").value;
             if (g("scan-unit-amount")) it._unitAmount = g("scan-unit-amount").value;
         });
     }
+
+    // סוג היחידה האפקטיבי של השורה (מוצר קיים - לפי המזווה; חדש - לפי הבחירה)
+    const rowUnit = (it) => (it.matched_pantry_item_id ? it.matched_unit_type : it._unit || "weight");
 
     function renderResults() {
         overlay.querySelector("#scan-loading").style.display = "none";
@@ -153,9 +157,19 @@ export async function openScanModal({ supplierAware, onDone }) {
         }
 
         scannedItems.forEach((it, idx) => {
-            const priceChanged = it.matched_pantry_item_id && it.matched_price != null && Math.abs(it.matched_price - it.unit_price) > 0.001;
+            const unitPriceNum = parseFloat(it.unit_price) || 0;
+            const priceChanged = it.matched_pantry_item_id && it.matched_price != null && Math.abs(it.matched_price - unitPriceNum) > 0.001;
+            const ut = rowUnit(it);
+            const packUnits = ut === "liter" ? [["ml", 'מ"ל'], ["l", "ליטר"]] : [["g", "גרם"], ["kg", 'ק"ג']];
+            const nameEmpty = !String(it.name || "").trim();
             const row = h(`
                 <div class="item-row-inputs" style="${priceChanged ? "border-color:#c0392b;background:#fdecea;" : ""}">
+                    <div class="top-line">
+                        <strong>שורה ${idx + 1}</strong>
+                        <button type="button" class="btn btn-secondary btn-small" data-remove="${idx}">✕ הסר שורה</button>
+                    </div>
+                    ${it.discount_applied ? `<div class="hint">כולל מבצע: הנחה ₪${it.discount_applied.toFixed(2)} שולבה במחיר (מחיר מחירון ₪${Number(it.list_unit_price).toFixed(2)} ליחידה)</div>` : ""}
+                    ${nameEmpty ? '<div class="hint-warn">חסר שם מוצר - הזן שם, או לחץ "הסר שורה" אם זו לא שורת מוצר (למשל מבצע).</div>' : ""}
                     <div class="field"><label>שם מוצר</label><input type="text" id="scan-name-${idx}" value="${escapeHtml(it.name)}"></div>
                     <div class="field"><label>כמות</label><input type="number" step="any" id="scan-qty-${idx}" value="${it.quantity}"></div>
                     ${it.suggested_pantry_item_id && !it.matched_pantry_item_id ? `
@@ -169,7 +183,7 @@ export async function openScanModal({ supplierAware, onDone }) {
                     <div class="field">
                         <label>מחיר יחידה${priceChanged ? " - שונה מהמחיר הקיים!" : ""}</label>
                         <input type="number" step="any" id="scan-price-${idx}" value="${it.unit_price}" style="${priceChanged ? "border-color:#c0392b;color:#c0392b;font-weight:700;" : ""}">
-                        ${priceChanged ? `<div class="hint" style="color:#c0392b;">מחיר קודם: ₪${it.matched_price.toFixed(2)} → מחיר חדש: ₪${it.unit_price.toFixed(2)}</div>` : ""}
+                        ${priceChanged ? `<div class="hint" style="color:#c0392b;">מחיר קודם: ₪${it.matched_price.toFixed(2)} → מחיר חדש: ₪${unitPriceNum.toFixed(2)}</div>` : ""}
                     </div>
                     <div class="field">
                         <label>קטגוריה${it.matched_pantry_item_id ? "" : " (חובה למוצר חדש)"}</label>
@@ -191,6 +205,13 @@ export async function openScanModal({ supplierAware, onDone }) {
                             <input type="number" step="any" id="scan-unit-amount-${idx}" value="${it._unitAmount ?? ""}">
                         </div>
                     </div>`}
+                    ${ut === "weight" || ut === "liter" ? `
+                    <div class="form-row">
+                        <div class="field"><label>${ut === "liter" ? "נפח האריזה (אופציונלי)" : "משקל האריזה (אופציונלי)"}</label>
+                            <input type="number" step="any" id="scan-pack-${idx}" placeholder="${ut === "liter" ? "לדוגמה: 370" : "לדוגמה: 180"}" value="${it._pack ?? ""}"></div>
+                        <div class="field"><label>יחידה</label>
+                            <select id="scan-pack-unit-${idx}">${packUnits.map(([v, l]) => `<option value="${v}" ${(it._packUnit || packUnits[0][0]) === v ? "selected" : ""}>${l}</option>`).join("")}</select></div>
+                    </div>` : ""}
                     <div class="field"><label>יחידות בארגז (אופציונלי)</label><input type="number" step="any" id="scan-case-${idx}" placeholder="לדוגמה: 8" value="${it._case ?? ""}"></div>
                     <span class="hint" id="scan-pantry-price-${idx}"></span>
                     <div class="checkbox-field" style="margin-top:6px;">
@@ -204,19 +225,33 @@ export async function openScanModal({ supplierAware, onDone }) {
 
             const updatePreview = () => {
                 const price = parseFloat(row.querySelector(`#scan-price-${idx}`).value) || 0;
-                const perCase = parseFloat(row.querySelector(`#scan-case-${idx}`).value) || 0;
+                const perCase = parseFloat(row.querySelector(`#scan-case-${idx}`).value) || 1;
+                const packEl = row.querySelector(`#scan-pack-${idx}`);
+                const pack = packEl ? parseFloat(packEl.value) || 0 : 0;
+                let packBase = 1;
+                if (pack > 0) {
+                    const pu = row.querySelector(`#scan-pack-unit-${idx}`).value;
+                    packBase = pack * (pu === "g" || pu === "ml" ? 0.001 : 1);
+                }
+                const factor = perCase * packBase;
                 const el = row.querySelector(`#scan-pantry-price-${idx}`);
-                el.textContent = perCase > 0 && price > 0 ? `מחיר שיישמר במזווה: ₪${(price / perCase).toFixed(2)} ליחידה` : "";
+                const label = ut === "liter" ? "ליטר" : ut === "weight" ? 'ק"ג' : "יחידה";
+                el.textContent = factor !== 1 && price > 0 ? `מחיר שיישמר במזווה: ₪${(price / factor).toFixed(2)} ל${label}` : "";
             };
             row.querySelector(`#scan-price-${idx}`).addEventListener("input", updatePreview);
             row.querySelector(`#scan-case-${idx}`).addEventListener("input", updatePreview);
+            if (row.querySelector(`#scan-pack-${idx}`)) {
+                row.querySelector(`#scan-pack-${idx}`).addEventListener("input", updatePreview);
+                row.querySelector(`#scan-pack-unit-${idx}`).addEventListener("change", updatePreview);
+            }
+            row.querySelector("[data-remove]").onclick = () => { captureInputs(); scannedItems.splice(idx, 1); renderResults(); };
             updatePreview();
 
             const unitSel = row.querySelector(`#scan-unit-${idx}`);
             if (unitSel) {
                 const wrap = row.querySelector(`#scan-unit-amount-wrap-${idx}`);
                 const syncUnit = () => { wrap.style.display = unitSel.value === "unit" ? "block" : "none"; };
-                unitSel.addEventListener("change", syncUnit);
+                unitSel.addEventListener("change", () => { captureInputs(); renderResults(); });
                 syncUnit();
             }
 
@@ -249,6 +284,8 @@ export async function openScanModal({ supplierAware, onDone }) {
             quantity: overlay.querySelector(`#scan-qty-${idx}`).value,
             unit_price: overlay.querySelector(`#scan-price-${idx}`).value,
             units_per_case: overlay.querySelector(`#scan-case-${idx}`).value,
+            package_size: overlay.querySelector(`#scan-pack-${idx}`)?.value || "",
+            package_unit: overlay.querySelector(`#scan-pack-unit-${idx}`)?.value || null,
             category: it.matched_pantry_item_id ? it.matched_category : overlay.querySelector(`#scan-cat-${idx}`).value,
             is_frozen: overlay.querySelector(`#scan-frozen-${idx}`).checked,
             pantry_item_id: it.matched_pantry_item_id,
