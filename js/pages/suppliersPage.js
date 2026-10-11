@@ -1,4 +1,4 @@
-import { listSuppliers, addSupplier, deleteSupplier, listInvoicesWithItems, saveInvoice, deleteInvoice, monthlySummaryBySupplier } from "../repo/suppliersRepo.js";
+import { listSuppliers, addSupplier, deleteSupplier, getSupplierDeleteInfo, listInvoicesWithItems, saveInvoice, deleteInvoice, monthlySummaryBySupplier } from "../repo/suppliersRepo.js";
 import { listTopLevelPantryItems } from "../repo/pantryRepo.js";
 import { h, openModal, closeModal, confirmDialog, toast, escapeHtml, money } from "../ui.js";
 import { openScanModal } from "./scanModal.js";
@@ -33,17 +33,20 @@ export async function renderSuppliersPage(container) {
         chipsBox.innerHTML = '<div class="muted">עדיין אין ספקים - לחץ על "+ ספק חדש".</div>';
     }
     for (const s of suppliers) {
-        const chip = h(`<div class="chip">${escapeHtml(s.name)} ✕</div>`);
-        chip.onclick = async (e) => {
-            if (e.offsetX > chip.clientWidth - 22) {
-                if (!(await confirmDialog("למחוק את הספק?"))) return;
-                try {
-                    await deleteSupplier(s.id);
-                    toast("נמחק");
-                    renderSuppliersPage(container);
-                } catch (err) {
-                    toast(err.message);
+        const chip = h(`<div class="chip" style="display:flex;align-items:center;gap:8px;">${escapeHtml(s.name)}<button type="button" data-del style="border:none;background:none;color:#c0392b;font-size:15px;font-weight:700;padding:2px 4px;cursor:pointer;" aria-label="מחק ספק">✕</button></div>`);
+        chip.querySelector("[data-del]").onclick = async () => {
+            try {
+                const info = await getSupplierDeleteInfo(s.id);
+                let msg = `למחוק את הספק "${escapeHtml(info.name)}"?`;
+                if (info.invoice_count) {
+                    msg += `<br><br>יימחקו גם ${info.invoice_count} חשבוניות שלו (סה"כ ${money(info.invoices_total)}).<br>הקניות שלהן ייגרעו מהסיכום החודשי ומחישוב המלאי.`;
                 }
+                if (!(await confirmDialog(msg))) return;
+                await deleteSupplier(s.id);
+                toast("נמחק");
+                renderSuppliersPage(container);
+            } catch (err) {
+                toast(err.message);
             }
         };
         chipsBox.appendChild(chip);
@@ -80,7 +83,7 @@ export async function renderSuppliersPage(container) {
             `);
             card.querySelector("[data-edit]").onclick = () => openInvoiceModal(inv, suppliers, pantryItems, container);
             card.querySelector("[data-delete]").onclick = async () => {
-                if (!(await confirmDialog("למחוק את החשבונית?"))) return;
+                if (!(await confirmDialog("למחוק את החשבונית?<br><br>הקניות שלה ייגרעו מהסיכום החודשי ומחישוב המלאי."))) return;
                 await deleteInvoice(inv.id);
                 toast("נמחק");
                 renderSuppliersPage(container);
