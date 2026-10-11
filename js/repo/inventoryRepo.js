@@ -18,7 +18,8 @@ async function purchasedSince(pantryItemId, sinceDate) {
         const inv = invoiceById[it.invoice_id];
         if (!inv) continue;
         if (sinceDate && !(inv.invoice_date > sinceDate)) continue;
-        total += inv.document_type === "credit" ? -it.quantity : it.quantity;
+        const q = it.quantity * (it.stock_factor ?? 1);
+        total += inv.document_type === "credit" ? -q : q;
     }
     return Math.round(total * 1000) / 1000;
 }
