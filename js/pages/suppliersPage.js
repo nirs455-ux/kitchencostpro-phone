@@ -1,5 +1,7 @@
 import { listSuppliers, addSupplier, deleteSupplier, getSupplierDeleteInfo, listInvoicesWithItems, saveInvoice, deleteInvoice, monthlySummaryBySupplier } from "../repo/suppliersRepo.js";
 import { listTopLevelPantryItems } from "../repo/pantryRepo.js";
+import { createPantryItemFromInvoice } from "../repo/scanRepo.js";
+import { CATEGORY_GROUPS, UNIT_TYPES, UNIT_TYPE_LABELS } from "../constants.js";
 import { h, openModal, closeModal, confirmDialog, toast, escapeHtml, money } from "../ui.js";
 import { openScanModal } from "./scanModal.js";
 import { compressImage, showImageFullscreen } from "../imageUtil.js";
@@ -176,8 +178,20 @@ function openInvoiceModal(existing, suppliers, pantryItems, container) {
                 <div class="field">
                     <select id="inv-pantry-${id}">
                         <option value="">ללא שיוך למזווה</option>
-                        ${pantryItems.map((p) => `<option value="${p.id}" ${prefill && prefill.pantry_item_id === p.id ? "selected" : ""}>${escapeHtml(p.name)}</option>`).join("")}
+                        <option value="__new__">➕ מוצר חדש - הוסף למזווה</option>
+                        ${[...pantryItems].sort((a, b) => a.name.localeCompare(b.name, "he")).map((p) => `<option value="${p.id}" ${prefill && prefill.pantry_item_id === p.id ? "selected" : ""}>${escapeHtml(p.name)}</option>`).join("")}
                     </select>
+                </div>
+                <div id="inv-new-${id}" style="display:none;background:#eef6fb;border-radius:8px;padding:8px;margin-bottom:6px;">
+                    <div class="hint">המוצר ייווצר במזווה עם המחיר ליחידה מהשורה הזו.</div>
+                    <div class="field"><label>קטגוריה (חובה)</label>
+                        <select id="inv-cat-${id}"><option value="">בחר קטגוריה...</option>${Object.keys(CATEGORY_GROUPS).map((c) => `<option value="${c}">${c}</option>`).join("")}</select></div>
+                    <div class="form-row">
+                        <div class="field"><label>נמדד ב-</label>
+                            <select id="inv-ut-${id}">${UNIT_TYPES.map((u) => `<option value="${u}" ${u === "unit" ? "selected" : ""}>${UNIT_TYPE_LABELS[u]}</option>`).join("")}</select></div>
+                        <div class="field" id="inv-ua-wrap-${id}"><label>משקל/נפח ליחידה (גרם/מ"ל)</label>
+                            <input type="number" step="any" id="inv-ua-${id}" placeholder="לדוגמה: 20"></div>
+                    </div>
                 </div>
                 <div class="top-line">
                     <input type="number" step="any" id="inv-qty-${id}" placeholder="כמות / משקל" value="${prefill ? prefill.quantity : ""}">
@@ -186,7 +200,7 @@ function openInvoiceModal(existing, suppliers, pantryItems, container) {
                     <button type="button" class="remove-row-btn" data-remove="${id}">✕</button>
                 </div>
                 ${prefill && prefill.stock_factor ? `<div class="hint">כל יחידה בחשבונית = ${Math.round(prefill.stock_factor * 1000) / 1000} יחידות מלאי (נשמר מהסריקה)</div>` : ""}
-                <div class="hint">הנתונים נשמרים כפי שהוזנו. שינוי מחיר מעדכן את הסכום ושינוי סכום מעדכן את המחיר.</div>
+                <div class="hint">למשל 9 יחידות ב-15 ₪: כמות 9 וסה"כ 15 (המחיר ליחידה יחושב לבד). הנתונים נשמרים כפי שהוזנו.</div>
             </div>
         `);
         box.appendChild(row);
@@ -195,21 +209,36 @@ function openInvoiceModal(existing, suppliers, pantryItems, container) {
         const totalEl = row.querySelector(`#inv-line-${id}`);
         const num = (el) => parseFloat(el.value);
         const fmt = (x, d) => String(+x.toFixed(d));
+        // השדה שהוזן אחרון (מחיר / סכום) נשאר כמו שהוזן; שינוי כמות מחשב מחדש את השדה השני
+        let locked = "price";
         priceEl.addEventListener("input", () => {
+            locked = "price";
             if (num(qtyEl) > 0 && !isNaN(num(priceEl))) totalEl.value = (num(qtyEl) * num(priceEl)).toFixed(2);
+            recalc();
+        });
+        totalEl.addEventListener("input", () => {
+            locked = "total";
+            if (num(qtyEl) > 0 && !isNaN(num(totalEl))) priceEl.value = fmt(num(totalEl) / num(qtyEl), 4);
             recalc();
         });
         qtyEl.addEventListener("input", () => {
             if (num(qtyEl) > 0) {
-                if (!isNaN(num(priceEl))) totalEl.value = (num(qtyEl) * num(priceEl)).toFixed(2);
+                if (locked === "total" && !isNaN(num(totalEl))) priceEl.value = fmt(num(totalEl) / num(qtyEl), 4);
+                else if (!isNaN(num(priceEl))) totalEl.value = (num(qtyEl) * num(priceEl)).toFixed(2);
                 else if (!isNaN(num(totalEl))) priceEl.value = fmt(num(totalEl) / num(qtyEl), 4);
             }
             recalc();
         });
-        totalEl.addEventListener("input", () => {
-            if (num(qtyEl) > 0 && !isNaN(num(totalEl))) priceEl.value = fmt(num(totalEl) / num(qtyEl), 4);
-            recalc();
-        });
+        const pantrySel = row.querySelector(`#inv-pantry-${id}`);
+        const newBox = row.querySelector(`#inv-new-${id}`);
+        const utSel = row.querySelector(`#inv-ut-${id}`);
+        const syncNew = () => {
+            newBox.style.display = pantrySel.value === "__new__" ? "block" : "none";
+            row.querySelector(`#inv-ua-wrap-${id}`).style.display = utSel.value === "unit" ? "block" : "none";
+        };
+        pantrySel.addEventListener("change", syncNew);
+        utSel.addEventListener("change", syncNew);
+        syncNew();
         row.querySelector("[data-remove]").onclick = () => { row.remove(); recalc(); };
     }
 
@@ -256,15 +285,31 @@ function openInvoiceModal(existing, suppliers, pantryItems, container) {
     overlay.querySelector("#btn-cancel").onclick = closeModal;
     overlay.querySelector("#btn-save").onclick = async () => {
         const items = [];
-        box.querySelectorAll(".item-row-inputs").forEach((row) => {
+        const newProducts = []; // שורות עם "מוצר חדש במזווה" - נוצרות רק אחרי שכל האימותים עברו
+        const showErr = (msg) => {
+            const el = overlay.querySelector(".error-msg");
+            el.textContent = msg;
+            el.style.display = "block";
+        };
+        for (const row of box.querySelectorAll(".item-row-inputs")) {
             const id = row.id.replace("inv-row-", "");
             const product_name = overlay.querySelector(`#inv-name-${id}`).value;
             const quantity = overlay.querySelector(`#inv-qty-${id}`).value;
             const unit_price = overlay.querySelector(`#inv-price-${id}`).value;
             const line_total = overlay.querySelector(`#inv-line-${id}`).value;
-            const pantry_item_id = overlay.querySelector(`#inv-pantry-${id}`).value || null;
-            if (product_name && quantity && (unit_price || line_total)) items.push({ product_name, quantity, unit_price, line_total, pantry_item_id, stock_factor: row.dataset.stockFactor || null });
-        });
+            const sel = overlay.querySelector(`#inv-pantry-${id}`).value;
+            if (!(product_name && quantity && (unit_price || line_total))) continue;
+            const item = { product_name, quantity, unit_price, line_total, pantry_item_id: sel === "__new__" ? null : sel || null, stock_factor: row.dataset.stockFactor || null };
+            if (sel === "__new__") {
+                const category = overlay.querySelector(`#inv-cat-${id}`).value;
+                if (!category) return showErr(`'${product_name}': בחר קטגוריה למוצר החדש במזווה`);
+                const unitType = overlay.querySelector(`#inv-ut-${id}`).value;
+                const unitAmount = overlay.querySelector(`#inv-ua-${id}`).value;
+                if (unitType === "unit" && !(parseFloat(unitAmount) > 0)) return showErr(`'${product_name}': הזן משקל/נפח ליחידה (גרם/מ"ל)`);
+                newProducts.push({ item, category, unitType, unitAmount });
+            }
+            items.push(item);
+        }
         const data = {
             supplier_id: overlay.querySelector("#f-supplier").value,
             invoice_date: overlay.querySelector("#f-date").value,
@@ -273,6 +318,23 @@ function openInvoiceModal(existing, suppliers, pantryItems, container) {
         };
         if (imageChange !== undefined) data.image = imageChange;
         try {
+            // מוצרים חדשים נוצרים רק אחרי שהחשבונית עצמה עברה אימות
+            if (newProducts.length) {
+                if (!data.supplier_id) throw new Error("יש לבחור ספק");
+                if (!data.invoice_date) throw new Error("יש להזין תאריך");
+                for (const np of newProducts) {
+                    const q = parseFloat(np.item.quantity);
+                    const price = np.item.unit_price !== "" ? parseFloat(np.item.unit_price) : parseFloat(np.item.line_total) / q;
+                    if (!(q > 0) || Number.isNaN(price)) throw new Error("כמות/מחיר לא תקינים");
+                }
+                for (const np of newProducts) {
+                    const q = parseFloat(np.item.quantity);
+                    const price = np.item.unit_price !== "" ? parseFloat(np.item.unit_price) : parseFloat(np.item.line_total) / q;
+                    np.item.pantry_item_id = await createPantryItemFromInvoice({
+                        name: np.item.product_name, category: np.category, unitType: np.unitType, unitAmount: np.unitAmount, price,
+                    });
+                }
+            }
             await saveInvoice(existing ? existing.id : null, data);
             closeModal();
             toast("נשמר");
