@@ -306,6 +306,9 @@ function openInvoiceModal(existing, suppliers, pantryItems, container) {
                 const unitType = overlay.querySelector(`#inv-ut-${id}`).value;
                 const unitAmount = overlay.querySelector(`#inv-ua-${id}`).value;
                 if (unitType === "unit" && !(parseFloat(unitAmount) > 0)) return showErr(`'${product_name}': הזן משקל/נפח ליחידה (גרם/מ"ל)`);
+                const key = product_name.trim().toLowerCase();
+                if (pantryItems.some((p) => p.name.trim().toLowerCase() === key)) return showErr(`'${product_name}' כבר קיים במזווה - בחר אותו מהרשימה במקום ליצור חדש`);
+                if (newProducts.some((np) => np.item.product_name.trim().toLowerCase() === key)) return showErr(`'${product_name}' מופיע פעמיים כמוצר חדש`);
                 newProducts.push({ item, category, unitType, unitAmount });
             }
             items.push(item);
