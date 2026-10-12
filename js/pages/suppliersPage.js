@@ -2,6 +2,7 @@ import { listSuppliers, addSupplier, deleteSupplier, getSupplierDeleteInfo, list
 import { listTopLevelPantryItems } from "../repo/pantryRepo.js";
 import { h, openModal, closeModal, confirmDialog, toast, escapeHtml, money } from "../ui.js";
 import { openScanModal } from "./scanModal.js";
+import { compressImage, showImageFullscreen } from "../imageUtil.js";
 
 function todayLocal() {
     const d = new Date();
@@ -76,11 +77,14 @@ export async function renderSuppliersPage(container) {
                     <div class="card-row"><span class="muted">${inv.invoice_date}</span><span>${money(inv.total_amount)}</span></div>
                     <div class="muted">${inv.items.map((it) => escapeHtml(it.product_name)).join(", ")}</div>
                     <div class="card-actions">
+                        ${inv.has_image ? '<button class="btn btn-accent btn-small" data-image>🖼 תמונה</button>' : ""}
                         <button class="btn btn-secondary btn-small" data-edit>עריכה</button>
                         <button class="btn btn-danger btn-small" data-delete>מחיקה</button>
                     </div>
                 </div>
             `);
+            const imgBtn = card.querySelector("[data-image]");
+            if (imgBtn) imgBtn.onclick = () => showImageFullscreen(inv.image, `${inv.supplier_name} - ${inv.invoice_date}`);
             card.querySelector("[data-edit]").onclick = () => openInvoiceModal(inv, suppliers, pantryItems, container);
             card.querySelector("[data-delete]").onclick = async () => {
                 if (!(await confirmDialog("למחוק את החשבונית?<br><br>הקניות שלה ייגרעו מהסיכום החודשי ומחישוב המלאי."))) return;
@@ -146,6 +150,16 @@ function openInvoiceModal(existing, suppliers, pantryItems, container) {
         <div id="items-box"></div>
         <button type="button" class="btn btn-secondary btn-small" id="btn-add-row">+ הוסף שורה</button>
         <div class="card-row" style="font-weight:700;margin-top:10px;"><span>סה"כ:</span><span id="total-display">₪0.00</span></div>
+        <div class="field" style="margin-top:10px;">
+            <label>תמונת החשבונית (אופציונלי)</label>
+            <div class="btn-row">
+                <button type="button" class="btn btn-accent btn-small" id="btn-img-pick">📷 צלם / בחר תמונה</button>
+                <button type="button" class="btn btn-secondary btn-small" id="btn-img-view" style="display:none;">🖼 הצג</button>
+                <button type="button" class="btn btn-danger btn-small" id="btn-img-remove" style="display:none;">הסר</button>
+            </div>
+            <input type="file" id="f-img-file" accept="image/*" style="display:none">
+            <div class="hint" id="img-status"></div>
+        </div>
         <div class="error-msg"></div>
         <div class="modal-actions">
             <button class="btn btn-secondary" id="btn-cancel">ביטול</button>
@@ -166,18 +180,36 @@ function openInvoiceModal(existing, suppliers, pantryItems, container) {
                     </select>
                 </div>
                 <div class="top-line">
-                    <input type="number" step="any" id="inv-qty-${id}" placeholder="כמות" value="${prefill ? prefill.quantity : ""}">
-                    <input type="number" step="any" id="inv-price-${id}" placeholder="מחיר יח'" value="${prefill ? prefill.unit_price : ""}">
+                    <input type="number" step="any" id="inv-qty-${id}" placeholder="כמות / משקל" value="${prefill ? prefill.quantity : ""}">
+                    <input type="number" step="any" id="inv-price-${id}" placeholder="מחיר ליחידה/ק&quot;ג" value="${prefill ? prefill.unit_price : ""}">
+                    <input type="number" step="any" id="inv-line-${id}" placeholder="סה&quot;כ שורה" value="${prefill ? (prefill.line_total ?? Math.round(prefill.quantity * prefill.unit_price * 100) / 100) : ""}">
                     <button type="button" class="remove-row-btn" data-remove="${id}">✕</button>
                 </div>
                 ${prefill && prefill.stock_factor ? `<div class="hint">כל יחידה בחשבונית = ${Math.round(prefill.stock_factor * 1000) / 1000} יחידות מלאי (נשמר מהסריקה)</div>` : ""}
-                <div class="line-total" id="inv-line-${id}"></div>
+                <div class="hint">הנתונים נשמרים כפי שהוזנו. שינוי מחיר מעדכן את הסכום ושינוי סכום מעדכן את המחיר.</div>
             </div>
         `);
         box.appendChild(row);
-        const recalcAndBind = () => { recalc(); };
-        row.querySelector(`#inv-qty-${id}`).addEventListener("input", recalcAndBind);
-        row.querySelector(`#inv-price-${id}`).addEventListener("input", recalcAndBind);
+        const qtyEl = row.querySelector(`#inv-qty-${id}`);
+        const priceEl = row.querySelector(`#inv-price-${id}`);
+        const totalEl = row.querySelector(`#inv-line-${id}`);
+        const num = (el) => parseFloat(el.value);
+        const fmt = (x, d) => String(+x.toFixed(d));
+        priceEl.addEventListener("input", () => {
+            if (num(qtyEl) > 0 && !isNaN(num(priceEl))) totalEl.value = (num(qtyEl) * num(priceEl)).toFixed(2);
+            recalc();
+        });
+        qtyEl.addEventListener("input", () => {
+            if (num(qtyEl) > 0) {
+                if (!isNaN(num(priceEl))) totalEl.value = (num(qtyEl) * num(priceEl)).toFixed(2);
+                else if (!isNaN(num(totalEl))) priceEl.value = fmt(num(totalEl) / num(qtyEl), 4);
+            }
+            recalc();
+        });
+        totalEl.addEventListener("input", () => {
+            if (num(qtyEl) > 0 && !isNaN(num(totalEl))) priceEl.value = fmt(num(totalEl) / num(qtyEl), 4);
+            recalc();
+        });
         row.querySelector("[data-remove]").onclick = () => { row.remove(); recalc(); };
     }
 
@@ -185,11 +217,7 @@ function openInvoiceModal(existing, suppliers, pantryItems, container) {
         let total = 0;
         box.querySelectorAll(".item-row-inputs").forEach((row) => {
             const id = row.id.replace("inv-row-", "");
-            const qty = parseFloat(overlay.querySelector(`#inv-qty-${id}`).value) || 0;
-            const price = parseFloat(overlay.querySelector(`#inv-price-${id}`).value) || 0;
-            const lineTotal = qty * price;
-            overlay.querySelector(`#inv-line-${id}`).textContent = lineTotal ? money(lineTotal) : "";
-            total += lineTotal;
+            total += parseFloat(overlay.querySelector(`#inv-line-${id}`).value) || 0;
         });
         overlay.querySelector("#total-display").textContent = money(total);
     }
@@ -202,6 +230,29 @@ function openInvoiceModal(existing, suppliers, pantryItems, container) {
     recalc();
     overlay.querySelector("#btn-add-row").onclick = () => addRow();
 
+    // תמונה: undefined = בלי שינוי, Blob = תמונה חדשה/מחליפה, null = הסרה
+    let imageChange;
+    let currentImage = existing && existing.image instanceof Blob ? existing.image : null;
+    const syncImageUi = () => {
+        const shown = imageChange instanceof Blob ? imageChange : imageChange === null ? null : currentImage;
+        overlay.querySelector("#btn-img-view").style.display = shown ? "" : "none";
+        overlay.querySelector("#btn-img-remove").style.display = shown ? "" : "none";
+        overlay.querySelector("#img-status").textContent = shown ? "יש תמונה שמורה לחשבונית." : "";
+    };
+    syncImageUi();
+    const fileInput = overlay.querySelector("#f-img-file");
+    overlay.querySelector("#btn-img-pick").onclick = () => fileInput.click();
+    fileInput.addEventListener("change", async () => {
+        if (!fileInput.files[0]) return;
+        imageChange = await compressImage(fileInput.files[0]);
+        syncImageUi();
+    });
+    overlay.querySelector("#btn-img-view").onclick = () => {
+        const shown = imageChange instanceof Blob ? imageChange : currentImage;
+        if (shown) showImageFullscreen(shown);
+    };
+    overlay.querySelector("#btn-img-remove").onclick = () => { imageChange = null; fileInput.value = ""; syncImageUi(); };
+
     overlay.querySelector("#btn-cancel").onclick = closeModal;
     overlay.querySelector("#btn-save").onclick = async () => {
         const items = [];
@@ -210,8 +261,9 @@ function openInvoiceModal(existing, suppliers, pantryItems, container) {
             const product_name = overlay.querySelector(`#inv-name-${id}`).value;
             const quantity = overlay.querySelector(`#inv-qty-${id}`).value;
             const unit_price = overlay.querySelector(`#inv-price-${id}`).value;
+            const line_total = overlay.querySelector(`#inv-line-${id}`).value;
             const pantry_item_id = overlay.querySelector(`#inv-pantry-${id}`).value || null;
-            if (product_name && quantity && unit_price) items.push({ product_name, quantity, unit_price, pantry_item_id, stock_factor: row.dataset.stockFactor || null });
+            if (product_name && quantity && (unit_price || line_total)) items.push({ product_name, quantity, unit_price, line_total, pantry_item_id, stock_factor: row.dataset.stockFactor || null });
         });
         const data = {
             supplier_id: overlay.querySelector("#f-supplier").value,
@@ -219,6 +271,7 @@ function openInvoiceModal(existing, suppliers, pantryItems, container) {
             document_type: overlay.querySelector("#f-doctype").value,
             items,
         };
+        if (imageChange !== undefined) data.image = imageChange;
         try {
             await saveInvoice(existing ? existing.id : null, data);
             closeModal();
