@@ -47,7 +47,7 @@ function parseInvoicePayload(data) {
         const name = (it.product_name || "").trim();
         if (!name) throw new Error("יש להזין שם מוצר לכל שורה");
         const qty = parseFloat(it.quantity);
-        if (Number.isNaN(qty)) throw new Error("כמות/מחיר לא תקינים");
+        if (!Number.isFinite(qty)) throw new Error("כמות/מחיר לא תקינים");
         if (qty <= 0) throw new Error("כמות חייבת להיות גדולה מ-0");
         // הנתונים נשמרים כפי שהוזנו/מופיעים בקבלה: סכום שורה שהוזן נשמר כמו שהוא (לא מחושב מחדש);
         // אם חסר מחיר ליחידה - נגזר מהסכום; אם חסר סכום - כמות x מחיר.
@@ -55,7 +55,7 @@ function parseInvoicePayload(data) {
         const hasTotal = it.line_total !== null && it.line_total !== undefined && it.line_total !== "";
         let unitPrice = hasPrice ? parseFloat(it.unit_price) : null;
         let lineTotal = hasTotal ? Math.round(parseFloat(it.line_total) * 100) / 100 : null;
-        if ((hasPrice && Number.isNaN(unitPrice)) || (hasTotal && Number.isNaN(lineTotal))) throw new Error("כמות/מחיר לא תקינים");
+        if ((hasPrice && !Number.isFinite(unitPrice)) || (hasTotal && !Number.isFinite(lineTotal))) throw new Error("כמות/מחיר לא תקינים");
         if (unitPrice === null && lineTotal === null) throw new Error("כמות/מחיר לא תקינים");
         if (unitPrice === null) unitPrice = Math.round((lineTotal / qty) * 10000) / 10000;
         if (lineTotal === null) lineTotal = Math.round(qty * unitPrice * 100) / 100;
@@ -67,7 +67,10 @@ function parseInvoicePayload(data) {
         const stockFactor = Number.isFinite(sf) && sf > 0 && sf !== 1 ? sf : null;
         resolved.push({ product_name: name, quantity: qty, unit_price: unitPrice, line_total: lineTotal, pantry_item_id: pantryItemId, stock_factor: stockFactor });
     }
-    return { supplier_id: supplierId, invoice_date: invoiceDate, document_type: documentType, items: resolved, total: Math.round(total * 100) / 100 };
+    return {
+        supplier_id: supplierId, invoice_date: invoiceDate, document_type: documentType, items: resolved, total: Math.round(total * 100) / 100,
+        petty_cash: !!data.petty_cash, purchaser: (data.purchaser || "").trim(), reimbursed: !!data.petty_cash && !!data.reimbursed,
+    };
 }
 
 export async function listInvoicesWithItems() {
@@ -84,12 +87,19 @@ export async function listInvoicesWithItems() {
     return out;
 }
 
+// אימות מלא של חשבונית בלי לכתוב כלום (לפני יצירת מוצרי מזווה חדשים)
+export async function validateInvoicePayload(data) {
+    const clean = parseInvoicePayload(data);
+    if (!(await dbGet("suppliers", clean.supplier_id))) throw new Error("ספק לא נמצא");
+    return clean;
+}
+
 export async function saveInvoice(existingId, data) {
     const clean = parseInvoicePayload(data);
     const supplier = await dbGet("suppliers", clean.supplier_id);
     if (!supplier) throw new Error("ספק לא נמצא");
 
-    const invoiceRow = { supplier_id: clean.supplier_id, invoice_date: clean.invoice_date, total_amount: clean.total, document_type: clean.document_type };
+    const invoiceRow = { supplier_id: clean.supplier_id, invoice_date: clean.invoice_date, total_amount: clean.total, document_type: clean.document_type, petty_cash: clean.petty_cash, purchaser: clean.purchaser, reimbursed: clean.reimbursed };
     let invoiceId = existingId;
     // תמונה: Blob חדש = החלפה; null = הסרה; לא הועבר = נשארת התמונה הקיימת
     if (data.image instanceof Blob) invoiceRow.image = data.image;
@@ -100,13 +110,15 @@ export async function saveInvoice(existingId, data) {
         }
         invoiceRow.id = existingId;
         await dbPut("invoices", invoiceRow);
-        await dbDeleteWhere("invoiceItems", "invoice_id", existingId);
     } else {
         invoiceId = await dbPut("invoices", invoiceRow);
     }
+    // קודם כותבים את השורות החדשות ורק אז מוחקים את הישנות - כך כשל באמצע לא משאיר חשבונית בלי שורות
+    const oldItems = existingId ? await dbGetByIndex("invoiceItems", "invoice_id", existingId) : [];
     for (const it of clean.items) {
         await dbPut("invoiceItems", { ...it, invoice_id: invoiceId });
     }
+    for (const old of oldItems) await dbDelete("invoiceItems", old.id);
     return invoiceId;
 }
 
@@ -132,4 +144,128 @@ export async function monthlySummaryBySupplier() {
             .map(([month, total]) => ({ month, total: Math.round(total * 100) / 100 }));
     }
     return out;
+}
+
+
+// ---------- התראות שינוי מחיר ----------
+// מחיר ליחידת מזווה בכל שורה = מחיר השורה / stock_factor. משווים כל קנייה לקנייה הקודמת של אותו מוצר (זיכויים לא נספרים).
+async function priceSeries() {
+    const invoices = (await dbGetAll("invoices")).filter((i) => i.document_type !== "credit");
+    const invById = Object.fromEntries(invoices.map((i) => [i.id, i]));
+    const series = new Map();
+    for (const it of await dbGetAll("invoiceItems")) {
+        if (!it.pantry_item_id || !(it.unit_price > 0)) continue;
+        const inv = invById[it.invoice_id];
+        if (!inv) continue;
+        const list = series.get(it.pantry_item_id) || [];
+        list.push({ date: inv.invoice_date || "", invoice_id: inv.id, price: it.unit_price / (it.stock_factor || 1) });
+        series.set(it.pantry_item_id, list);
+    }
+    for (const list of series.values()) list.sort((a, b) => a.date.localeCompare(b.date) || a.invoice_id - b.invoice_id);
+    return series;
+}
+
+// מנות שמושפעות משינוי מחיר של מוצר מזווה (ישירות, או דרך מתכון שמשתמש בו)
+export async function dishesAffectedByPantryItem(pantryItemId) {
+    const recipeIds = new Set((await dbGetAll("recipeItems")).filter((r) => r.pantry_item_id === pantryItemId).map((r) => r.recipe_id));
+    const dishIds = new Set();
+    for (const di of await dbGetAll("dishItems")) {
+        if ((di.source_type === "pantry" && di.source_id === pantryItemId) || (di.source_type === "recipe" && recipeIds.has(di.source_id))) dishIds.add(di.dish_id);
+    }
+    const dishes = await dbGetAll("dishes");
+    return dishes.filter((d) => dishIds.has(d.id)).map((d) => d.name);
+}
+
+// invoiceId: רק שינויים שנוצרו בחשבונית הזו. עם sinceDays: כל השינויים בחלון הזמן. בלי שניהם: השינוי האחרון בכל מוצר.
+export async function priceChanges({ thresholdPct = 10, invoiceId = null, sinceDays = null } = {}) {
+    const series = await priceSeries();
+    const pantry = Object.fromEntries((await dbGetAll("pantryItems")).map((p) => [p.id, p]));
+    const out = [];
+    const cutoff = sinceDays ? new Date(Date.now() - sinceDays * 86400000).toISOString().slice(0, 10) : null;
+    for (const [pid, list] of series) {
+        const p = pantry[pid];
+        if (!p || list.length < 2) continue;
+        const all = list.map((_, i) => i).filter((i) => i > 0);
+        const idxs = invoiceId ? all.filter((i) => list[i].invoice_id === invoiceId) : cutoff ? all : [list.length - 1];
+        for (const i of idxs) {
+            const prev = list[i - 1], cur = list[i];
+            if (!(prev.price > 0)) continue;
+            const pct = ((cur.price - prev.price) / prev.price) * 100;
+            if (Math.abs(pct) < thresholdPct) continue;
+            if (cutoff && cur.date < cutoff) continue;
+            out.push({ pantry_item_id: pid, name: p.name, unit_type: p.unit_type, prev: prev.price, cur: cur.price, pct: Math.round(pct * 10) / 10, date: cur.date, invoice_id: cur.invoice_id });
+        }
+    }
+    out.sort((a, b) => Math.abs(b.pct) - Math.abs(a.pct));
+    return out;
+}
+
+// ---------- דוח חודשי ----------
+export async function monthlyReport(ym) {
+    const invoices = (await listInvoicesWithItems()).filter((i) => (i.invoice_date || "").startsWith(ym));
+    const pantry = Object.fromEntries((await dbGetAll("pantryItems")).map((p) => [p.id, p]));
+    const rep = { month: ym, total: 0, invoice_count: invoices.length, by_supplier: {}, by_category: {}, petty_cash_total: 0, petty_cash_count: 0 };
+    for (const inv of invoices) {
+        const sign = inv.document_type === "credit" ? -1 : 1;
+        rep.total += sign * inv.total_amount;
+        rep.by_supplier[inv.supplier_name] = (rep.by_supplier[inv.supplier_name] || 0) + sign * inv.total_amount;
+        if (inv.petty_cash) { rep.petty_cash_total += sign * inv.total_amount; rep.petty_cash_count += 1; }
+        for (const it of inv.items) {
+            const cat = it.pantry_item_id && pantry[it.pantry_item_id] ? pantry[it.pantry_item_id].category : "לא משויך למזווה";
+            rep.by_category[cat] = (rep.by_category[cat] || 0) + sign * (it.line_total ?? it.quantity * it.unit_price);
+        }
+    }
+    const r2 = (x) => Math.round(x * 100) / 100;
+    rep.total = r2(rep.total);
+    rep.petty_cash_total = r2(rep.petty_cash_total);
+    for (const k of Object.keys(rep.by_supplier)) rep.by_supplier[k] = r2(rep.by_supplier[k]);
+    for (const k of Object.keys(rep.by_category)) rep.by_category[k] = r2(rep.by_category[k]);
+    return rep;
+}
+
+// ---------- ייצוא CSV (נפתח באקסל; BOM לעברית) ----------
+function csvCell(v) {
+    let t = v == null ? "" : String(v);
+    // טקסט שמתחיל ב- = + - @ הופך לנוסחה באקסל - מקבל גרש בהתחלה (מספרים אמיתיים נשארים מספרים)
+    if (typeof v === "string" && /^[=+\-@\t\r]/.test(t)) t = "'" + t;
+    return /[",\n\r]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
+}
+
+export function invoicesToCsv(invoices) {
+    const head = ["תאריך", "ספק", "סוג מסמך", "קופה קטנה", "רכש", "מוצר", "כמות", "מחיר ליחידה", "סה\"כ שורה", "יש תמונה"];
+    const rows = [head];
+    for (const inv of invoices) {
+        for (const it of inv.items) {
+            rows.push([
+                inv.invoice_date, inv.supplier_name, inv.document_type === "credit" ? "זיכוי" : "חשבונית",
+                inv.petty_cash ? "כן" : "", inv.purchaser || "", it.product_name, it.quantity, it.unit_price,
+                it.line_total ?? Math.round(it.quantity * it.unit_price * 100) / 100, inv.has_image ? "כן" : "",
+            ]);
+        }
+    }
+    return "\ufeff" + rows.map((r) => r.map(csvCell).join(",")).join("\r\n");
+}
+
+
+// קופה קטנה שעדיין לא הוחזרה לעובד: { count, total }
+export async function pettyCashOwed() {
+    let count = 0, total = 0;
+    for (const inv of await dbGetAll("invoices")) {
+        if (!inv.petty_cash || inv.reimbursed || inv.document_type === "credit") continue;
+        count += 1;
+        total += inv.total_amount;
+    }
+    return { count, total: Math.round(total * 100) / 100 };
+}
+
+export async function markAllPettyCashReimbursed() {
+    for (const inv of await dbGetAll("invoices")) {
+        if (inv.petty_cash && !inv.reimbursed) await dbPut("invoices", { ...inv, reimbursed: true });
+    }
+}
+
+// חשבונית שנראית כמו כפולה: אותו ספק, אותו תאריך ואותו סכום
+export async function findDuplicateInvoice({ supplierId, date, total, excludeId = null }) {
+    const list = await dbGetByIndex("invoices", "supplier_id", parseInt(supplierId, 10));
+    return list.find((i) => i.id !== excludeId && i.invoice_date === date && Math.abs(i.total_amount - total) < 0.01) || null;
 }

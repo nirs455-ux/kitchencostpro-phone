@@ -4,9 +4,10 @@ import { dbGetAll, dbGet, dbPut } from "../db.js";
 import { getCloseMatches } from "../fuzzyMatch.js";
 import { CATEGORY_GROUPS, UNIT_TYPES } from "../constants.js";
 import { saveInvoice } from "./suppliersRepo.js";
+import { getSetting, setSetting } from "./settingsRepo.js";
 import { NON_FOOD_CATEGORIES } from "../constants.js";
 import { RECIPE_SCAN_PROMPT, buildRecipeDraft } from "../recipeParse.js";
-import { INVOICE_SCAN_PROMPT, mergeDiscountLines, computeStockFactor } from "../invoiceParse.js";
+import { INVOICE_SCAN_PROMPT, mergeDiscountLines, computeStockFactor, toFloat } from "../invoiceParse.js";
 
 function fileToBase64(file) {
     return new Promise((resolve, reject) => {
@@ -58,6 +59,9 @@ export async function scanInvoiceImage(apiKey, file) {
     const byName = new Map(pantryRows.map((r) => [r.name.trim().toLowerCase(), r]));
     const items = mergeDiscountLines(parsed.items || []);
     const enrichedItems = [];
+    // כינויים שנלמדו מסריקות קודמות: שם בקבלה -> מוצר מזווה שהמשתמש בחר
+    const aliases = (await getSetting("scan_aliases")) || {};
+    const byId = new Map(pantryRows.map((r) => [r.id, r]));
 
     for (const it of items) {
         const name = it.name;
@@ -65,7 +69,8 @@ export async function scanInvoiceImage(apiKey, file) {
         const unitPrice = it.unit_price;
         // שורה בלי שם נשארת (המשתמש ימלא שם או יסיר אותה במסך הבדיקה)
 
-        const match = name ? byName.get(name.trim().toLowerCase()) : null;
+        let match = name ? byName.get(name.trim().toLowerCase()) : null;
+        if (!match && name && byId.has(aliases[name.trim().toLowerCase()])) match = byId.get(aliases[name.trim().toLowerCase()]);
         let suggested = null;
         if (!match && name) {
             const close = getCloseMatches(name.trim().toLowerCase(), [...byName.keys()], 1, 0.75);
@@ -73,7 +78,7 @@ export async function scanInvoiceImage(apiKey, file) {
         }
 
         enrichedItems.push({
-            name, quantity, unit_price: unitPrice,
+            name, orig_name: name, quantity, unit_price: unitPrice,
             discount_applied: it.discount_applied || 0, list_unit_price: it.list_unit_price ?? null,
             matched_pantry_item_id: match ? match.id : null,
             matched_category: match ? match.category : null,
@@ -87,11 +92,11 @@ export async function scanInvoiceImage(apiKey, file) {
         });
     }
 
-    return { supplier_name: parsed.supplier_name || null, invoice_date: parsed.invoice_date || null, items: enrichedItems };
+    return { supplier_name: parsed.supplier_name || null, invoice_date: parsed.invoice_date || null, invoice_total: toFloat(parsed.invoice_total), items: enrichedItems };
 }
 
 // מחיל את שורות הסריקה על המזווה (ואופציונלית שומר כחשבונית מקושרת לספק). מקביל ל-apply_scanned_invoice.
-export async function applyScannedInvoice({ items, supplierId, invoiceDate, image }) {
+export async function applyScannedInvoice({ items, supplierId, invoiceDate, image, pettyCash = false, purchaser = "" }) {
     // שלב 1: אימות מלא ובניית תוכנית - שום כתיבה עד שכל השורות תקינות (אין שמירה חלקית)
     const plan = [];
     for (let i = 0; i < items.length; i++) {
@@ -101,7 +106,8 @@ export async function applyScannedInvoice({ items, supplierId, invoiceDate, imag
         if (!name) throw new Error(`${where}: יש למלא שם מוצר, או להסיר את השורה`);
         const quantity = parseFloat(it.quantity);
         const unitPrice = parseFloat(it.unit_price);
-        if (Number.isNaN(quantity) || Number.isNaN(unitPrice)) throw new Error(`${where}: כמות/מחיר לא תקינים עבור '${name}'`);
+        if (!Number.isFinite(quantity) || !Number.isFinite(unitPrice)) throw new Error(`${where}: כמות/מחיר לא תקינים עבור '${name}'`);
+        if (quantity <= 0 || unitPrice < 0) throw new Error(`${where}: כמות חייבת להיות גדולה מ-0 ומחיר לא שלילי עבור '${name}'`);
 
         const unitsPerCase = it.units_per_case === "" || it.units_per_case == null ? null : parseFloat(it.units_per_case);
         const packageSize = it.package_size === "" || it.package_size == null ? null : parseFloat(it.package_size);
@@ -109,8 +115,14 @@ export async function applyScannedInvoice({ items, supplierId, invoiceDate, imag
 
         let existing = null;
         let category = null, unitType = null, unitAmount = null;
-        if (it.pantry_item_id) {
-            existing = await dbGet("pantryItems", it.pantry_item_id);
+        let linkedId = it.pantry_item_id;
+        if (!linkedId) {
+            // שם שהמשתמש תיקן לשם של מוצר שכבר קיים = אותו מוצר (לא יוצרים כפילות)
+            const same = (await dbGetAll("pantryItems")).find((r) => !r.parent_id && r.name.trim().toLowerCase() === name.toLowerCase());
+            if (same) linkedId = same.id;
+        }
+        if (linkedId) {
+            existing = await dbGet("pantryItems", linkedId);
             if (!existing) throw new Error(`${where}: מוצר '${name}' לא נמצא`);
             unitType = existing.unit_type;
             if (!existing.parent_id) {
@@ -132,12 +144,20 @@ export async function applyScannedInvoice({ items, supplierId, invoiceDate, imag
         if (error) throw new Error(`${where}: ${error} ('${name}')`);
         const stockFactor = factor && factor !== 1 ? factor : null;
         const pantryPrice = unitPrice / (factor || 1);
-        plan.push({ it, name, quantity, unitPrice, existing, category, unitType, unitAmount, pantryPrice, stockFactor });
+        plan.push({ it, orig: (it.orig_name || "").trim(), name, quantity, unitPrice, existing, category, unitType, unitAmount, pantryPrice, stockFactor });
+    }
+
+    // אימות חשבונית (ספק/תאריך) לפני כל כתיבה - אחרת מוצרים כבר נכתבו וה-חשבונית נכשלת
+    if (supplierId) {
+        if (!invoiceDate) throw new Error("יש להזין תאריך לחשבונית");
+        if (!(await dbGet("suppliers", parseInt(supplierId, 10)))) throw new Error("ספק לא נמצא");
     }
 
     // שלב 2: כתיבה
+    const createdByName = new Map(); // שני מוצרים חדשים באותו שם בסריקה אחת = מוצר אחד
     const resolvedPantryIds = [];
     const invoiceLineItems = [];
+    const aliasPairs = [];
     for (const p of plan) {
         const isFrozen = p.it.is_frozen ? 1 : 0;
         let pantryItemId;
@@ -146,14 +166,19 @@ export async function applyScannedInvoice({ items, supplierId, invoiceDate, imag
             else Object.assign(p.existing, { price: p.pantryPrice, is_frozen: isFrozen });
             await dbPut("pantryItems", p.existing);
             pantryItemId = p.existing.id;
+        } else if (createdByName.has(p.name.toLowerCase())) {
+            pantryItemId = createdByName.get(p.name.toLowerCase());
         } else {
             pantryItemId = await dbPut("pantryItems", {
                 name: p.name, category: p.category, subcategory: null, unit_type: p.unitType, unit_amount: p.unitAmount,
                 price: p.pantryPrice, yield_pct: 100, weight_before: null, weight_after: null,
                 is_frozen: isFrozen, parent_id: null,
             });
+            createdByName.set(p.name.toLowerCase(), pantryItemId);
         }
         resolvedPantryIds.push(pantryItemId);
+        const finalName = p.existing ? p.existing.name : p.name;
+        if (p.orig && p.orig.toLowerCase() !== finalName.trim().toLowerCase()) aliasPairs.push([p.orig.toLowerCase(), pantryItemId]);
         invoiceLineItems.push({ product_name: p.name, quantity: p.quantity, unit_price: p.unitPrice, pantry_item_id: pantryItemId, stock_factor: p.stockFactor });
     }
 
@@ -163,7 +188,13 @@ export async function applyScannedInvoice({ items, supplierId, invoiceDate, imag
         invoiceId = await saveInvoice(null, {
             supplier_id: supplierId, invoice_date: invoiceDate, document_type: "invoice", items: invoiceLineItems,
             image: image instanceof Blob ? image : undefined,
+            petty_cash: pettyCash, purchaser,
         });
+    }
+    if (aliasPairs.length) {
+        const aliases = (await getSetting("scan_aliases")) || {};
+        for (const [a, id] of aliasPairs) aliases[a] = id;
+        await setSetting("scan_aliases", aliases);
     }
     return { pantry_item_ids: resolvedPantryIds, invoice_id: invoiceId };
 }
