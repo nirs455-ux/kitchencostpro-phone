@@ -1,9 +1,13 @@
 import { getSetting, setSetting } from "../repo/settingsRepo.js";
 import { downloadExport, importAndReplace } from "../export.js";
 import { toast, confirmDialog } from "../ui.js";
+import { APP_VERSION } from "../constants.js";
 
 export async function renderSettingsPage(container) {
     const apiKey = (await getSetting("gemini_api_key")) || "";
+    const lastExport = await getSetting("last_export");
+    let persisted = null;
+    try { persisted = navigator.storage && navigator.storage.persisted ? await navigator.storage.persisted() : null; } catch (e) { /* לא נתמך */ }
 
     container.innerHTML = `
         <div class="card">
@@ -15,6 +19,8 @@ export async function renderSettingsPage(container) {
 
         <div class="card">
             <div class="card-title">גיבוי (ייצוא/ייבוא)</div>
+            <div class="hint" style="margin-bottom:6px;"><b>גיבוי אחרון:</b> ${lastExport ? new Date(lastExport).toLocaleString("he-IL") : "עדיין לא יוצא"}
+                <br><b>אחסון קבוע:</b> ${persisted === true ? "פעיל - הדפדפן לא ימחק נתונים אוטומטית" : persisted === false ? "לא אושר ע\"י הדפדפן - מומלץ לגבות לעיתים קרובות" : "לא נתמך בדפדפן הזה"}</div>
             <div class="hint">אין שרת ואין סנכרון אוטומטי - זה הגיבוי היחיד לנתונים שבטלפון. מומלץ לייצא אחרי כל עדכון משמעותי.</div>
             <div class="btn-row">
                 <button class="btn btn-primary btn-small" id="btn-export">📤 ייצוא קובץ גיבוי</button>
@@ -26,6 +32,7 @@ export async function renderSettingsPage(container) {
 
         <div class="card">
             <div class="card-title">על האפליקציה</div>
+            <div class="hint"><b>גרסה:</b> ${APP_VERSION}</div>
             <div class="hint">
                 גרסת טלפון עצמאית של KitchenCostPro - כל הנתונים נשמרים רק במכשיר הזה, בלי שרת.
                 <br>היא <b>לא</b> מסונכרנת עם הגרסה שרצה במחשב - כל אחת עם הנתונים שלה. השתמש בייצוא/ייבוא כדי להעביר נתונים בין השתיים אם צריך.

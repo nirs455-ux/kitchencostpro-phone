@@ -4,6 +4,8 @@ import { listSuppliers, addSupplier } from "../repo/suppliersRepo.js";
 import { CATEGORY_GROUPS, UNIT_TYPES, UNIT_TYPE_LABELS } from "../constants.js";
 import { h, openModal, closeModal, toast, escapeHtml } from "../ui.js";
 import { compressImage } from "../imageUtil.js";
+import { priceChanges } from "../repo/suppliersRepo.js";
+import { showPriceChangesDialog } from "./priceAlerts.js";
 
 function todayLocal() {
     const d = new Date();
@@ -39,8 +41,12 @@ export async function openScanModal({ supplierAware, onDone }) {
                 <div class="hint-warn" id="scan-no-supplier" style="display:none;">לא נבחר ספק - החשבונית לא תישמר בדף הספקים, רק המזווה יתעדכן.</div>
             </div>
             <div class="field"><label>תאריך</label><input type="date" id="scan-date" value="${todayLocal()}"></div>
+            <div class="checkbox-field"><input type="checkbox" id="scan-petty"><label for="scan-petty">קופה קטנה (עובד קנה וקיבל החזר במזומן)</label></div>
+            <div class="field" id="scan-purchaser-wrap" style="display:none;"><input type="text" id="scan-purchaser" placeholder="מי רכש (אופציונלי)"></div>
             ` : ""}
             <div id="scan-items-box"></div>
+            <div class="card-row" style="font-weight:700;margin:8px 0 2px;"><span>סה"כ השורות</span><span id="scan-sum">₪0.00</span></div>
+            <div class="hint-warn" id="scan-total-warn" style="display:none;"></div>
             <div class="card-row" style="font-weight:700;margin:8px 0;"><span>סה"כ החשבונית (לפי השורות שמעל)</span><span id="scan-total">₪0.00</span></div>
             <div class="error-msg" id="scan-apply-error"></div>
             <div class="modal-actions">
@@ -57,6 +63,9 @@ export async function openScanModal({ supplierAware, onDone }) {
 
     let scannedItems = [];
     let scannedFile = null;
+    let printedTotal = null;
+    const pettyBox = overlay.querySelector("#scan-petty");
+    if (pettyBox) pettyBox.addEventListener("change", () => { overlay.querySelector("#scan-purchaser-wrap").style.display = pettyBox.checked ? "block" : "none"; });
     if (supplierAware) {
         const supSel = overlay.querySelector("#scan-supplier");
         const warn = overlay.querySelector("#scan-no-supplier");
@@ -116,6 +125,7 @@ export async function openScanModal({ supplierAware, onDone }) {
         try {
             const data = await scanInvoiceImage(apiKey, file);
             scannedItems = data.items || [];
+            printedTotal = data.invoice_total;
             if (supplierAware) {
                 if (data.invoice_date) overlay.querySelector("#scan-date").value = data.invoice_date;
                 if (data.supplier_name) {
@@ -182,12 +192,20 @@ export async function openScanModal({ supplierAware, onDone }) {
 
         const updateTotal = () => {
             let t = 0;
+            const warn = overlay.querySelector("#scan-total-warn");
             scannedItems.forEach((_, i) => {
                 const q = parseFloat(overlay.querySelector(`#scan-qty-${i}`)?.value) || 0;
                 const pr = parseFloat(overlay.querySelector(`#scan-price-${i}`)?.value) || 0;
                 t += q * pr;
             });
             overlay.querySelector("#scan-total").textContent = `₪${t.toFixed(2)}`;
+            overlay.querySelector("#scan-sum").textContent = `₪${t.toFixed(2)}`;
+            if (printedTotal != null && Math.abs(printedTotal - t) >= 1) {
+                warn.textContent = `שים לב: הסכום שמודפס בקבלה ₪${Number(printedTotal).toFixed(2)} שונה מסה"כ השורות (הפרש ₪${Math.abs(printedTotal - t).toFixed(2)}). בדוק שורות חסרות, כמויות ומבצעים.`;
+                warn.style.display = "block";
+            } else {
+                warn.style.display = "none";
+            }
         };
         box.oninput = updateTotal;
 
@@ -197,6 +215,18 @@ export async function openScanModal({ supplierAware, onDone }) {
             const ut = rowUnit(it);
             const packUnits = ut === "liter" ? [["ml", 'מ"ל'], ["l", "ליטר"]] : [["g", "גרם"], ["kg", 'ק"ג']];
             const nameEmpty = !String(it.name || "").trim();
+            // חריגות שכדאי לבדוק (המחיר במזווה הוא ליחידת מזווה, לכן לא משווים כשיש גודל אריזה/ארגז)
+            const flags = [];
+            if (it.matched_pantry_item_id && it.matched_price > 0 && unitPriceNum > 0 && !it._pack && !it._case) {
+                const dev = ((unitPriceNum - it.matched_price) / it.matched_price) * 100;
+                if (Math.abs(dev) >= 40) flags.push(`המחיר שונה ב-${Math.round(dev)}% מהמחיר במזווה - ודא שזו לא טעות בקריאה או באריזה`);
+            }
+            const qn = parseFloat(it.quantity);
+            if (!(qn > 0) || qn >= 100) flags.push("כמות חריגה - ודא שהמספר נקרא נכון");
+            const nameKey = String(it.name || "").trim().toLowerCase();
+            if (nameKey && scannedItems.filter((x) => String(x.name || "").trim().toLowerCase() === nameKey).length > 1) {
+                flags.push("השם מופיע יותר מפעם אחת בקבלה - ייתכן שצריך לאחד שורות");
+            }
             const row = h(`
                 <div class="item-row-inputs" style="${priceChanged ? "border-color:#c0392b;background:#fdecea;" : ""}">
                     <div class="top-line">
@@ -207,6 +237,7 @@ export async function openScanModal({ supplierAware, onDone }) {
                         </div>
                     </div>
                     ${it.discount_applied ? `<div class="hint">כולל מבצע: הנחה ₪${it.discount_applied.toFixed(2)} שולבה במחיר (מחיר מחירון ₪${Number(it.list_unit_price).toFixed(2)} ליחידה)</div>` : ""}
+                    ${flags.map((f) => `<div class="hint-warn">⚠ ${escapeHtml(f)}</div>`).join("")}
                     ${nameEmpty ? '<div class="hint-warn">חסר שם מוצר - הזן שם, או לחץ "הסר שורה" אם זו לא שורת מוצר (למשל מבצע).</div>' : ""}
                     <div class="field"><label>שם מוצר</label><input type="text" id="scan-name-${idx}" value="${escapeHtml(it.name)}"></div>
                     <div class="field"><label>כמות</label><input type="number" step="any" id="scan-qty-${idx}" value="${it.quantity}"></div>
@@ -347,6 +378,7 @@ export async function openScanModal({ supplierAware, onDone }) {
     overlay.querySelector("#btn-apply").onclick = async () => {
         const items = scannedItems.map((it, idx) => ({
             name: overlay.querySelector(`#scan-name-${idx}`).value,
+            orig_name: it.orig_name || "",
             quantity: overlay.querySelector(`#scan-qty-${idx}`).value,
             unit_price: overlay.querySelector(`#scan-price-${idx}`).value,
             units_per_case: overlay.querySelector(`#scan-case-${idx}`).value,
@@ -367,10 +399,16 @@ export async function openScanModal({ supplierAware, onDone }) {
                 supplierId = existing ? existing.id : await addSupplier(name);
             }
             const image = supplierId && scannedFile ? await compressImage(scannedFile) : undefined;
-            await applyScannedInvoice({ items, supplierId, invoiceDate, image });
+            const pettyCash = supplierAware && overlay.querySelector("#scan-petty").checked;
+            const purchaser = supplierAware ? overlay.querySelector("#scan-purchaser").value : "";
+            const result = await applyScannedInvoice({ items, supplierId, invoiceDate, image, pettyCash, purchaser });
             closeModal();
             toast(supplierId ? "נשמר גם כחשבונית בדף הספקים" : "נשמר במזווה בלבד (לא נבחר ספק)");
             if (onDone) onDone();
+            if (result.invoice_id) {
+                const changes = await priceChanges({ thresholdPct: 10, invoiceId: result.invoice_id });
+                if (changes.length) await showPriceChangesDialog(changes);
+            }
         } catch (e) {
             const el = overlay.querySelector("#scan-apply-error");
             el.textContent = e.message;

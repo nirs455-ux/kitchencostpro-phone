@@ -1,9 +1,11 @@
-import { listSuppliers, addSupplier, deleteSupplier, getSupplierDeleteInfo, listInvoicesWithItems, saveInvoice, deleteInvoice, monthlySummaryBySupplier } from "../repo/suppliersRepo.js";
+import { listSuppliers, addSupplier, deleteSupplier, getSupplierDeleteInfo, listInvoicesWithItems, saveInvoice, validateInvoicePayload, deleteInvoice, monthlySummaryBySupplier,
+    priceChanges, monthlyReport, invoicesToCsv, pettyCashOwed, markAllPettyCashReimbursed, findDuplicateInvoice } from "../repo/suppliersRepo.js";
 import { listTopLevelPantryItems } from "../repo/pantryRepo.js";
 import { createPantryItemFromInvoice } from "../repo/scanRepo.js";
 import { CATEGORY_GROUPS, UNIT_TYPES, UNIT_TYPE_LABELS } from "../constants.js";
 import { computeStockFactor } from "../invoiceParse.js";
-import { dbGet, dbPut } from "../db.js";
+import { showPriceChangesDialog, renderPriceChangeRows } from "./priceAlerts.js";
+import { dbGet, dbPut, dbDelete } from "../db.js";
 import { h, openModal, closeModal, confirmDialog, toast, escapeHtml, money } from "../ui.js";
 import { openScanModal } from "./scanModal.js";
 import { compressImage, showImageFullscreen } from "../imageUtil.js";
@@ -27,9 +29,26 @@ export async function renderSuppliersPage(container) {
             <button class="btn btn-accent btn-small" id="btn-scan">📷 סרוק חשבונית</button>
         </div>
         <div class="chips" id="supplier-chips"></div>
+        <div id="petty-owed"></div>
+        <div id="price-alerts"></div>
         <h2>סיכום קנייה חודשי</h2>
         <div id="monthly-summary"></div>
+        <div class="btn-row">
+            <button class="btn btn-secondary btn-small" id="btn-report">📊 דוח חודשי</button>
+            <button class="btn btn-secondary btn-small" id="btn-csv">⬇ ייצוא לאקסל (CSV)</button>
+        </div>
         <h2>כל החשבוניות</h2>
+        <div class="card">
+            <div class="field"><input type="search" id="flt-q" placeholder="חיפוש: ספק, מוצר, תאריך, מי רכש..."></div>
+            <div class="form-row">
+                <div class="field"><select id="flt-month"><option value="">כל החודשים</option></select></div>
+                <div class="field"><select id="flt-mode">
+                    <option value="all">הכול</option><option value="petty">קופה קטנה</option>
+                    <option value="owed">קופה קטנה - לא הוחזר</option><option value="image">עם תמונה</option>
+                </select></div>
+            </div>
+            <div class="hint" id="flt-count"></div>
+        </div>
         <div id="invoices-list"></div>
     `;
 
@@ -70,14 +89,61 @@ export async function renderSuppliersPage(container) {
         }
     }
 
+    // ---- קופה קטנה שלא הוחזרה + התראות מחיר ----
+    const owed = await pettyCashOwed();
+    const owedBox = container.querySelector("#petty-owed");
+    if (owed.count) {
+        owedBox.innerHTML = `<div class="card" style="border-color:#e6a100;"><div class="card-row"><span><b>קופה קטנה שלא הוחזרה:</b> ${owed.count} קבלות</span><b>${money(owed.total)}</b></div>
+            <button class="btn btn-secondary btn-small" id="btn-reimb-all">סמן הכול כהוחזר</button></div>`;
+        owedBox.querySelector("#btn-reimb-all").onclick = async () => {
+            if (!(await confirmDialog(`לסמן ${owed.count} קבלות (${money(owed.total)}) כהוחזרו לעובדים?`))) return;
+            await markAllPettyCashReimbursed();
+            toast("סומן");
+            renderSuppliersPage(container);
+        };
+    }
+    const alerts = await priceChanges({ thresholdPct: 10, sinceDays: 30 });
+    if (alerts.length) {
+        const box = container.querySelector("#price-alerts");
+        box.innerHTML = `<div class="card" style="border-color:#c0392b;"><div class="card-row"><b>⚠ ${alerts.length} שינויי מחיר ב-30 הימים האחרונים</b><button class="btn btn-secondary btn-small" id="btn-alerts">הצג</button></div></div>`;
+        box.querySelector("#btn-alerts").onclick = () => showPriceChangesDialog(alerts, "שינויי מחיר (30 יום אחרונים)");
+    }
+
+    // ---- חיפוש וסינון ----
     const invoicesList = container.querySelector("#invoices-list");
-    if (invoices.length === 0) {
-        invoicesList.innerHTML = '<div class="empty-state">אין עדיין חשבוניות.</div>';
-    } else {
-        for (const inv of invoices) {
+    const monthSel = container.querySelector("#flt-month");
+    for (const ym of [...new Set(invoices.map((i) => (i.invoice_date || "").slice(0, 7)).filter(Boolean))].sort().reverse()) {
+        monthSel.insertAdjacentHTML("beforeend", `<option value="${ym}">${ym}</option>`);
+    }
+    const filtered = () => {
+        const q = container.querySelector("#flt-q").value.trim().toLowerCase();
+        const ym = monthSel.value;
+        const mode = container.querySelector("#flt-mode").value;
+        return invoices.filter((inv) => {
+            if (ym && !(inv.invoice_date || "").startsWith(ym)) return false;
+            if (mode === "petty" && !inv.petty_cash) return false;
+            if (mode === "owed" && !(inv.petty_cash && !inv.reimbursed)) return false;
+            if (mode === "image" && !inv.has_image) return false;
+            if (q) {
+                const hay = [inv.supplier_name, inv.invoice_date, inv.purchaser, ...inv.items.map((it) => it.product_name)].join(" ").toLowerCase();
+                if (!hay.includes(q)) return false;
+            }
+            return true;
+        });
+    };
+    const renderList = () => {
+        const list = filtered();
+        invoicesList.innerHTML = "";
+        container.querySelector("#flt-count").textContent = `${list.length} מתוך ${invoices.length} חשבוניות`;
+        if (list.length === 0) {
+            invoicesList.innerHTML = `<div class="empty-state">${invoices.length ? "לא נמצאו חשבוניות תואמות." : "אין עדיין חשבוניות."}</div>`;
+            return;
+        }
+        for (const inv of list) {
             const card = h(`
                 <div class="card">
-                    <div class="card-title">${escapeHtml(inv.supplier_name)} ${inv.document_type === "credit" ? '<span class="tag tag-danger">זיכוי</span>' : ""}</div>
+                    <div class="card-title">${escapeHtml(inv.supplier_name)} ${inv.document_type === "credit" ? '<span class="tag tag-danger">זיכוי</span>' : ""}
+                        ${inv.petty_cash ? `<span class="tag">קופה קטנה${inv.purchaser ? " · " + escapeHtml(inv.purchaser) : ""}${inv.reimbursed ? " · הוחזר" : " · לא הוחזר"}</span>` : ""}</div>
                     <div class="card-row"><span class="muted">${inv.invoice_date}</span><span>${money(inv.total_amount)}</span></div>
                     <div class="muted">${inv.items.map((it) => escapeHtml(it.product_name)).join(", ")}</div>
                     <div class="card-actions">
@@ -98,7 +164,46 @@ export async function renderSuppliersPage(container) {
             };
             invoicesList.appendChild(card);
         }
-    }
+    };
+    for (const id of ["#flt-q", "#flt-month", "#flt-mode"]) container.querySelector(id).addEventListener("input", renderList);
+    renderList();
+
+    // ---- דוח חודשי וייצוא ----
+    container.querySelector("#btn-csv").onclick = () => {
+        const list = filtered();
+        if (!list.length) { toast("אין חשבוניות לייצוא"); return; }
+        const blob = new Blob([invoicesToCsv(list)], { type: "text/csv;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `חשבוניות-${monthSel.value || "הכול"}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+    };
+    container.querySelector("#btn-report").onclick = async () => {
+        const months = [...new Set(invoices.map((i) => (i.invoice_date || "").slice(0, 7)).filter(Boolean))].sort().reverse();
+        if (!months.length) { toast("אין עדיין נתונים"); return; }
+        const overlay = openModal(`
+            <h2>דוח חודשי</h2>
+            <div class="field"><select id="rep-month">${months.map((m) => `<option value="${m}">${m}</option>`).join("")}</select></div>
+            <div id="rep-body"></div>
+            <div class="modal-actions"><button type="button" class="btn btn-primary" id="rep-close">סגור</button></div>
+        `);
+        const draw = async () => {
+            const r = await monthlyReport(overlay.querySelector("#rep-month").value);
+            const rows = (obj) => Object.entries(obj).sort((x, y) => y[1] - x[1]).map(([k, v]) => `<div class="card-row"><span>${escapeHtml(k)}</span><span>${money(v)}</span></div>`).join("");
+            overlay.querySelector("#rep-body").innerHTML = `
+                <div class="card"><div class="card-row"><b>סה"כ קניות (${r.invoice_count} מסמכים)</b><b>${money(r.total)}</b></div>
+                    ${r.petty_cash_count ? `<div class="card-row"><span>מתוכן קופה קטנה (${r.petty_cash_count})</span><span>${money(r.petty_cash_total)}</span></div>` : ""}</div>
+                <div class="card-title">לפי ספק</div><div class="card">${rows(r.by_supplier)}</div>
+                <div class="card-title">לפי קטגוריה</div><div class="card">${rows(r.by_category)}</div>`;
+        };
+        overlay.querySelector("#rep-month").onchange = draw;
+        overlay.querySelector("#rep-close").onclick = closeModal;
+        draw();
+    };
 
     container.querySelector("#btn-add-supplier").onclick = () => openSupplierModal(container);
     container.querySelector("#btn-add-invoice").onclick = () => openInvoiceModal(null, suppliers, pantryItems, container);
@@ -151,6 +256,15 @@ function openInvoiceModal(existing, suppliers, pantryItems, container) {
                 </select>
             </div>
         </div>
+        <div class="card" style="background:#fffaf0;">
+            <div class="checkbox-field"><input type="checkbox" id="f-petty" ${existing && existing.petty_cash ? "checked" : ""}>
+                <label for="f-petty">קופה קטנה - עובד קנה בדרך וקיבל החזר במזומן</label></div>
+            <div id="petty-fields" style="display:none;">
+                <div class="field"><label>מי רכש (אופציונלי)</label><input type="text" id="f-purchaser" value="${existing ? escapeHtml(existing.purchaser || "") : ""}" placeholder="שם העובד"></div>
+                <div class="checkbox-field"><input type="checkbox" id="f-reimb" ${existing && existing.reimbursed ? "checked" : ""}>
+                    <label for="f-reimb">הוחזר לעובד</label></div>
+            </div>
+        </div>
         <div id="items-box"></div>
         <button type="button" class="btn btn-secondary btn-small" id="btn-add-row">+ הוסף שורה</button>
         <div class="card-row" style="font-weight:700;margin-top:10px;"><span>סה"כ:</span><span id="total-display">₪0.00</span></div>
@@ -175,7 +289,7 @@ function openInvoiceModal(existing, suppliers, pantryItems, container) {
     function addRow(prefill) {
         const id = rowCounter++;
         const row = h(`
-            <div class="item-row-inputs" id="inv-row-${id}" data-stock-factor="${prefill && prefill.stock_factor ? prefill.stock_factor : ""}">
+            <div class="item-row-inputs" id="inv-row-${id}" data-stock-factor="${prefill && prefill.stock_factor ? prefill.stock_factor : ""}" data-factor-pantry="${prefill && prefill.pantry_item_id ? prefill.pantry_item_id : ""}">
                 <div class="field"><input type="text" id="inv-name-${id}" placeholder="שם מוצר" value="${prefill ? escapeHtml(prefill.product_name) : ""}"></div>
                 <div class="field">
                     <select id="inv-pantry-${id}">
@@ -288,7 +402,11 @@ function openInvoiceModal(existing, suppliers, pantryItems, container) {
         };
         for (const el of [qtyEl, priceEl, totalEl, row.querySelector(`#inv-case-${id}`), row.querySelector(`#inv-pack-${id}`)]) el.addEventListener("input", updatePreview);
         packSel.addEventListener("change", updatePreview);
-        pantrySel.addEventListener("change", () => { syncNew(); syncPack(); });
+        pantrySel.addEventListener("change", () => {
+            // factor שנשמר בשורה שייך למוצר הקודם - מחליפים מוצר = מתחילים מחדש
+            if (row.dataset.factorPantry !== pantrySel.value) row.dataset.stockFactor = "";
+            syncNew(); syncPack();
+        });
         utSel.addEventListener("change", () => { syncNew(); syncPack(); });
         syncNew();
         syncPack();
@@ -311,6 +429,11 @@ function openInvoiceModal(existing, suppliers, pantryItems, container) {
     }
     recalc();
     overlay.querySelector("#btn-add-row").onclick = () => addRow();
+
+    const pettyBox = overlay.querySelector("#f-petty");
+    const syncPetty = () => { overlay.querySelector("#petty-fields").style.display = pettyBox.checked ? "block" : "none"; };
+    pettyBox.addEventListener("change", syncPetty);
+    syncPetty();
 
     // תמונה: undefined = בלי שינוי, Blob = תמונה חדשה/מחליפה, null = הסרה
     let imageChange;
@@ -352,7 +475,10 @@ function openInvoiceModal(existing, suppliers, pantryItems, container) {
             const unit_price = overlay.querySelector(`#inv-price-${id}`).value;
             const line_total = overlay.querySelector(`#inv-line-${id}`).value;
             const sel = overlay.querySelector(`#inv-pantry-${id}`).value;
-            if (!(product_name && quantity && (unit_price || line_total))) continue;
+            if (!(product_name && quantity && (unit_price || line_total))) {
+                if (product_name || quantity || unit_price || line_total) return showErr(`שורה לא מלאה: ${product_name || "(ללא שם)"} - מלא שם, כמות ומחיר (או סכום), או הסר את השורה`);
+                continue;
+            }
             const item = { product_name, quantity, unit_price, line_total, pantry_item_id: sel === "__new__" ? null : sel || null, stock_factor: row.dataset.stockFactor || null };
 
             // סוג יחידה, גודל אריזה וארגז -> stock_factor (יחידות מזווה ביחידה אחת של השורה)
@@ -383,12 +509,15 @@ function openInvoiceModal(existing, suppliers, pantryItems, container) {
                 if (newProducts.some((np) => np.item.product_name.trim().toLowerCase() === key)) return showErr(`'${product_name}' מופיע פעמיים כמוצר חדש`);
                 if (!(q > 0) || Number.isNaN(pantryPrice)) return showErr("כמות/מחיר לא תקינים");
                 newProducts.push({ item, category, unitType, unitAmount, price: pantryPrice });
-            } else if (existingPantry && overlay.querySelector(`#inv-upd-${id}`).checked && q > 0 && !Number.isNaN(pantryPrice)) {
+            } else if (existingPantry && overlay.querySelector(`#inv-upd-${id}`).checked && q > 0 && Number.isFinite(pantryPrice) && pantryPrice > 0 && overlay.querySelector("#f-doctype").value === "invoice") {
                 priceUpdates.push({ id: existingPantry.id, price: pantryPrice });
             }
             items.push(item);
         }
         const data = {
+            petty_cash: overlay.querySelector("#f-petty").checked,
+            purchaser: overlay.querySelector("#f-purchaser").value,
+            reimbursed: overlay.querySelector("#f-reimb").checked,
             supplier_id: overlay.querySelector("#f-supplier").value,
             invoice_date: overlay.querySelector("#f-date").value,
             document_type: overlay.querySelector("#f-doctype").value,
@@ -396,17 +525,29 @@ function openInvoiceModal(existing, suppliers, pantryItems, container) {
         };
         if (imageChange !== undefined) data.image = imageChange;
         try {
+            if (!existing && data.supplier_id && data.invoice_date) {
+                const sum = Math.round(items.reduce((n, it) => n + (parseFloat(it.line_total) || (parseFloat(it.quantity) * parseFloat(it.unit_price)) || 0), 0) * 100) / 100;
+                const dup = await findDuplicateInvoice({ supplierId: data.supplier_id, date: data.invoice_date, total: sum });
+                if (dup && !(await confirmDialog(`כבר קיימת חשבונית מאותו ספק, באותו תאריך ובאותו סכום (${money(sum)}). לשמור בכל זאת?`))) return;
+            }
             // מוצרים חדשים נוצרים רק אחרי שהחשבונית עצמה עברה אימות
+            const createdIds = [];
             if (newProducts.length) {
-                if (!data.supplier_id) throw new Error("יש לבחור ספק");
-                if (!data.invoice_date) throw new Error("יש להזין תאריך");
+                await validateInvoicePayload(data); // אימות מלא לפני שנוצר מוצר כלשהו
                 for (const np of newProducts) {
                     np.item.pantry_item_id = await createPantryItemFromInvoice({
                         name: np.item.product_name, category: np.category, unitType: np.unitType, unitAmount: np.unitAmount, price: np.price,
                     });
+                    createdIds.push(np.item.pantry_item_id);
                 }
             }
-            await saveInvoice(existing ? existing.id : null, data);
+            let savedId;
+            try {
+                savedId = await saveInvoice(existing ? existing.id : null, data);
+            } catch (saveErr) {
+                for (const pid of createdIds) await dbDelete("pantryItems", pid); // לא משאירים מוצרים יתומים
+                throw saveErr;
+            }
             for (const u of priceUpdates) {
                 const p = await dbGet("pantryItems", u.id);
                 if (p) { p.price = u.price; await dbPut("pantryItems", p); }
@@ -414,6 +555,8 @@ function openInvoiceModal(existing, suppliers, pantryItems, container) {
             closeModal();
             toast("נשמר");
             renderSuppliersPage(container);
+            const changes = await priceChanges({ thresholdPct: 10, invoiceId: savedId });
+            if (changes.length) await showPriceChangesDialog(changes);
         } catch (e) {
             const el = overlay.querySelector(".error-msg");
             el.textContent = e.message;

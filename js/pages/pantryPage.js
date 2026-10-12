@@ -2,17 +2,33 @@ import { listTopLevelPantryItems, addPantryItem, updatePantryItem, deletePantryI
 import { CATEGORY_GROUPS, UNIT_TYPES, UNIT_TYPE_LABELS } from "../constants.js";
 import { h, openModal, closeModal, confirmDialog, toast, escapeHtml } from "../ui.js";
 import { openScanModal } from "./scanModal.js";
+import { dbGetAll } from "../db.js";
+import { getSetting, setSetting } from "../repo/settingsRepo.js";
 import { getFilter, applyFilter, mountFilterBar, groupBySection, groupTitleEl } from "../filters.js";
 
 export async function renderPantryPage(container) {
     const items = await listTopLevelPantryItems();
-    items.sort((a, b) => a.category.localeCompare(b.category, "he") || a.name.localeCompare(b.name, "he"));
+    // תאריך קנייה אחרונה לכל מוצר (לפי חשבוניות; זיכויים לא נספרים) - לאפשרות המיון "קנייה אחרונה"
+    const lastBought = new Map();
+    const invoiceDate = Object.fromEntries((await dbGetAll("invoices")).filter((i) => i.document_type !== "credit").map((i) => [i.id, i.invoice_date || ""]));
+    for (const it of await dbGetAll("invoiceItems")) {
+        const d = invoiceDate[it.invoice_id];
+        if (it.pantry_item_id && d && d > (lastBought.get(it.pantry_item_id) || "")) lastBought.set(it.pantry_item_id, d);
+    }
+    const sortMode = (await getSetting("pantry_sort")) || "name";
+    const sortItems = (mode) => items.sort((a, b) => a.category.localeCompare(b.category, "he") ||
+        (mode === "recent" ? (lastBought.get(b.id) || "").localeCompare(lastBought.get(a.id) || "") : 0) ||
+        a.name.localeCompare(b.name, "he"));
+    sortItems(sortMode);
 
     container.innerHTML = `
         <div class="subtitle">חומרי גלם, מחיר קנייה, ותוצרי סריקת חשבוניות. הניצולת/פירוק נעשים בעמוד "עיבוד".</div>
         <div class="btn-row">
             <button class="btn btn-accent" id="btn-scan">📷 סרוק חשבונית</button>
         </div>
+        <div class="field"><select id="pantry-sort">
+            <option value="name">מיון: לפי שם</option><option value="recent">מיון: נקנה לאחרונה קודם</option>
+        </select></div>
         <div id="pantry-filter"></div>
         <div id="pantry-list"></div>
         <button class="fab-add" id="btn-add">+</button>
@@ -49,6 +65,13 @@ export async function renderPantryPage(container) {
         });
     }
 
+    const sortSel = container.querySelector("#pantry-sort");
+    sortSel.value = sortMode;
+    sortSel.addEventListener("change", async () => {
+        await setSetting("pantry_sort", sortSel.value);
+        sortItems(sortSel.value);
+        renderList();
+    });
     mountFilterBar(container.querySelector("#pantry-filter"), items, filter, renderList);
     renderList();
 
