@@ -216,3 +216,21 @@ export async function scanRecipeImage(apiKey, file) {
     const pantry = (await dbGetAll("pantryItems")).filter((r) => !NON_FOOD_CATEGORIES.has(r.category));
     return buildRecipeDraft(parsed, pantry);
 }
+
+
+// יצירת מוצר חדש במזווה מתוך חשבונית ידנית. price = מחיר ליחידת המזווה (ק"ג / ליטר / יחידה).
+export async function createPantryItemFromInvoice({ name, category, unitType, unitAmount, price }) {
+    name = (name || "").trim();
+    if (!name) throw new Error("יש להזין שם מוצר");
+    if (!(category in CATEGORY_GROUPS)) throw new Error(`יש לבחור קטגוריה עבור '${name}'`);
+    if (!UNIT_TYPES.includes(unitType)) throw new Error(`יחידת מידה לא תקינה עבור '${name}'`);
+    let amount = null;
+    if (unitType === "unit") {
+        amount = parseFloat(unitAmount);
+        if (Number.isNaN(amount) || amount <= 0) throw new Error(`יש להזין משקל/נפח ליחידה עבור '${name}'`);
+    }
+    return dbPut("pantryItems", {
+        name, category, subcategory: null, unit_type: unitType, unit_amount: amount,
+        price, yield_pct: 100, weight_before: null, weight_after: null, is_frozen: 0, parent_id: null,
+    });
+}
