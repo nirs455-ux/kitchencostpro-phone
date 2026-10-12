@@ -3,6 +3,7 @@ import { getSetting } from "../repo/settingsRepo.js";
 import { listSuppliers, addSupplier } from "../repo/suppliersRepo.js";
 import { CATEGORY_GROUPS, UNIT_TYPES, UNIT_TYPE_LABELS } from "../constants.js";
 import { h, openModal, closeModal, toast, escapeHtml } from "../ui.js";
+import { compressImage } from "../imageUtil.js";
 
 function todayLocal() {
     const d = new Date();
@@ -55,6 +56,7 @@ export async function openScanModal({ supplierAware, onDone }) {
     overlay.querySelector("#btn-cancel2").onclick = closeModal;
 
     let scannedItems = [];
+    let scannedFile = null;
     if (supplierAware) {
         const supSel = overlay.querySelector("#scan-supplier");
         const warn = overlay.querySelector("#scan-no-supplier");
@@ -107,6 +109,7 @@ export async function openScanModal({ supplierAware, onDone }) {
 
     const processFile = async (file) => {
         if (!file) return;
+        scannedFile = file;
         overlay.querySelector("#scan-upload-area").style.display = "none";
         overlay.querySelector("#scan-loading").style.display = "block";
         overlay.querySelector("#scan-cancel-only").style.display = "none";
@@ -363,7 +366,8 @@ export async function openScanModal({ supplierAware, onDone }) {
                 const existing = (await listSuppliers()).find((x) => x.name === name);
                 supplierId = existing ? existing.id : await addSupplier(name);
             }
-            await applyScannedInvoice({ items, supplierId, invoiceDate });
+            const image = supplierId && scannedFile ? await compressImage(scannedFile) : undefined;
+            await applyScannedInvoice({ items, supplierId, invoiceDate, image });
             closeModal();
             toast(supplierId ? "נשמר גם כחשבונית בדף הספקים" : "נשמר במזווה בלבד (לא נבחר ספק)");
             if (onDone) onDone();
