@@ -91,7 +91,7 @@ export async function scanInvoiceImage(apiKey, file) {
 }
 
 // מחיל את שורות הסריקה על המזווה (ואופציונלית שומר כחשבונית מקושרת לספק). מקביל ל-apply_scanned_invoice.
-export async function applyScannedInvoice({ items, supplierId, invoiceDate }) {
+export async function applyScannedInvoice({ items, supplierId, invoiceDate, image }) {
     // שלב 1: אימות מלא ובניית תוכנית - שום כתיבה עד שכל השורות תקינות (אין שמירה חלקית)
     const plan = [];
     for (let i = 0; i < items.length; i++) {
@@ -162,6 +162,7 @@ export async function applyScannedInvoice({ items, supplierId, invoiceDate }) {
         if (!invoiceDate) throw new Error("יש להזין תאריך לחשבונית");
         invoiceId = await saveInvoice(null, {
             supplier_id: supplierId, invoice_date: invoiceDate, document_type: "invoice", items: invoiceLineItems,
+            image: image instanceof Blob ? image : undefined,
         });
     }
     return { pantry_item_ids: resolvedPantryIds, invoice_id: invoiceId };
