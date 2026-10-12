@@ -2,6 +2,8 @@ import { listSuppliers, addSupplier, deleteSupplier, getSupplierDeleteInfo, list
 import { listTopLevelPantryItems } from "../repo/pantryRepo.js";
 import { createPantryItemFromInvoice } from "../repo/scanRepo.js";
 import { CATEGORY_GROUPS, UNIT_TYPES, UNIT_TYPE_LABELS } from "../constants.js";
+import { computeStockFactor } from "../invoiceParse.js";
+import { dbGet, dbPut } from "../db.js";
 import { h, openModal, closeModal, confirmDialog, toast, escapeHtml, money } from "../ui.js";
 import { openScanModal } from "./scanModal.js";
 import { compressImage, showImageFullscreen } from "../imageUtil.js";
@@ -193,6 +195,20 @@ function openInvoiceModal(existing, suppliers, pantryItems, container) {
                             <input type="number" step="any" id="inv-ua-${id}" placeholder="לדוגמה: 20"></div>
                     </div>
                 </div>
+                <div id="inv-pk-${id}" style="display:none;background:#f6f6f0;border-radius:8px;padding:8px;margin-bottom:6px;">
+                    <div class="form-row" id="inv-pack-wrap-${id}">
+                        <div class="field"><label>גודל אריזה (אופציונלי)</label>
+                            <input type="number" step="any" id="inv-pack-${id}" placeholder="לדוגמה: 370"></div>
+                        <div class="field"><label>יחידה</label><select id="inv-pack-unit-${id}"></select></div>
+                    </div>
+                    <div class="field"><label>יחידות בארגז (אופציונלי)</label>
+                        <input type="number" step="any" id="inv-case-${id}" placeholder="לדוגמה: 8"></div>
+                    <div class="checkbox-field">
+                        <input type="checkbox" id="inv-upd-${id}" ${existing ? "" : "checked"}>
+                        <label for="inv-upd-${id}">עדכן את המחיר במזווה לפי השורה הזו</label>
+                    </div>
+                    <div class="hint" id="inv-pk-prev-${id}"></div>
+                </div>
                 <div class="top-line">
                     <input type="number" step="any" id="inv-qty-${id}" placeholder="כמות / משקל" value="${prefill ? prefill.quantity : ""}">
                     <input type="number" step="any" id="inv-price-${id}" placeholder="מחיר ליחידה/ק&quot;ג" value="${prefill ? prefill.unit_price : ""}">
@@ -236,9 +252,46 @@ function openInvoiceModal(existing, suppliers, pantryItems, container) {
             newBox.style.display = pantrySel.value === "__new__" ? "block" : "none";
             row.querySelector(`#inv-ua-wrap-${id}`).style.display = utSel.value === "unit" ? "block" : "none";
         };
-        pantrySel.addEventListener("change", syncNew);
-        utSel.addEventListener("change", syncNew);
+        const rowUnitType = () => {
+            if (pantrySel.value === "__new__") return utSel.value;
+            const p = pantryItems.find((x) => String(x.id) === pantrySel.value);
+            return p ? p.unit_type : null;
+        };
+        const packSel = row.querySelector(`#inv-pack-unit-${id}`);
+        const syncPack = () => {
+            const ut = rowUnitType();
+            const pk = row.querySelector(`#inv-pk-${id}`);
+            pk.style.display = ut ? "block" : "none";
+            if (!ut) return;
+            const isPackable = ut === "weight" || ut === "liter";
+            row.querySelector(`#inv-pack-wrap-${id}`).style.display = isPackable ? "" : "none";
+            const opts = ut === "liter" ? [["ml", 'מ"ל'], ["l", "ליטר"]] : [["g", "גרם"], ["kg", 'ק"ג']];
+            const cur = packSel.value;
+            packSel.innerHTML = opts.map(([v, l]) => `<option value="${v}">${l}</option>`).join("");
+            if (opts.some(([v]) => v === cur)) packSel.value = cur;
+            updatePreview();
+        };
+        const updatePreview = () => {
+            const ut = rowUnitType();
+            if (!ut) return;
+            const q = num(qtyEl);
+            let price = num(priceEl);
+            if (isNaN(price) && q > 0 && !isNaN(num(totalEl))) price = num(totalEl) / q;
+            const { factor, error } = computeStockFactor(ut, parseFloat(row.querySelector(`#inv-case-${id}`).value) || null,
+                parseFloat(row.querySelector(`#inv-pack-${id}`).value) || null, packSel.value);
+            const label = ut === "liter" ? "ליטר" : ut === "weight" ? 'ק"ג' : "יחידה";
+            const prev = row.querySelector(`#inv-pk-prev-${id}`);
+            if (error) { prev.textContent = error; return; }
+            const p = pantryItems.find((x) => String(x.id) === pantrySel.value);
+            const old = p && p.price != null ? ` (במזווה כרגע: ₪${Number(p.price).toFixed(2)})` : "";
+            prev.textContent = !isNaN(price) && price > 0 ? `מחיר שיישמר במזווה: ₪${(price / (factor || 1)).toFixed(2)} ל${label}${old}` : "";
+        };
+        for (const el of [qtyEl, priceEl, totalEl, row.querySelector(`#inv-case-${id}`), row.querySelector(`#inv-pack-${id}`)]) el.addEventListener("input", updatePreview);
+        packSel.addEventListener("change", updatePreview);
+        pantrySel.addEventListener("change", () => { syncNew(); syncPack(); });
+        utSel.addEventListener("change", () => { syncNew(); syncPack(); });
         syncNew();
+        syncPack();
         row.querySelector("[data-remove]").onclick = () => { row.remove(); recalc(); };
     }
 
@@ -286,6 +339,7 @@ function openInvoiceModal(existing, suppliers, pantryItems, container) {
     overlay.querySelector("#btn-save").onclick = async () => {
         const items = [];
         const newProducts = []; // שורות עם "מוצר חדש במזווה" - נוצרות רק אחרי שכל האימותים עברו
+        const priceUpdates = []; // עדכוני מחיר למוצרים קיימים - מתבצעים רק אחרי שהחשבונית נשמרה
         const showErr = (msg) => {
             const el = overlay.querySelector(".error-msg");
             el.textContent = msg;
@@ -300,16 +354,37 @@ function openInvoiceModal(existing, suppliers, pantryItems, container) {
             const sel = overlay.querySelector(`#inv-pantry-${id}`).value;
             if (!(product_name && quantity && (unit_price || line_total))) continue;
             const item = { product_name, quantity, unit_price, line_total, pantry_item_id: sel === "__new__" ? null : sel || null, stock_factor: row.dataset.stockFactor || null };
+
+            // סוג יחידה, גודל אריזה וארגז -> stock_factor (יחידות מזווה ביחידה אחת של השורה)
+            let unitType = null;
+            const existingPantry = sel && sel !== "__new__" ? pantryItems.find((p) => String(p.id) === sel) : null;
+            if (sel === "__new__") unitType = overlay.querySelector(`#inv-ut-${id}`).value;
+            else if (existingPantry) unitType = existingPantry.unit_type;
+            const q = parseFloat(quantity);
+            const unitPriceNum = unit_price !== "" ? parseFloat(unit_price) : parseFloat(line_total) / q;
+            let factor = 1;
+            if (unitType) {
+                const upc = parseFloat(overlay.querySelector(`#inv-case-${id}`).value) || null;
+                const ps = parseFloat(overlay.querySelector(`#inv-pack-${id}`).value) || null;
+                const res = computeStockFactor(unitType, upc, ps, overlay.querySelector(`#inv-pack-unit-${id}`).value);
+                if (res.error) return showErr(`'${product_name}': ${res.error}`);
+                if (upc || ps) { factor = res.factor; item.stock_factor = factor !== 1 ? factor : null; }
+                else if (item.stock_factor) factor = parseFloat(item.stock_factor) || 1;
+            }
+            const pantryPrice = unitPriceNum / factor;
+
             if (sel === "__new__") {
                 const category = overlay.querySelector(`#inv-cat-${id}`).value;
                 if (!category) return showErr(`'${product_name}': בחר קטגוריה למוצר החדש במזווה`);
-                const unitType = overlay.querySelector(`#inv-ut-${id}`).value;
                 const unitAmount = overlay.querySelector(`#inv-ua-${id}`).value;
                 if (unitType === "unit" && !(parseFloat(unitAmount) > 0)) return showErr(`'${product_name}': הזן משקל/נפח ליחידה (גרם/מ"ל)`);
                 const key = product_name.trim().toLowerCase();
                 if (pantryItems.some((p) => p.name.trim().toLowerCase() === key)) return showErr(`'${product_name}' כבר קיים במזווה - בחר אותו מהרשימה במקום ליצור חדש`);
                 if (newProducts.some((np) => np.item.product_name.trim().toLowerCase() === key)) return showErr(`'${product_name}' מופיע פעמיים כמוצר חדש`);
-                newProducts.push({ item, category, unitType, unitAmount });
+                if (!(q > 0) || Number.isNaN(pantryPrice)) return showErr("כמות/מחיר לא תקינים");
+                newProducts.push({ item, category, unitType, unitAmount, price: pantryPrice });
+            } else if (existingPantry && overlay.querySelector(`#inv-upd-${id}`).checked && q > 0 && !Number.isNaN(pantryPrice)) {
+                priceUpdates.push({ id: existingPantry.id, price: pantryPrice });
             }
             items.push(item);
         }
@@ -326,19 +401,16 @@ function openInvoiceModal(existing, suppliers, pantryItems, container) {
                 if (!data.supplier_id) throw new Error("יש לבחור ספק");
                 if (!data.invoice_date) throw new Error("יש להזין תאריך");
                 for (const np of newProducts) {
-                    const q = parseFloat(np.item.quantity);
-                    const price = np.item.unit_price !== "" ? parseFloat(np.item.unit_price) : parseFloat(np.item.line_total) / q;
-                    if (!(q > 0) || Number.isNaN(price)) throw new Error("כמות/מחיר לא תקינים");
-                }
-                for (const np of newProducts) {
-                    const q = parseFloat(np.item.quantity);
-                    const price = np.item.unit_price !== "" ? parseFloat(np.item.unit_price) : parseFloat(np.item.line_total) / q;
                     np.item.pantry_item_id = await createPantryItemFromInvoice({
-                        name: np.item.product_name, category: np.category, unitType: np.unitType, unitAmount: np.unitAmount, price,
+                        name: np.item.product_name, category: np.category, unitType: np.unitType, unitAmount: np.unitAmount, price: np.price,
                     });
                 }
             }
             await saveInvoice(existing ? existing.id : null, data);
+            for (const u of priceUpdates) {
+                const p = await dbGet("pantryItems", u.id);
+                if (p) { p.price = u.price; await dbPut("pantryItems", p); }
+            }
             closeModal();
             toast("נשמר");
             renderSuppliersPage(container);
