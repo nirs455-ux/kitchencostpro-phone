@@ -34,8 +34,30 @@ export function showImageFullscreen(blob, title) {
             <img id="img-full" src="${url}" alt="תמונת חשבונית" style="width:100%;display:block;cursor:zoom-in;">
         </div>
         <div class="hint">לחץ על התמונה כדי להגדיל/להקטין.</div>
-        <div class="modal-actions"><button type="button" class="btn btn-primary" id="img-close">סגור</button></div>
+        <div class="modal-actions">
+            <button type="button" class="btn btn-secondary" id="img-save">💾 שמור עותק בטלפון</button>
+            <button type="button" class="btn btn-primary" id="img-close">סגור</button>
+        </div>
     `);
+    // דפדפן לא יכול ליצור אלבום בגלריה בעצמו; בטלפון נפתח חלון השיתוף ("שמור תמונה"), ובמחשב הקובץ יורד כרגיל
+    overlay.querySelector("#img-save").onclick = async () => {
+        const fileName = `חשבונית-${(title || "").replace(/[^\w֐-׿-]+/g, "_") || "תמונה"}.jpg`;
+        const file = new File([blob], fileName, { type: blob.type || "image/jpeg" });
+        try {
+            if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                await navigator.share({ files: [file], title: "חשבונית" });
+                return;
+            }
+        } catch (e) {
+            if (e && e.name === "AbortError") return;
+        }
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+    };
     const img = overlay.querySelector("#img-full");
     let zoomed = false;
     img.onclick = () => {
