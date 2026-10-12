@@ -1,6 +1,7 @@
 // ייצוא/ייבוא - הגיבוי היחיד לנתונים, כי אין שרת ואין סנכרון אוטומטי.
 import { STORES, dbGetAll, dbClearAll, dbPut } from "./db.js";
 import { blobToDataUrl, dataUrlToBlob } from "./imageUtil.js";
+import { setSetting } from "./repo/settingsRepo.js";
 
 export async function exportAllData() {
     const data = { exported_at: new Date().toISOString(), version: 1, stores: {} };
@@ -29,6 +30,7 @@ export async function downloadExport() {
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
+    await setSetting("last_export", new Date().toISOString());
 }
 
 // מחליף את כל הנתונים הקיימים באלה שבקובץ הגיבוי. פעולה הרסנית - קוראים לה רק אחרי אישור מהמשתמש.
@@ -37,12 +39,16 @@ export async function importAndReplace(fileText) {
     if (!data || !data.stores) {
         throw new Error("קובץ לא תקין - זה לא קובץ גיבוי של KitchenCostPro");
     }
-    await dbClearAll();
+    // קודם ממירים ומאמתים את כל השורות (כולל תמונות); רק אם הכול תקין מוחקים את הנתונים הקיימים
+    const prepared = [];
     for (const [name, rows] of Object.entries(data.stores)) {
         if (!STORES[name]) continue;
+        if (!Array.isArray(rows)) throw new Error(`קובץ גיבוי פגום (${name})`);
         for (const row of rows) {
             if (name === "invoices" && row.image && row.image.__image) row.image = dataUrlToBlob(row.image.__image);
-            await dbPut(name, row);
+            prepared.push([name, row]);
         }
     }
+    await dbClearAll();
+    for (const [name, row] of prepared) await dbPut(name, row);
 }

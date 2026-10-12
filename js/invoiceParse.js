@@ -7,6 +7,7 @@ export const INVOICE_SCAN_PROMPT =
     "{\n" +
     '  "supplier_name": "שם הספק אם מופיע בבירור, אחרת null",\n' +
     '  "invoice_date": "תאריך בפורמט YYYY-MM-DD אם מופיע, אחרת null",\n' +
+    '  "invoice_total": 123.45,\n' +
     '  "items": [\n' +
     '    {"name": "שם המוצר בעברית", "quantity": 1.0, "unit_price": 10.0, "line_total": 10.0, "is_discount": false}\n' +
     "  ]\n" +
@@ -17,6 +18,7 @@ export const INVOICE_SCAN_PROMPT =
     "החזר אותה כשורה נפרדת עם is_discount=true ו-line_total=סכום ההנחה כפי שמודפס (שלילי). " +
     "אל תפחית את ההנחה בעצמך ממחיר המוצר, ואל תשנה את quantity/unit_price של המוצר עצמו. " +
     "הנחות כלליות על כל החשבונית (מועדון, הנחה בסוף הקבלה) - אל תחזיר בכלל. בכל שאר השורות is_discount=false.\n" +
+    "invoice_total הוא הסכום הסופי לתשלום כפי שמודפס בתחתית הקבלה (מספר), או null אם לא מופיע בבירור.\n" +
     "שים לב במיוחד לשנה בתאריך: העתק אותה בדיוק כפי שהיא כתובה בתמונה, ספרה ספרה - אל תנחש ואל תעגל אותה.";
 
 // כמו float() של פייתון: null/ריק/לא-מספר -> null
