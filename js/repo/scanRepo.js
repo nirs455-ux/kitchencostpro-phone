@@ -224,6 +224,8 @@ export async function createPantryItemFromInvoice({ name, category, unitType, un
     if (!name) throw new Error("יש להזין שם מוצר");
     if (!(category in CATEGORY_GROUPS)) throw new Error(`יש לבחור קטגוריה עבור '${name}'`);
     if (!UNIT_TYPES.includes(unitType)) throw new Error(`יחידת מידה לא תקינה עבור '${name}'`);
+    const dup = (await dbGetAll("pantryItems")).find((r) => !r.parent_id && r.name.trim().toLowerCase() === name.toLowerCase());
+    if (dup) throw new Error(`'${name}' כבר קיים במזווה - בחר אותו מהרשימה במקום ליצור חדש`);
     let amount = null;
     if (unitType === "unit") {
         amount = parseFloat(unitAmount);
