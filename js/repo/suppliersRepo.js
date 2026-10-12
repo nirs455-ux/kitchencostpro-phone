@@ -47,10 +47,19 @@ function parseInvoicePayload(data) {
         const name = (it.product_name || "").trim();
         if (!name) throw new Error("יש להזין שם מוצר לכל שורה");
         const qty = parseFloat(it.quantity);
-        const unitPrice = parseFloat(it.unit_price);
-        if (Number.isNaN(qty) || Number.isNaN(unitPrice)) throw new Error("כמות/מחיר לא תקינים");
-        if (qty <= 0 || unitPrice < 0) throw new Error("כמות חייבת להיות גדולה מ-0");
-        const lineTotal = Math.round(qty * unitPrice * 100) / 100;
+        if (Number.isNaN(qty)) throw new Error("כמות/מחיר לא תקינים");
+        if (qty <= 0) throw new Error("כמות חייבת להיות גדולה מ-0");
+        // הנתונים נשמרים כפי שהוזנו/מופיעים בקבלה: סכום שורה שהוזן נשמר כמו שהוא (לא מחושב מחדש);
+        // אם חסר מחיר ליחידה - נגזר מהסכום; אם חסר סכום - כמות x מחיר.
+        const hasPrice = it.unit_price !== null && it.unit_price !== undefined && it.unit_price !== "";
+        const hasTotal = it.line_total !== null && it.line_total !== undefined && it.line_total !== "";
+        let unitPrice = hasPrice ? parseFloat(it.unit_price) : null;
+        let lineTotal = hasTotal ? Math.round(parseFloat(it.line_total) * 100) / 100 : null;
+        if ((hasPrice && Number.isNaN(unitPrice)) || (hasTotal && Number.isNaN(lineTotal))) throw new Error("כמות/מחיר לא תקינים");
+        if (unitPrice === null && lineTotal === null) throw new Error("כמות/מחיר לא תקינים");
+        if (unitPrice === null) unitPrice = Math.round((lineTotal / qty) * 10000) / 10000;
+        if (lineTotal === null) lineTotal = Math.round(qty * unitPrice * 100) / 100;
+        if (unitPrice < 0 || lineTotal < 0) throw new Error("מחיר/סכום לא יכולים להיות שליליים");
         total += lineTotal;
         let pantryItemId = it.pantry_item_id || null;
         if (pantryItemId) pantryItemId = parseInt(pantryItemId, 10);
@@ -70,6 +79,7 @@ export async function listInvoicesWithItems() {
         const items = await dbGetByIndex("invoiceItems", "invoice_id", inv.id);
         out.push({ ...inv, supplier_name: supplierById[inv.supplier_id] || "?", items });
     }
+    for (const inv of out) inv.has_image = inv.image instanceof Blob;
     out.sort((a, b) => (b.invoice_date || "").localeCompare(a.invoice_date || "") || b.id - a.id);
     return out;
 }
@@ -81,7 +91,13 @@ export async function saveInvoice(existingId, data) {
 
     const invoiceRow = { supplier_id: clean.supplier_id, invoice_date: clean.invoice_date, total_amount: clean.total, document_type: clean.document_type };
     let invoiceId = existingId;
+    // תמונה: Blob חדש = החלפה; null = הסרה; לא הועבר = נשארת התמונה הקיימת
+    if (data.image instanceof Blob) invoiceRow.image = data.image;
     if (existingId) {
+        if (data.image === undefined) {
+            const prev = await dbGet("invoices", existingId);
+            if (prev && prev.image) invoiceRow.image = prev.image;
+        }
         invoiceRow.id = existingId;
         await dbPut("invoices", invoiceRow);
         await dbDeleteWhere("invoiceItems", "invoice_id", existingId);
