@@ -9,7 +9,7 @@ export const CATEGORY_GROUPS = {
     "מחסן": [], // לא-מזון: ניקיון, חד-פעמי וכו' - לא מוצע במתכונים/מנות
 };
 // גרסת האפליקציה - מוצגת בהגדרות כדי לוודא שהטלפון עדכן (תואם ל-CACHE_NAME ב-service-worker.js)
-export const APP_VERSION = "2026-10-12 (v8)";
+export const APP_VERSION = "2026-10-13 (v9)";
 export const NON_FOOD_CATEGORIES = new Set(["מחסן"]);
 export const UNIT_TYPES = ["weight", "liter", "unit"];
 export const UNIT_TYPE_LABELS = { weight: "משקל (ק\"ג)", liter: "נפח (ליטר)", unit: "יחידה" };
