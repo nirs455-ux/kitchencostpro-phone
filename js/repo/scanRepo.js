@@ -5,6 +5,7 @@ import { getCloseMatches } from "../fuzzyMatch.js";
 import { CATEGORY_GROUPS, UNIT_TYPES } from "../constants.js";
 import { saveInvoice } from "./suppliersRepo.js";
 import { getSetting, setSetting } from "./settingsRepo.js";
+import { compressImage } from "../imageUtil.js";
 import { NON_FOOD_CATEGORIES } from "../constants.js";
 import { RECIPE_SCAN_PROMPT, buildRecipeDraft } from "../recipeParse.js";
 import { INVOICE_SCAN_PROMPT, mergeDiscountLines, computeStockFactor, toFloat } from "../invoiceParse.js";
@@ -20,8 +21,10 @@ function fileToBase64(file) {
 
 export async function scanInvoiceImage(apiKey, file) {
     if (!apiKey) throw new Error("לא הוגדר מפתח API של Gemini. הזן אותו במסך ההגדרות.");
-    const imageData = await fileToBase64(file);
-    const mimeType = file.type || "image/jpeg";
+    // דחיסה לפני שליחה: העלאה מהירה בהרבה בלי לפגוע בקריאות הטקסט
+    const small = await compressImage(file);
+    const imageData = await fileToBase64(small);
+    const mimeType = small.type || "image/jpeg";
 
     let response;
     try {
@@ -62,6 +65,17 @@ export async function scanInvoiceImage(apiKey, file) {
     // כינויים שנלמדו מסריקות קודמות: שם בקבלה -> מוצר מזווה שהמשתמש בחר
     const aliases = (await getSetting("scan_aliases")) || {};
     const byId = new Map(pantryRows.map((r) => [r.id, r]));
+    // אריזה/ארגז אחרונים שנרשמו לכל מוצר - כדי שקנייה חוזרת לא תדרוש הזנה מחדש
+    const lastFactor = new Map();
+    {
+        const invDates = Object.fromEntries((await dbGetAll("invoices")).map((i) => [i.id, i.invoice_date || ""]));
+        const lastDate = new Map();
+        for (const li of await dbGetAll("invoiceItems")) {
+            if (!li.pantry_item_id) continue;
+            const d = invDates[li.invoice_id] || "";
+            if (d >= (lastDate.get(li.pantry_item_id) ?? "")) { lastDate.set(li.pantry_item_id, d); lastFactor.set(li.pantry_item_id, li.stock_factor || null); }
+        }
+    }
 
     for (const it of items) {
         const name = it.name;
@@ -79,6 +93,7 @@ export async function scanInvoiceImage(apiKey, file) {
 
         enrichedItems.push({
             name, orig_name: name, quantity, unit_price: unitPrice,
+            default_factor: match ? lastFactor.get(match.id) || null : null,
             discount_applied: it.discount_applied || 0, list_unit_price: it.list_unit_price ?? null,
             matched_pantry_item_id: match ? match.id : null,
             matched_category: match ? match.category : null,
@@ -143,8 +158,10 @@ export async function applyScannedInvoice({ items, supplierId, invoiceDate, imag
         if (packageSize && packageSize < 1 && (it.package_unit === "g" || it.package_unit === "ml")) {
             throw new Error(`${where}: גודל אריזה ${packageSize} ב${it.package_unit === "g" ? "גרם" : 'מ"ל'} נראה קטן מדי - התכוונת ל-${packageSize} ${it.package_unit === "g" ? 'ק"ג' : "ליטר"}?`);
         }
-        const { factor, error } = computeStockFactor(unitType, unitsPerCase, packageSize, it.package_unit);
+        let { factor, error } = computeStockFactor(unitType, unitsPerCase, packageSize, it.package_unit);
         if (error) throw new Error(`${where}: ${error} ('${name}')`);
+        // לא הוזנה אריזה/ארגז: משתמשים באלה של הקנייה הקודמת של אותו מוצר
+        if (existing && !unitsPerCase && !packageSize && it.default_factor > 0) factor = it.default_factor;
         const stockFactor = factor && factor !== 1 ? factor : null;
         const pantryPrice = unitPrice / (factor || 1);
         plan.push({ it, orig: (it.orig_name || "").trim(), name, quantity, unitPrice, existing, category, unitType, unitAmount, pantryPrice, stockFactor });
