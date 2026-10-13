@@ -213,7 +213,7 @@ export async function openScanModal({ supplierAware, onDone }) {
             const unitPriceNum = parseFloat(it.unit_price) || 0;
             const priceChanged = it.matched_pantry_item_id && it.matched_price != null && Math.abs(it.matched_price - unitPriceNum) > 0.001;
             const ut = rowUnit(it);
-            const packUnits = ut === "liter" ? [["ml", 'מ"ל'], ["l", "ליטר"]] : [["g", "גרם"], ["kg", 'ק"ג']];
+            const packUnits = ut === "liter" ? [["l", "ליטר"], ["ml", 'מ"ל']] : [["kg", 'ק"ג'], ["g", "גרם"]];
             const nameEmpty = !String(it.name || "").trim();
             // חריגות שכדאי לבדוק (המחיר במזווה הוא ליחידת מזווה, לכן לא משווים כשיש גודל אריזה/ארגז)
             const flags = [];

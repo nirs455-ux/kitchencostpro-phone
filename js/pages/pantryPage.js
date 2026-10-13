@@ -82,7 +82,7 @@ export async function renderPantryPage(container) {
 function renderPantryCard(it) {
     return h(`
         <div class="card">
-            <div class="card-title">${escapeHtml(it.name)} ${it.is_frozen ? '<span class="tag tag-frozen">❄ קפוא</span>' : ""}</div>
+            <div class="card-title">${escapeHtml(it.name)} ${it.is_frozen ? '<span class="tag tag-frozen">❄ קפוא</span>' : ""}${it.unit_type === "unit" && !it.unit_amount ? '<span class="tag tag-danger">חסר משקל ליחידה</span>' : ""}</div>
             <div class="card-row">
                 <span class="tag">${escapeHtml(it.category)}${it.subcategory ? " / " + escapeHtml(it.subcategory) : ""}</span>
                 <span class="price-raw">₪${Number(it.price).toFixed(2)} / ${UNIT_TYPE_LABELS[it.unit_type]}</span>
