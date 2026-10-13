@@ -6,6 +6,7 @@ import { APP_VERSION } from "../constants.js";
 export async function renderSettingsPage(container) {
     const apiKey = (await getSetting("gemini_api_key")) || "";
     const lastExport = await getSetting("last_export");
+    const autoSave = !!(await getSetting("scan_autosave"));
     let persisted = null;
     try { persisted = navigator.storage && navigator.storage.persisted ? await navigator.storage.persisted() : null; } catch (e) { /* לא נתמך */ }
 
@@ -15,6 +16,13 @@ export async function renderSettingsPage(container) {
             <div class="hint">נדרש לסריקת חשבוניות. נשמר רק בתוך הטלפון הזה, לא נשלח לשום מקום חוץ מ-Google.</div>
             <div class="field" style="margin-top:8px;"><input type="text" id="f-apikey" value="${apiKey}" placeholder="הדבק כאן את המפתח"></div>
             <button class="btn btn-primary btn-small" id="btn-save-key">שמירה</button>
+        </div>
+
+        <div class="card">
+            <div class="card-title">סריקה מהירה</div>
+            <div class="checkbox-field"><input type="checkbox" id="f-autosave" ${autoSave ? "checked" : ""}>
+                <label for="f-autosave">שמירה אוטומטית אחרי סריקה כשהכול תקין</label></div>
+            <div class="hint">כשכל השורות מזוהות, ללא שינוי מחיר חריג, ויש ספק והסכום תואם לקבלה - החשבונית נשמרת לבד אחרי 5 שניות (אפשר לעצור). אחרת תראה רק את מה שדורש בדיקה.</div>
         </div>
 
         <div class="card">
@@ -44,6 +52,8 @@ export async function renderSettingsPage(container) {
         await setSetting("gemini_api_key", container.querySelector("#f-apikey").value.trim());
         toast("נשמר");
     };
+
+    container.querySelector("#f-autosave").onchange = async (e) => { await setSetting("scan_autosave", e.target.checked); toast("נשמר"); };
 
     container.querySelector("#btn-export").onclick = async () => {
         await downloadExport();

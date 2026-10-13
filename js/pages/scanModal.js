@@ -14,6 +14,7 @@ function todayLocal() {
 
 export async function openScanModal({ supplierAware, onDone }) {
     const apiKey = await getSetting("gemini_api_key");
+    const autoSaveEnabled = !!(await getSetting("scan_autosave"));
     const suppliers = supplierAware ? await listSuppliers() : [];
 
     const overlay = openModal(`
@@ -44,6 +45,8 @@ export async function openScanModal({ supplierAware, onDone }) {
             <div class="checkbox-field"><input type="checkbox" id="scan-petty"><label for="scan-petty">קופה קטנה (עובד קנה וקיבל החזר במזומן)</label></div>
             <div class="field" id="scan-purchaser-wrap" style="display:none;"><input type="text" id="scan-purchaser" placeholder="מי רכש (אופציונלי)"></div>
             ` : ""}
+            <div id="scan-summary" style="margin-bottom:8px;"></div>
+            <div id="scan-autosave" class="hint-warn" style="display:none;"></div>
             <div id="scan-items-box"></div>
             <div class="card-row" style="font-weight:700;margin:8px 0 2px;"><span>סה"כ השורות</span><span id="scan-sum">₪0.00</span></div>
             <div class="hint-warn" id="scan-total-warn" style="display:none;"></div>
@@ -51,7 +54,7 @@ export async function openScanModal({ supplierAware, onDone }) {
             <div class="error-msg" id="scan-apply-error"></div>
             <div class="modal-actions">
                 <button class="btn btn-secondary" id="btn-cancel">ביטול</button>
-                <button class="btn btn-primary" id="btn-apply">שמירה</button>
+                <button class="btn btn-primary" id="btn-apply">אשר ושמור</button>
             </div>
         </div>
         <div class="modal-actions" id="scan-cancel-only">
@@ -59,7 +62,12 @@ export async function openScanModal({ supplierAware, onDone }) {
         </div>
     `);
 
-    overlay.querySelector("#btn-cancel2").onclick = closeModal;
+    let autoTimer = null;
+    const stopAuto = () => { if (autoTimer) { clearInterval(autoTimer); autoTimer = null; } const b = overlay.querySelector("#scan-autosave"); if (b) b.style.display = "none"; };
+    overlay.querySelector("#btn-cancel2").onclick = () => { stopAuto(); closeModal(); };
+    // כל עריכה/לחיצה במסך הבדיקה עוצרת את השמירה האוטומטית
+    overlay.querySelector("#scan-results").addEventListener("input", stopAuto);
+    overlay.querySelector("#scan-items-box").addEventListener("pointerdown", stopAuto);
 
     let scannedItems = [];
     let scannedFile = null;
@@ -209,16 +217,20 @@ export async function openScanModal({ supplierAware, onDone }) {
         };
         box.oninput = updateTotal;
 
+        let attentionCount = 0, okCount = 0;
         scannedItems.forEach((it, idx) => {
             const unitPriceNum = parseFloat(it.unit_price) || 0;
-            const priceChanged = it.matched_pantry_item_id && it.matched_price != null && Math.abs(it.matched_price - unitPriceNum) > 0.001;
+            const defFactor = it.default_factor > 0 && !it._pack && !it._case ? it.default_factor : 1;
+            const cmpPrice = unitPriceNum / defFactor; // מחיר ליחידת מזווה
+            const relChange = it.matched_pantry_item_id && it.matched_price > 0 ? Math.abs(cmpPrice - it.matched_price) / it.matched_price : 0;
+            const priceChanged = it.matched_pantry_item_id && it.matched_price != null && relChange >= 0.01;
             const ut = rowUnit(it);
             const packUnits = ut === "liter" ? [["l", "ליטר"], ["ml", 'מ"ל']] : [["kg", 'ק"ג'], ["g", "גרם"]];
             const nameEmpty = !String(it.name || "").trim();
             // חריגות שכדאי לבדוק (המחיר במזווה הוא ליחידת מזווה, לכן לא משווים כשיש גודל אריזה/ארגז)
             const flags = [];
             if (it.matched_pantry_item_id && it.matched_price > 0 && unitPriceNum > 0 && !it._pack && !it._case) {
-                const dev = ((unitPriceNum - it.matched_price) / it.matched_price) * 100;
+                const dev = ((cmpPrice - it.matched_price) / it.matched_price) * 100;
                 if (Math.abs(dev) >= 40) flags.push(`המחיר שונה ב-${Math.round(dev)}% מהמחיר במזווה - ודא שזו לא טעות בקריאה או באריזה`);
             }
             const qn = parseFloat(it.quantity);
@@ -227,8 +239,11 @@ export async function openScanModal({ supplierAware, onDone }) {
             if (nameKey && scannedItems.filter((x) => String(x.name || "").trim().toLowerCase() === nameKey).length > 1) {
                 flags.push("השם מופיע יותר מפעם אחת בקבלה - ייתכן שצריך לאחד שורות");
             }
+            // שורה "תקינה" = מוכרת במזווה, בלי חריגות ובלי שינוי מחיר מעל 5% - מוסתרת, ורק מה שדורש תשומת לב מוצג
+            const needsAttention = !it.matched_pantry_item_id || nameEmpty || flags.length > 0 || relChange >= 0.05 || !!it.suggested_pantry_item_id;
+            if (needsAttention) attentionCount++; else okCount++;
             const row = h(`
-                <div class="item-row-inputs" style="${priceChanged ? "border-color:#c0392b;background:#fdecea;" : ""}">
+                <div class="item-row-inputs" data-ok="${needsAttention ? 0 : 1}" style="${needsAttention ? "" : "display:none;"}${priceChanged ? "border-color:#c0392b;background:#fdecea;" : ""}">
                     <div class="top-line">
                         <strong>שורה ${idx + 1}</strong>
                         <div class="btn-row">
@@ -252,7 +267,7 @@ export async function openScanModal({ supplierAware, onDone }) {
                     <div class="field">
                         <label>מחיר יחידה${priceChanged ? " - שונה מהמחיר הקיים!" : ""}</label>
                         <input type="number" step="any" id="scan-price-${idx}" value="${it.unit_price}" style="${priceChanged ? "border-color:#c0392b;color:#c0392b;font-weight:700;" : ""}">
-                        ${priceChanged ? `<div class="hint" style="color:#c0392b;">מחיר קודם: ₪${it.matched_price.toFixed(2)} → מחיר חדש: ₪${unitPriceNum.toFixed(2)}</div>` : ""}
+                        ${priceChanged ? `<div class="hint" style="color:#c0392b;">מחיר קודם: ₪${it.matched_price.toFixed(2)} → מחיר חדש: ₪${cmpPrice.toFixed(2)}${defFactor !== 1 ? " (לפי האריזה מהקנייה הקודמת)" : ""}</div>` : ""}
                     </div>
                     <div class="field">
                         <label>קטגוריה${it.matched_pantry_item_id ? "" : " (חובה למוצר חדש)"}</label>
@@ -372,13 +387,46 @@ export async function openScanModal({ supplierAware, onDone }) {
             }
         });
         updateTotal();
+
+        // כותרת סיכום: כמה שורות תקינות (מוסתרות) וכמה דורשות תשומת לב
+        const sum = overlay.querySelector("#scan-summary");
+        sum.innerHTML = `${okCount ? `<div class="card-row"><span>✓ ${okCount} שורות זוהו ותקינות</span><button type="button" class="btn btn-secondary btn-small" id="btn-show-ok">הצג</button></div>` : ""}
+            ${attentionCount ? `<div class="hint-warn">⚠ ${attentionCount} שורות דורשות תשומת לב (מוצגות למטה)</div>` : '<div class="hint" style="color:#2e7d32;font-weight:700;">✓ הכול זוהה - אפשר לאשר ולשמור</div>'}`;
+        const showOk = sum.querySelector("#btn-show-ok");
+        if (showOk) showOk.onclick = () => {
+            const hidden = box.querySelectorAll('[data-ok="1"]');
+            const nowShown = hidden[0] && hidden[0].style.display !== "none";
+            hidden.forEach((r) => { r.style.display = nowShown ? "none" : ""; });
+            showOk.textContent = nowShown ? "הצג" : "הסתר";
+        };
+        maybeAutoSave(attentionCount);
     }
 
-    overlay.querySelector("#btn-cancel").onclick = closeModal;
+    // שמירה אוטומטית (אם הופעלה בהגדרות): רק כשהכול תקין, יש ספק, והסכום מתאים לקבלה. 5 שניות לעצור.
+    function maybeAutoSave(attentionCount) {
+        stopAuto();
+        if (!autoSaveEnabled || !supplierAware || attentionCount > 0 || scannedItems.length === 0) return;
+        const supplier = overlay.querySelector("#scan-supplier").value;
+        const warnShown = overlay.querySelector("#scan-total-warn").style.display !== "none";
+        if (!supplier || warnShown || !overlay.querySelector("#scan-date").value) return;
+        let left = 5;
+        const banner = overlay.querySelector("#scan-autosave");
+        const paint = () => { banner.innerHTML = `שמירה אוטומטית בעוד ${left} שניות <button type="button" class="btn btn-secondary btn-small" id="btn-auto-stop">עצור</button>`; banner.querySelector("#btn-auto-stop").onclick = stopAuto; };
+        banner.style.display = "block";
+        paint();
+        autoTimer = setInterval(() => {
+            left -= 1;
+            if (left <= 0) { stopAuto(); overlay.querySelector("#btn-apply").click(); } else paint();
+        }, 1000);
+    }
+
+    overlay.querySelector("#btn-cancel").onclick = () => { stopAuto(); closeModal(); };
     overlay.querySelector("#btn-apply").onclick = async () => {
+        stopAuto();
         const items = scannedItems.map((it, idx) => ({
             name: overlay.querySelector(`#scan-name-${idx}`).value,
             orig_name: it.orig_name || "",
+            default_factor: it.default_factor || null,
             quantity: overlay.querySelector(`#scan-qty-${idx}`).value,
             unit_price: overlay.querySelector(`#scan-price-${idx}`).value,
             units_per_case: overlay.querySelector(`#scan-case-${idx}`).value,

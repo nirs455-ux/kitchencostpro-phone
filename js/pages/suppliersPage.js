@@ -265,6 +265,12 @@ function openInvoiceModal(existing, suppliers, pantryItems, container) {
                     <label for="f-reimb">הוחזר לעובד</label></div>
             </div>
         </div>
+        <datalist id="inv-pantry-names">${[...pantryItems].map((p) => `<option value="${escapeHtml(p.name)}"></option>`).join("")}</datalist>
+        <div id="repeat-box" class="card" style="display:none;">
+            <div class="hint">הזמנה קבועה? העתק שורות מחשבונית קודמת של הספק ושנה רק מה שהשתנה:</div>
+            <div class="form-row"><div class="field"><select id="repeat-sel"></select></div>
+                <button type="button" class="btn btn-accent btn-small" id="btn-repeat">העתק</button></div>
+        </div>
         <div id="items-box"></div>
         <button type="button" class="btn btn-secondary btn-small" id="btn-add-row">+ הוסף שורה</button>
         <div class="card-row" style="font-weight:700;margin-top:10px;"><span>סה"כ:</span><span id="total-display">₪0.00</span></div>
@@ -291,10 +297,11 @@ function openInvoiceModal(existing, suppliers, pantryItems, container) {
         const row = h(`
             <div class="item-row-inputs" id="inv-row-${id}" data-stock-factor="${prefill && prefill.stock_factor ? prefill.stock_factor : ""}" data-factor-pantry="${prefill && prefill.pantry_item_id ? prefill.pantry_item_id : ""}">
                 <div class="top-line" style="margin-bottom:6px;">
-                    <input type="text" id="inv-name-${id}" placeholder="שם מוצר" style="flex:1;min-width:0;" value="${prefill ? escapeHtml(prefill.product_name) : ""}">
+                    <input type="text" id="inv-name-${id}" list="inv-pantry-names" autocomplete="off" placeholder="שם מוצר" style="flex:1;min-width:0;" value="${prefill ? escapeHtml(prefill.product_name) : ""}">
                     <button type="button" class="remove-row-btn" data-remove="${id}" aria-label="הסר שורה">✕</button>
                 </div>
-                <div class="field">
+                <div class="hint" id="inv-link-${id}" style="margin:0 0 6px;"></div>
+                <div class="field" id="inv-pantry-wrap-${id}" style="display:none;">
                     <select id="inv-pantry-${id}">
                         <option value="">ללא שיוך למזווה</option>
                         <option value="__new__">➕ מוצר חדש - הוסף למזווה</option>
@@ -438,6 +445,46 @@ function openInvoiceModal(existing, suppliers, pantryItems, container) {
         utSel.addEventListener("change", () => { syncNew(); syncPack(); });
         syncNew();
         syncPack();
+
+        // ---- קישור אוטומטי למזווה לפי השם (בלי לגלול ברשימה) ----
+        const nameEl = row.querySelector(`#inv-name-${id}`);
+        const linkEl = row.querySelector(`#inv-link-${id}`);
+        const wrapEl = row.querySelector(`#inv-pantry-wrap-${id}`);
+        const findByName = (v) => {
+            const key = (v || "").trim().toLowerCase();
+            return key ? pantryItems.find((p) => p.name.trim().toLowerCase() === key) : null;
+        };
+        const refreshLink = () => {
+            const name = nameEl.value.trim();
+            const linked = pantrySel.value && pantrySel.value !== "__new__" ? pantryItems.find((p) => String(p.id) === pantrySel.value) : null;
+            if (linked) {
+                linkEl.innerHTML = `✓ מקושר למזווה: <b>${escapeHtml(linked.name)}</b> · <a href="#" data-change>שנה</a>`;
+            } else if (pantrySel.value === "__new__") {
+                linkEl.innerHTML = `➕ מוצר חדש יתווסף למזווה · <a href="#" data-change>שנה</a>`;
+            } else if (name) {
+                linkEl.innerHTML = `לא נמצא במזווה · <a href="#" data-new>➕ הוסף כמוצר חדש</a> · <a href="#" data-change>קשר למוצר קיים</a>`;
+            } else {
+                linkEl.innerHTML = "";
+            }
+            const ch = linkEl.querySelector("[data-change]");
+            if (ch) ch.onclick = (e) => { e.preventDefault(); wrapEl.style.display = wrapEl.style.display === "none" ? "block" : "none"; };
+            const nw = linkEl.querySelector("[data-new]");
+            if (nw) nw.onclick = (e) => { e.preventDefault(); pantrySel.value = "__new__"; pantrySel.dispatchEvent(new Event("change")); };
+        };
+        const autoLink = () => {
+            const m = findByName(nameEl.value);
+            if (m && (!pantrySel.value || row.dataset.autoLinked === "1")) {
+                if (pantrySel.value !== String(m.id)) { pantrySel.value = String(m.id); pantrySel.dispatchEvent(new Event("change")); }
+                row.dataset.autoLinked = "1";
+            } else if (!m && row.dataset.autoLinked === "1") {
+                pantrySel.value = ""; pantrySel.dispatchEvent(new Event("change")); row.dataset.autoLinked = "";
+            }
+            refreshLink();
+        };
+        nameEl.addEventListener("input", autoLink);
+        nameEl.addEventListener("change", autoLink);
+        pantrySel.addEventListener("change", refreshLink);
+        refreshLink();
         row.querySelector("[data-remove]").onclick = () => { row.remove(); recalc(); };
     }
 
@@ -457,6 +504,34 @@ function openInvoiceModal(existing, suppliers, pantryItems, container) {
     }
     recalc();
     overlay.querySelector("#btn-add-row").onclick = () => addRow();
+
+    // ---- העתקה מהזמנה קודמת של הספק (הזמנה יומית קבועה) ----
+    const repeatBox = overlay.querySelector("#repeat-box");
+    const repeatSel = overlay.querySelector("#repeat-sel");
+    let supplierInvoices = [];
+    const loadRepeatOptions = async () => {
+        const sid = overlay.querySelector("#f-supplier").value;
+        repeatBox.style.display = "none";
+        if (existing || !sid) return;
+        supplierInvoices = (await listInvoicesWithItems()).filter((i) => String(i.supplier_id) === sid && i.items.length).slice(0, 8);
+        if (!supplierInvoices.length) return;
+        repeatSel.innerHTML = supplierInvoices.map((i, k) => `<option value="${k}">${i.invoice_date} · ${i.items.length} שורות · ${money(i.total_amount)}</option>`).join("");
+        repeatBox.style.display = "block";
+    };
+    overlay.querySelector("#f-supplier").addEventListener("change", loadRepeatOptions);
+    overlay.querySelector("#btn-repeat").onclick = () => {
+        const inv = supplierInvoices[parseInt(repeatSel.value, 10)];
+        if (!inv) return;
+        // מסירים שורות ריקות לפני ההעתקה
+        box.querySelectorAll(".item-row-inputs").forEach((r) => {
+            const rid = r.id.replace("inv-row-", "");
+            if (!overlay.querySelector(`#inv-name-${rid}`).value.trim() && !overlay.querySelector(`#inv-qty-${rid}`).value) r.remove();
+        });
+        for (const it of inv.items) addRow({ ...it, pantry_item_id: it.pantry_item_id });
+        recalc();
+        toast(`הועתקו ${inv.items.length} שורות - עדכן כמויות ומחירים ושמור`);
+    };
+    loadRepeatOptions();
 
     const pettyBox = overlay.querySelector("#f-petty");
     const syncPetty = () => { overlay.querySelector("#petty-fields").style.display = pettyBox.checked ? "block" : "none"; };
