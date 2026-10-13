@@ -303,40 +303,44 @@ function openInvoiceModal(existing, suppliers, pantryItems, container) {
                 </div>
                 <div id="inv-new-${id}" style="display:none;background:#eef6fb;border-radius:8px;padding:8px;margin-bottom:6px;">
                     <div class="hint">המוצר ייווצר במזווה עם המחיר ליחידה מהשורה הזו.</div>
-                    <div class="field"><label>קטגוריה (חובה)</label>
-                        <select id="inv-cat-${id}"><option value="">בחר קטגוריה...</option>${Object.keys(CATEGORY_GROUPS).map((c) => `<option value="${c}">${c}</option>`).join("")}</select></div>
                     <div class="form-row">
+                        <div class="field"><label>קטגוריה</label>
+                            <select id="inv-cat-${id}"><option value="">בחר...</option>${Object.keys(CATEGORY_GROUPS).map((c) => `<option value="${c}">${c}</option>`).join("")}</select></div>
                         <div class="field"><label>נמדד ב-</label>
                             <select id="inv-ut-${id}">${UNIT_TYPES.map((u) => `<option value="${u}" ${u === "unit" ? "selected" : ""}>${UNIT_TYPE_LABELS[u]}</option>`).join("")}</select></div>
-                        <div class="field" id="inv-ua-wrap-${id}"><label>משקל ליחידה בגרם (אופציונלי)</label>
-                            <input type="number" step="any" inputmode="decimal" id="inv-ua-${id}" placeholder="אפשר להשלים אחר כך"></div>
                     </div>
                 </div>
-                <div id="inv-pk-${id}" style="display:none;background:#f6f6f0;border-radius:8px;padding:8px;margin-bottom:6px;">
-                    <div class="form-row" id="inv-pack-wrap-${id}">
-                        <div class="field"><label id="inv-pack-label-${id}">גודל אריזה (אופציונלי)</label>
-                            <input type="number" step="any" inputmode="decimal" id="inv-pack-${id}" placeholder="לדוגמה: 0.1"></div>
-                        <div class="field"><label>יחידה</label><select id="inv-pack-unit-${id}"></select></div>
-                    </div>
-                    <div class="hint" id="inv-pack-echo-${id}"></div>
-                    <div class="field"><label id="inv-case-label-${id}">יחידות באריזה / בארגז (אופציונלי)</label>
-                        <input type="number" step="any" inputmode="decimal" id="inv-case-${id}" placeholder="לדוגמה: 9"></div>
-                    <div class="checkbox-field">
-                        <input type="checkbox" id="inv-upd-${id}" ${existing ? "" : "checked"}>
-                        <label for="inv-upd-${id}">עדכן את המחיר במזווה לפי השורה הזו</label>
-                    </div>
-                    <div class="hint" id="inv-pk-prev-${id}"></div>
-                </div>
-                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;">
-                    <div class="field" style="margin:0;"><label>כמות / משקל</label>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                    <div class="field" style="margin:0;"><label id="inv-qty-label-${id}">כמות</label>
                         <input type="number" step="any" inputmode="decimal" id="inv-qty-${id}" value="${prefill ? prefill.quantity : ""}"></div>
-                    <div class="field" style="margin:0;"><label>מחיר ליחידה / ק"ג</label>
-                        <input type="number" step="any" inputmode="decimal" id="inv-price-${id}" value="${prefill ? prefill.unit_price : ""}"></div>
-                    <div class="field" style="margin:0;"><label>סה"כ ששולם</label>
+                    <div class="field" style="margin:0;"><label>כמה שילמת (סה"כ)</label>
                         <input type="number" step="any" inputmode="decimal" id="inv-line-${id}" value="${prefill ? (prefill.line_total ?? Math.round(prefill.quantity * prefill.unit_price * 100) / 100) : ""}"></div>
                 </div>
+                <div class="hint" id="inv-pk-prev-${id}" style="margin:6px 0;font-weight:600;"></div>
                 ${prefill && prefill.stock_factor ? `<div class="hint">כל יחידה בחשבונית = ${Math.round(prefill.stock_factor * 1000) / 1000} יחידות מלאי (נשמר מהסריקה)</div>` : ""}
-                <div class="hint">למשל 9 יחידות ב-15 ₪: כמות 9 וסה"כ 15 (המחיר ליחידה יחושב לבד). הנתונים נשמרים כפי שהוזנו.</div>
+                <details style="margin-top:4px;">
+                    <summary style="cursor:pointer;color:#777;font-size:13px;">אפשרויות נוספות (אריזה, מחיר ליחידה, עדכון מחיר)</summary>
+                    <div style="padding-top:8px;">
+                        <div class="field"><label>מחיר ליחידה / ק"ג (מחושב לבד מהסכום)</label>
+                            <input type="number" step="any" inputmode="decimal" id="inv-price-${id}" value="${prefill ? prefill.unit_price : ""}"></div>
+                        <div class="field" id="inv-ua-wrap-${id}" style="display:none;"><label>משקל ליחידה בגרם (אפשר להשלים אחר כך)</label>
+                            <input type="number" step="any" inputmode="decimal" id="inv-ua-${id}"></div>
+                        <div id="inv-pk-${id}" style="display:none;">
+                            <div class="form-row" id="inv-pack-wrap-${id}">
+                                <div class="field"><label id="inv-pack-label-${id}">גודל אריזה (אופציונלי)</label>
+                                    <input type="number" step="any" inputmode="decimal" id="inv-pack-${id}" placeholder="לדוגמה: 0.1"></div>
+                                <div class="field"><label>יחידה</label><select id="inv-pack-unit-${id}"></select></div>
+                            </div>
+                            <div class="hint" id="inv-pack-echo-${id}"></div>
+                            <div class="field"><label id="inv-case-label-${id}">יחידות באריזה / בארגז (אופציונלי)</label>
+                                <input type="number" step="any" inputmode="decimal" id="inv-case-${id}" placeholder="לדוגמה: 9"></div>
+                            <div class="checkbox-field">
+                                <input type="checkbox" id="inv-upd-${id}" ${existing ? "" : "checked"}>
+                                <label for="inv-upd-${id}">עדכן את המחיר במזווה לפי השורה הזו</label>
+                            </div>
+                        </div>
+                    </div>
+                </details>
             </div>
         `);
         box.appendChild(row);
@@ -370,7 +374,7 @@ function openInvoiceModal(existing, suppliers, pantryItems, container) {
         const utSel = row.querySelector(`#inv-ut-${id}`);
         const syncNew = () => {
             newBox.style.display = pantrySel.value === "__new__" ? "block" : "none";
-            row.querySelector(`#inv-ua-wrap-${id}`).style.display = utSel.value === "unit" ? "block" : "none";
+            row.querySelector(`#inv-ua-wrap-${id}`).style.display = (pantrySel.value === "__new__" && utSel.value === "unit") ? "block" : "none";
         };
         const rowUnitType = () => {
             if (pantrySel.value === "__new__") return utSel.value;
@@ -382,7 +386,8 @@ function openInvoiceModal(existing, suppliers, pantryItems, container) {
             const ut = rowUnitType();
             const pk = row.querySelector(`#inv-pk-${id}`);
             pk.style.display = ut ? "block" : "none";
-            if (!ut) return;
+            row.querySelector(`#inv-qty-label-${id}`).textContent = ut === "unit" ? "כמה יחידות קיבלת?" : ut === "weight" ? 'כמה ק"ג?' : ut === "liter" ? "כמה ליטר?" : "כמות";
+            if (!ut) { updatePreview(); return; }
             const isPackable = ut === "weight" || ut === "liter";
             row.querySelector(`#inv-pack-wrap-${id}`).style.display = isPackable ? "" : "none";
             // ברירת מחדל: ק"ג / ליטר (0.1 = מאה גרם, 1.2 = קילו ומאתיים). גרם/מ"ל זמינים לבחירה מפורשת.
@@ -397,10 +402,13 @@ function openInvoiceModal(existing, suppliers, pantryItems, container) {
         };
         const updatePreview = () => {
             const ut = rowUnitType();
-            if (!ut) return;
             const q = num(qtyEl);
             let price = num(priceEl);
             if (isNaN(price) && q > 0 && !isNaN(num(totalEl))) price = num(totalEl) / q;
+            if (!ut) {
+                row.querySelector(`#inv-pk-prev-${id}`).textContent = !isNaN(price) && price > 0 ? `מחיר ליחידה: ₪${price.toFixed(2)}` : "";
+                return;
+            }
             const { factor, error } = computeStockFactor(ut, parseFloat(row.querySelector(`#inv-case-${id}`).value) || null,
                 parseFloat(row.querySelector(`#inv-pack-${id}`).value) || null, packSel.value);
             const label = ut === "liter" ? "ליטר" : ut === "weight" ? 'ק"ג' : "יחידה";
@@ -417,8 +425,8 @@ function openInvoiceModal(existing, suppliers, pantryItems, container) {
             const p = pantryItems.find((x) => String(x.id) === pantrySel.value);
             const old = p && p.price != null ? ` (במזווה כרגע: ₪${Number(p.price).toFixed(2)})` : "";
             const packs = q > 0 ? q : 1;
-            const unitsText = ut === "unit" && (factor || 1) > 1 && q > 0 ? `קנית ${packs === 1 ? "אריזה אחת" : packs + " אריזות"} × ${+(factor).toFixed(3)} יחידות = ${+(packs * factor).toFixed(3)} יחידות. ` : "";
-            prev.textContent = !isNaN(price) && price > 0 ? `${unitsText}מחיר שיישמר במזווה: ₪${(price / (factor || 1)).toFixed(2)} ל${label}${old}` : "";
+            const unitsText = ut === "unit" && (factor || 1) > 1 && q > 0 ? `${packs === 1 ? "אריזה אחת" : packs + " אריזות"} × ${+(factor).toFixed(3)} = ${+(packs * factor).toFixed(3)} יחידות. ` : "";
+            prev.textContent = !isNaN(price) && price > 0 ? `${unitsText}מחיר במזווה: ₪${(price / (factor || 1)).toFixed(2)} ל${label}${old}` : "";
         };
         for (const el of [qtyEl, priceEl, totalEl, row.querySelector(`#inv-case-${id}`), row.querySelector(`#inv-pack-${id}`)]) el.addEventListener("input", updatePreview);
         packSel.addEventListener("change", updatePreview);
