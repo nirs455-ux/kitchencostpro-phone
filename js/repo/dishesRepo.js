@@ -26,6 +26,7 @@ async function resolveDishItems(items) {
         if (sourceType === "pantry") {
             const row = await dbGet("pantryItems", sourceId);
             if (!row) throw new Error("מרכיב לא נמצא במזווה");
+            if (row.unit_type === "unit" && !row.unit_amount) throw new Error(`'${row.name}' חסר משקל ליחידה - השלם אותו במזווה לפני השימוש במנה`);
             ppg = pricePerGram(row);
             sourceName = row.name;
         } else if (sourceType === "recipe") {

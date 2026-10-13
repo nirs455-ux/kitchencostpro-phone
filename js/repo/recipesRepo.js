@@ -24,6 +24,7 @@ async function resolveRecipeItems(items) {
         if (qty <= 0) throw new Error("כמות חייבת להיות גדולה מ-0");
         const row = await dbGet("pantryItems", pantryId);
         if (!row) throw new Error("מרכיב לא נמצא במזווה");
+        if (row.unit_type === "unit" && !row.unit_amount) throw new Error(`'${row.name}' חסר משקל ליחידה - השלם אותו במזווה לפני השימוש במתכון`);
         const ppg = pricePerGram(row);
         const cost = calcItemCost(ppg, qty);
         totalCost += cost;

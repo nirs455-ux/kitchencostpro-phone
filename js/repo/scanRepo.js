@@ -134,12 +134,15 @@ export async function applyScannedInvoice({ items, supplierId, invoiceDate, imag
             if (!(category in CATEGORY_GROUPS)) throw new Error(`${where}: יש לבחור קטגוריה עבור '${name}'`);
             unitType = it.unit_type || "weight";
             if (!UNIT_TYPES.includes(unitType)) throw new Error(`${where}: יחידת מידה לא תקינה עבור '${name}'`);
-            if (unitType === "unit") {
+            if (unitType === "unit" && it.unit_amount !== "" && it.unit_amount != null) {
                 unitAmount = parseFloat(it.unit_amount);
-                if (Number.isNaN(unitAmount)) throw new Error(`${where}: יש להזין משקל/נפח ליחידה עבור '${name}'`);
+                if (!(unitAmount > 0)) throw new Error(`${where}: משקל ליחידה לא תקין עבור '${name}'`);
             }
         }
 
+        if (packageSize && packageSize < 1 && (it.package_unit === "g" || it.package_unit === "ml")) {
+            throw new Error(`${where}: גודל אריזה ${packageSize} ב${it.package_unit === "g" ? "גרם" : 'מ"ל'} נראה קטן מדי - התכוונת ל-${packageSize} ${it.package_unit === "g" ? 'ק"ג' : "ליטר"}?`);
+        }
         const { factor, error } = computeStockFactor(unitType, unitsPerCase, packageSize, it.package_unit);
         if (error) throw new Error(`${where}: ${error} ('${name}')`);
         const stockFactor = factor && factor !== 1 ? factor : null;
@@ -258,9 +261,9 @@ export async function createPantryItemFromInvoice({ name, category, unitType, un
     const dup = (await dbGetAll("pantryItems")).find((r) => !r.parent_id && r.name.trim().toLowerCase() === name.toLowerCase());
     if (dup) throw new Error(`'${name}' כבר קיים במזווה - בחר אותו מהרשימה במקום ליצור חדש`);
     let amount = null;
-    if (unitType === "unit") {
+    if (unitType === "unit" && unitAmount !== "" && unitAmount != null) {
         amount = parseFloat(unitAmount);
-        if (Number.isNaN(amount) || amount <= 0) throw new Error(`יש להזין משקל/נפח ליחידה עבור '${name}'`);
+        if (!(amount > 0)) throw new Error(`משקל ליחידה לא תקין עבור '${name}'`);
     }
     return dbPut("pantryItems", {
         name, category, subcategory: null, unit_type: unitType, unit_amount: amount,
