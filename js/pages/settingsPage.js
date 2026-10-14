@@ -1,11 +1,13 @@
 import { getSetting, setSetting } from "../repo/settingsRepo.js";
 import { downloadExport, importAndReplace } from "../export.js";
 import { toast, confirmDialog } from "../ui.js";
-import { APP_VERSION } from "../constants.js";
+import { APP_VERSION, THEMES } from "../constants.js";
+import { chooseTheme } from "../theme.js";
 
 export async function renderSettingsPage(container) {
     const apiKey = (await getSetting("gemini_api_key")) || "";
     const lastExport = await getSetting("last_export");
+    const currentTheme = (await getSetting("theme")) || "";
     const autoSave = !!(await getSetting("scan_autosave"));
     let persisted = null;
     try { persisted = navigator.storage && navigator.storage.persisted ? await navigator.storage.persisted() : null; } catch (e) { /* לא נתמך */ }
@@ -16,6 +18,12 @@ export async function renderSettingsPage(container) {
             <div class="hint">נדרש לסריקת חשבוניות. נשמר רק בתוך הטלפון הזה, לא נשלח לשום מקום חוץ מ-Google.</div>
             <div class="field" style="margin-top:8px;"><input type="text" id="f-apikey" value="${apiKey}" placeholder="הדבק כאן את המפתח"></div>
             <button class="btn btn-primary btn-small" id="btn-save-key">שמירה</button>
+        </div>
+
+        <div class="card">
+            <div class="card-title">מראה האפליקציה</div>
+            <div class="hint">בחר ערכת עיצוב - משתנה מיד, ואפשר להחליף בכל רגע.</div>
+            <div class="chips" id="theme-chips">${THEMES.map((t) => `<button type="button" class="chip ${t.key === currentTheme ? "active" : ""}" data-theme-key="${t.key}"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${t.color};margin-left:6px;"></span>${t.label}</button>`).join("")}</div>
         </div>
 
         <div class="card">
@@ -52,6 +60,13 @@ export async function renderSettingsPage(container) {
         await setSetting("gemini_api_key", container.querySelector("#f-apikey").value.trim());
         toast("נשמר");
     };
+
+    container.querySelectorAll("[data-theme-key]").forEach((b) => {
+        b.onclick = async () => {
+            await chooseTheme(b.dataset.themeKey);
+            container.querySelectorAll("[data-theme-key]").forEach((x) => x.classList.toggle("active", x === b));
+        };
+    });
 
     container.querySelector("#f-autosave").onchange = async (e) => { await setSetting("scan_autosave", e.target.checked); toast("נשמר"); };
 
