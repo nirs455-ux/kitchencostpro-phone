@@ -2,8 +2,10 @@ import { scanInvoiceImage, applyScannedInvoice } from "../repo/scanRepo.js";
 import { getSetting } from "../repo/settingsRepo.js";
 import { listSuppliers, addSupplier } from "../repo/suppliersRepo.js";
 import { CATEGORY_GROUPS, UNIT_TYPES, UNIT_TYPE_LABELS } from "../constants.js";
-import { h, openModal, closeModal, toast, escapeHtml, info } from "../ui.js";
+import { h, openModal, closeModal, toast, escapeHtml, info, busy, attemptClose } from "../ui.js";
 import { compressImage } from "../imageUtil.js";
+import { addToQueue } from "../repo/scanQueue.js";
+import { logError } from "../errorLog.js";
 import { priceChanges } from "../repo/suppliersRepo.js";
 import { showPriceChangesDialog } from "./priceAlerts.js";
 
@@ -12,7 +14,7 @@ function todayLocal() {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-export async function openScanModal({ supplierAware, onDone }) {
+export async function openScanModal({ supplierAware, onDone, initialFile = null }) {
     const apiKey = await getSetting("gemini_api_key");
     const autoSaveEnabled = !!(await getSetting("scan_autosave"));
     const suppliers = supplierAware ? await listSuppliers() : [];
@@ -62,7 +64,7 @@ export async function openScanModal({ supplierAware, onDone }) {
 
     let autoTimer = null;
     const stopAuto = () => { if (autoTimer) { clearInterval(autoTimer); autoTimer = null; } const b = overlay.querySelector("#scan-autosave"); if (b) b.style.display = "none"; };
-    overlay.querySelector("#btn-cancel2").onclick = () => { stopAuto(); closeModal(); };
+    overlay.querySelector("#btn-cancel2").onclick = () => { stopAuto(); attemptClose(overlay); };
     // כל עריכה/לחיצה במסך הבדיקה עוצרת את השמירה האוטומטית
     overlay.querySelector("#scan-results").addEventListener("input", stopAuto);
     overlay.querySelector("#scan-items-box").addEventListener("pointerdown", stopAuto);
@@ -135,6 +137,13 @@ export async function openScanModal({ supplierAware, onDone }) {
                 loading.textContent = `השרת עמוס, מנסה שוב (${n}/${total})...`;
             });
             scannedItems = data.items || [];
+            // מוצר חדש: קטגוריה ויחידה מוצעות אוטומטית (אפשר לשנות)
+            for (const it of scannedItems) {
+                if (!it.matched_pantry_item_id) {
+                    if (it.guess_category && !it._cat) { it._cat = it.guess_category; it._catGuessed = true; }
+                    if (it.guess_unit && !it._unit) it._unit = it.guess_unit;
+                }
+            }
             printedTotal = data.invoice_total;
             if (supplierAware) {
                 if (data.invoice_date) overlay.querySelector("#scan-date").value = data.invoice_date;
@@ -157,6 +166,7 @@ export async function openScanModal({ supplierAware, onDone }) {
             if (overlay.__syncSupplierWarn) overlay.__syncSupplierWarn();
             renderResults();
         } catch (err) {
+            logError("scan", err);
             overlay.querySelector("#scan-loading").style.display = "none";
             overlay.querySelector("#scan-upload-area").style.display = "block";
             overlay.querySelector("#scan-cancel-only").style.display = "flex";
@@ -164,6 +174,16 @@ export async function openScanModal({ supplierAware, onDone }) {
             el.textContent = err.message;
             el.style.display = "block";
             // התמונה כבר נבחרה - מאפשרים ניסיון חוזר בלחיצה אחת, בלי לצלם מחדש
+            if (err.queueable && !overlay.querySelector("#btn-scan-queue")) {
+                const qb = h(`<button type="button" class="btn btn-secondary btn-block" id="btn-scan-queue" style="margin-top:8px;">⏳ שמור לעיבוד מאוחר</button>`);
+                el.after(qb);
+                qb.onclick = async () => {
+                    await addToQueue(await compressImage(scannedFile));
+                    closeModal();
+                    toast("התמונה נשמרה בתור - תופיע במסך הבית כשתרצה לעבד");
+                    if (onDone) onDone();
+                };
+            }
             if (!overlay.querySelector("#btn-scan-retry")) {
                 const rb = h(`<button type="button" class="btn btn-primary btn-block" id="btn-scan-retry" style="margin-top:8px;">🔄 נסה שוב עם אותה תמונה</button>`);
                 el.after(rb);
@@ -197,6 +217,7 @@ export async function openScanModal({ supplierAware, onDone }) {
     function renderResults() {
         overlay.querySelector("#scan-loading").style.display = "none";
         overlay.querySelector("#scan-results").style.display = "block";
+        overlay.__dirty = true; // יש תוצאות סריקה שטרם נשמרו
         const box = overlay.querySelector("#scan-items-box");
         box.innerHTML = "";
 
@@ -278,7 +299,7 @@ export async function openScanModal({ supplierAware, onDone }) {
                         ${priceChanged ? `<div class="hint" style="color:#c0392b;">מחיר קודם: ₪${it.matched_price.toFixed(2)} → מחיר חדש: ₪${cmpPrice.toFixed(2)}${defFactor !== 1 ? " (לפי האריזה מהקנייה הקודמת)" : ""}</div>` : ""}
                     </div>
                     <div class="field">
-                        <label>קטגוריה${it.matched_pantry_item_id ? "" : " (חובה למוצר חדש)"}</label>
+                        <label>קטגוריה${it.matched_pantry_item_id ? "" : it._catGuessed && it._cat === it.guess_category ? " (הוצעה אוטומטית - בדוק)" : " (חובה למוצר חדש)"}</label>
                         <select id="scan-cat-${idx}" ${it.matched_pantry_item_id ? "disabled" : ""}>
                             ${it.matched_pantry_item_id ? `<option>${escapeHtml(it.matched_category)}</option>` :
                               '<option value="">בחר קטגוריה...</option>' + Object.keys(CATEGORY_GROUPS).map((c) => `<option value="${c}" ${it._cat === c ? "selected" : ""}>${c}</option>`).join("")}
@@ -427,8 +448,8 @@ export async function openScanModal({ supplierAware, onDone }) {
         }, 1000);
     }
 
-    overlay.querySelector("#btn-cancel").onclick = () => { stopAuto(); closeModal(); };
-    overlay.querySelector("#btn-apply").onclick = async () => {
+    overlay.querySelector("#btn-cancel").onclick = () => { stopAuto(); attemptClose(overlay); };
+    overlay.querySelector("#btn-apply").onclick = busy(async () => {
         stopAuto();
         const items = scannedItems.map((it, idx) => ({
             name: overlay.querySelector(`#scan-name-${idx}`).value,
@@ -469,5 +490,7 @@ export async function openScanModal({ supplierAware, onDone }) {
             el.textContent = e.message;
             el.style.display = "block";
         }
-    };
+    });
+
+    if (initialFile) processFile(initialFile);
 }

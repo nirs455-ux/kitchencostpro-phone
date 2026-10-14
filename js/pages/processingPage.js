@@ -1,7 +1,7 @@
 import { listAllPantryItems, updatePantryItemYield, addBreakdownProduct, deletePantryItem, deleteAllChildren, getDeleteInfo, deleteConfirmText } from "../repo/pantryRepo.js";
 import { CATEGORY_GROUPS } from "../constants.js";
 import { effectivePrice } from "../formulas.js";
-import { h, openModal, closeModal, confirmDialog, toast, escapeHtml, info } from "../ui.js";
+import { h, openModal, closeModal, confirmDialog, toast, escapeHtml, info, busy, attemptClose } from "../ui.js";
 import { getFilter, applyFilter, mountFilterBar, groupBySection, groupTitleEl } from "../filters.js";
 
 export async function renderProcessingPage(container) {
@@ -147,8 +147,8 @@ function openYieldModal(it, container) {
             <button class="btn btn-primary" id="btn-save">שמירה</button>
         </div>
     `);
-    overlay.querySelector("#btn-cancel").onclick = closeModal;
-    overlay.querySelector("#btn-save").onclick = async () => {
+    overlay.querySelector("#btn-cancel").onclick = () => attemptClose(overlay);
+    overlay.querySelector("#btn-save").onclick = busy(async () => {
         const subField = overlay.querySelector("#f-subcategory");
         const data = {
             name: it.name,
@@ -168,7 +168,7 @@ function openYieldModal(it, container) {
             el.textContent = e.message;
             el.style.display = "block";
         }
-    };
+    });
 }
 
 function openBreakdownModal(parent, container) {
@@ -190,8 +190,8 @@ function openBreakdownModal(parent, container) {
             <button class="btn btn-primary" id="btn-save">שמירה</button>
         </div>
     `);
-    overlay.querySelector("#btn-cancel").onclick = closeModal;
-    overlay.querySelector("#btn-save").onclick = async () => {
+    overlay.querySelector("#btn-cancel").onclick = () => attemptClose(overlay);
+    overlay.querySelector("#btn-save").onclick = busy(async () => {
         const data = {
             name: overlay.querySelector("#f-name").value,
             weight_before: overlay.querySelector("#f-wb").value,
@@ -209,5 +209,5 @@ function openBreakdownModal(parent, container) {
             el.textContent = e.message;
             el.style.display = "block";
         }
-    };
+    });
 }

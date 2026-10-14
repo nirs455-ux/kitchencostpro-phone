@@ -3,7 +3,7 @@ import { listAllPantryItems } from "../repo/pantryRepo.js";
 import { dbGetAll } from "../db.js";
 import { NON_FOOD_CATEGORIES } from "../constants.js";
 import { pricePerGram, itemCost as calcItemCost, computeDishPricing } from "../formulas.js";
-import { h, openModal, closeModal, confirmDialog, toast, escapeHtml, money, info } from "../ui.js";
+import { h, openModal, closeModal, confirmDialog, toast, escapeHtml, money, info, busy, attemptClose } from "../ui.js";
 
 async function allSources() {
     const pantry = (await listAllPantryItems()).filter((it) => !NON_FOOD_CATEGORIES.has(it.category));
@@ -171,8 +171,8 @@ async function openDishModal(existing, container) {
     overlay.querySelector("#f-multiplier").addEventListener("input", recalc);
     overlay.querySelector("#f-target").addEventListener("input", recalc);
 
-    overlay.querySelector("#btn-cancel").onclick = closeModal;
-    overlay.querySelector("#btn-save").onclick = async () => {
+    overlay.querySelector("#btn-cancel").onclick = () => attemptClose(overlay);
+    overlay.querySelector("#btn-save").onclick = busy(async () => {
         const items = [];
         box.querySelectorAll(".item-row-inputs").forEach((row) => {
             const id = row.id.replace("dish-row-", "");
@@ -204,5 +204,5 @@ async function openDishModal(existing, container) {
             el.textContent = e.message;
             el.style.display = "block";
         }
-    };
+    });
 }

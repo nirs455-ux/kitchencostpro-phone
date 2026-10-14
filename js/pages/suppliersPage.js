@@ -5,8 +5,10 @@ import { createPantryItemFromInvoice } from "../repo/scanRepo.js";
 import { CATEGORY_GROUPS, UNIT_TYPES, UNIT_TYPE_LABELS } from "../constants.js";
 import { computeStockFactor } from "../invoiceParse.js";
 import { showPriceChangesDialog, renderPriceChangeRows } from "./priceAlerts.js";
+import { openTrashModal } from "./trashModal.js";
+import { restoreInvoice } from "../repo/suppliersRepo.js";
 import { dbGet, dbPut, dbDelete } from "../db.js";
-import { h, openModal, closeModal, confirmDialog, toast, escapeHtml, money, info } from "../ui.js";
+import { h, openModal, closeModal, confirmDialog, toast, escapeHtml, money, info, busy, attemptClose, toastAction } from "../ui.js";
 import { openScanModal } from "./scanModal.js";
 import { compressImage, showImageFullscreen } from "../imageUtil.js";
 
@@ -23,6 +25,12 @@ const shortDate = (d) => { const [y, m, day] = (d || "").split("-"); return day 
 let uiTab = "invoices";
 let uiFilter = { q: "", mode: "all", month: "", supplier: "" };
 
+// מאפשר למסכים אחרים (למשל מסך הבית) לפתוח את הדף בלשונית/סינון מסוימים
+export function setSuppliersView(tab, filter = {}) {
+    uiTab = tab;
+    uiFilter = { q: "", mode: "all", month: "", supplier: "", ...filter };
+}
+
 export async function renderSuppliersPage(container) {
     const suppliers = await listSuppliers();
     const invoices = await listInvoicesWithItems();
@@ -30,6 +38,7 @@ export async function renderSuppliersPage(container) {
     const owed = await pettyCashOwed();
     const alerts = await priceChanges({ thresholdPct: 10, sinceDays: 30 });
     const rerender = () => renderSuppliersPage(container);
+    const trashCount = (await listInvoicesWithItems({ trashed: true })).length;
     const months = [...new Set(invoices.map((i) => (i.invoice_date || "").slice(0, 7)).filter(Boolean))].sort().reverse();
 
     container.innerHTML = `
@@ -79,6 +88,7 @@ export async function renderSuppliersPage(container) {
                 ${[["all", "הכול"], ["petty", "קופה קטנה"], ["owed", "לא הוחזר"], ["image", "עם תמונה"]].map(([k, l]) => `<button type="button" class="chip ${uiFilter.mode === k ? "active" : ""}" data-mode="${k}">${l}</button>`).join("")}
                 <select id="flt-month" class="chip-select"><option value="">כל החודשים</option>${months.map((m) => `<option value="${m}" ${uiFilter.month === m ? "selected" : ""}>${monthLabel(m)}</option>`).join("")}</select>
                 ${supplierName ? `<button type="button" class="chip active" id="flt-sup">${escapeHtml(supplierName)} ✕</button>` : ""}
+                ${trashCount ? `<button type="button" class="chip" id="btn-trash">🗑 פח (${trashCount})</button>` : ""}
             </div>
             ${uiFilter.mode === "owed" && owed.count ? `<div class="card-row" style="margin:4px 2px 8px;"><span>${owed.count} קבלות · ${money(owed.total)}</span><button type="button" class="btn btn-secondary btn-small" id="btn-reimb-all">סמן הכול כהוחזר</button></div>` : ""}
             <div id="inv-groups"></div>
@@ -87,6 +97,8 @@ export async function renderSuppliersPage(container) {
         q.addEventListener("input", () => { uiFilter.q = q.value; drawGroups(); });
         body.querySelectorAll("[data-mode]").forEach((b) => { b.onclick = () => { uiFilter.mode = b.dataset.mode; renderInvoicesTab(); }; });
         body.querySelector("#flt-month").onchange = (e) => { uiFilter.month = e.target.value; drawGroups(); };
+        const trashBtn = body.querySelector("#btn-trash");
+        if (trashBtn) trashBtn.onclick = () => openTrashModal(rerender);
         const sup = body.querySelector("#flt-sup");
         if (sup) sup.onclick = () => { uiFilter.supplier = ""; renderInvoicesTab(); };
         const reimb = body.querySelector("#btn-reimb-all");
@@ -174,11 +186,11 @@ export async function renderSuppliersPage(container) {
         if (img) img.onclick = () => showImageFullscreen(inv.image, `${inv.supplier_name} - ${inv.invoice_date}`);
         overlay.querySelector("#d-edit").onclick = () => { closeModal(); openInvoiceModal(inv, suppliers, pantryItems, container); };
         overlay.querySelector("#d-delete").onclick = async () => {
-            if (!(await confirmDialog("למחוק את החשבונית?<br><br>הקניות שלה ייגרעו מהסיכום החודשי ומחישוב המלאי."))) return;
+            if (!(await confirmDialog("להעביר את החשבונית לפח?<br><br>הקניות שלה ייגרעו מהסיכום החודשי ומחישוב המלאי. אפשר לשחזר 30 יום."))) return;
             await deleteInvoice(inv.id);
             closeModal();
-            toast("נמחק");
             rerender();
+            toastAction("החשבונית הועברה לפח", "בטל", async () => { await restoreInvoice(inv.id); toast("שוחזר"); rerender(); });
         };
     }
 
@@ -278,8 +290,8 @@ function openSupplierModal(container) {
             <button class="btn btn-primary" id="btn-save">שמירה</button>
         </div>
     `);
-    overlay.querySelector("#btn-cancel").onclick = closeModal;
-    overlay.querySelector("#btn-save").onclick = async () => {
+    overlay.querySelector("#btn-cancel").onclick = () => attemptClose(overlay);
+    overlay.querySelector("#btn-save").onclick = busy(async () => {
         try {
             await addSupplier(overlay.querySelector("#f-name").value);
             closeModal();
@@ -290,7 +302,7 @@ function openSupplierModal(container) {
             el.textContent = e.message;
             el.style.display = "block";
         }
-    };
+    });
 }
 
 function openInvoiceModal(existing, suppliers, pantryItems, container) {
@@ -618,8 +630,8 @@ function openInvoiceModal(existing, suppliers, pantryItems, container) {
     };
     overlay.querySelector("#btn-img-remove").onclick = () => { imageChange = null; fileInput.value = ""; syncImageUi(); };
 
-    overlay.querySelector("#btn-cancel").onclick = closeModal;
-    overlay.querySelector("#btn-save").onclick = async () => {
+    overlay.querySelector("#btn-cancel").onclick = () => attemptClose(overlay);
+    overlay.querySelector("#btn-save").onclick = busy(async () => {
         const items = [];
         const newProducts = []; // שורות עם "מוצר חדש במזווה" - נוצרות רק אחרי שכל האימותים עברו
         const priceUpdates = []; // עדכוני מחיר למוצרים קיימים - מתבצעים רק אחרי שהחשבונית נשמרה
@@ -733,5 +745,5 @@ function openInvoiceModal(existing, suppliers, pantryItems, container) {
             el.textContent = e.message;
             el.style.display = "block";
         }
-    };
+    });
 }

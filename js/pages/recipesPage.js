@@ -2,7 +2,7 @@ import { listRecipesWithItems, saveRecipe, deleteRecipe } from "../repo/recipesR
 import { listAllPantryItems } from "../repo/pantryRepo.js";
 import { RECIPE_CATEGORIES, NON_FOOD_CATEGORIES } from "../constants.js";
 import { pricePerGram, itemCost as calcItemCost, recipeCostPerGram } from "../formulas.js";
-import { h, openModal, closeModal, confirmDialog, toast, escapeHtml, money } from "../ui.js";
+import { h, openModal, closeModal, confirmDialog, toast, escapeHtml, money, busy, attemptClose } from "../ui.js";
 import { openImagePicker } from "../imagePicker.js";
 import { scanRecipeImage } from "../repo/scanRepo.js";
 import { getSetting } from "../repo/settingsRepo.js";
@@ -175,8 +175,8 @@ async function openRecipeModal(existing, container, draft = null) {
     recalc();
     overlay.querySelector("#btn-add-row").onclick = () => addRow();
 
-    overlay.querySelector("#btn-cancel").onclick = closeModal;
-    overlay.querySelector("#btn-save").onclick = async () => {
+    overlay.querySelector("#btn-cancel").onclick = () => attemptClose(overlay);
+    overlay.querySelector("#btn-save").onclick = busy(async () => {
         const items = [];
         box.querySelectorAll(".item-row-inputs").forEach((row) => {
             const id = row.id.replace("ing-row-", "");
@@ -200,5 +200,5 @@ async function openRecipeModal(existing, container, draft = null) {
             el.textContent = e.message;
             el.style.display = "block";
         }
-    };
+    });
 }

@@ -1,6 +1,6 @@
 import { listTopLevelPantryItems, addPantryItem, updatePantryItem, deletePantryItem, getDeleteInfo, deleteConfirmText } from "../repo/pantryRepo.js";
 import { CATEGORY_GROUPS, UNIT_TYPES, UNIT_TYPE_LABELS } from "../constants.js";
-import { h, openModal, closeModal, confirmDialog, toast, escapeHtml } from "../ui.js";
+import { h, openModal, closeModal, confirmDialog, toast, escapeHtml, busy, attemptClose } from "../ui.js";
 import { openScanModal } from "./scanModal.js";
 import { dbGetAll } from "../db.js";
 import { getSetting, setSetting } from "../repo/settingsRepo.js";
@@ -10,7 +10,7 @@ export async function renderPantryPage(container) {
     const items = await listTopLevelPantryItems();
     // תאריך קנייה אחרונה לכל מוצר (לפי חשבוניות; זיכויים לא נספרים) - לאפשרות המיון "קנייה אחרונה"
     const lastBought = new Map();
-    const invoiceDate = Object.fromEntries((await dbGetAll("invoices")).filter((i) => i.document_type !== "credit").map((i) => [i.id, i.invoice_date || ""]));
+    const invoiceDate = Object.fromEntries((await dbGetAll("invoices")).filter((i) => i.document_type !== "credit" && !i.deleted_at).map((i) => [i.id, i.invoice_date || ""]));
     for (const it of await dbGetAll("invoiceItems")) {
         const d = invoiceDate[it.invoice_id];
         if (it.pantry_item_id && d && d > (lastBought.get(it.pantry_item_id) || "")) lastBought.set(it.pantry_item_id, d);
@@ -158,8 +158,8 @@ function openPantryModal(existing, container) {
     syncSubcategory();
     syncUnitAmount();
 
-    overlay.querySelector("#btn-cancel").onclick = closeModal;
-    overlay.querySelector("#btn-save").onclick = async () => {
+    overlay.querySelector("#btn-cancel").onclick = () => attemptClose(overlay);
+    overlay.querySelector("#btn-save").onclick = busy(async () => {
         const data = {
             name: overlay.querySelector("#f-name").value,
             category: catSelect.value,
@@ -183,5 +183,5 @@ function openPantryModal(existing, container) {
             el.textContent = e.message;
             el.style.display = "block";
         }
-    };
+    });
 }

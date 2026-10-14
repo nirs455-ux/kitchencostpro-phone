@@ -3,11 +3,17 @@ import { downloadExport, importAndReplace } from "../export.js";
 import { toast, confirmDialog, info } from "../ui.js";
 import { APP_VERSION, THEMES } from "../constants.js";
 import { chooseTheme } from "../theme.js";
+import { hasPin, openSetPinDialog, enterStaffMode, removePin } from "../staff.js";
+import { buildReport, clearErrorLog } from "../errorLog.js";
+import { openTrashModal } from "./trashModal.js";
+import { listInvoicesWithItems } from "../repo/suppliersRepo.js";
 
 export async function renderSettingsPage(container) {
     const apiKey = (await getSetting("gemini_api_key")) || "";
     const lastExport = await getSetting("last_export");
     const currentTheme = (await getSetting("theme")) || "";
+    const pinSet = await hasPin();
+    const trashCount = (await listInvoicesWithItems({ trashed: true })).length;
     const autoSave = !!(await getSetting("scan_autosave"));
     let persisted = null;
     try { persisted = navigator.storage && navigator.storage.persisted ? await navigator.storage.persisted() : null; } catch (e) { /* לא נתמך */ }
@@ -22,6 +28,25 @@ export async function renderSettingsPage(container) {
         <div class="card">
             <div class="card-title">מראה האפליקציה ${info("בחר ערכת עיצוב. השינוי מיידי, ואפשר להחליף בכל רגע.")}</div>
             <div class="chips" id="theme-chips">${THEMES.map((t) => `<button type="button" class="chip ${t.key === currentTheme ? "active" : ""}" data-theme-key="${t.key}"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${t.color};margin-left:6px;"></span>${t.label}</button>`).join("")}</div>
+        </div>
+
+        <div class="card">
+            <div class="card-title">מצב עובד ${info("נעילה בקוד: העובד רואה רק צילום קבלות (נשלחות לבדיקה שלך) וספירת מלאי, בלי מחירים ורווחים. זו נעילה נוחה למניעת בלבול, לא הגנת אבטחה מלאה.")}</div>
+            ${pinSet ? `<div class="btn-row"><button class="btn btn-primary btn-small" id="btn-staff-on">🔒 נעל למצב עובד עכשיו</button>
+                <button class="btn btn-secondary btn-small" id="btn-staff-pin">שנה קוד</button>
+                <button class="btn btn-danger btn-small" id="btn-staff-off">בטל נעילה</button></div>`
+              : `<button class="btn btn-secondary btn-small" id="btn-staff-pin">הגדר קוד</button>`}
+        </div>
+
+        <div class="card">
+            <div class="card-title">פח חשבוניות</div>
+            <button class="btn btn-secondary btn-small" id="btn-trash-open">🗑 פתח פח (${trashCount})</button>
+        </div>
+
+        <div class="card">
+            <div class="card-title">דוח תקלה ${info("אם משהו לא עובד: לחץ להעתקת דוח קצר (גרסה, מכשיר והתקלות האחרונות), והדבק אותו בהודעה אליי.")}</div>
+            <div class="btn-row"><button class="btn btn-secondary btn-small" id="btn-report-copy">📋 העתק דוח תקלה</button>
+                <button class="btn btn-secondary btn-small" id="btn-report-clear">נקה יומן</button></div>
         </div>
 
         <div class="card">
@@ -59,6 +84,24 @@ export async function renderSettingsPage(container) {
             container.querySelectorAll("[data-theme-key]").forEach((x) => x.classList.toggle("active", x === b));
         };
     });
+
+    const pinBtn = container.querySelector("#btn-staff-pin");
+    if (pinBtn) pinBtn.onclick = () => openSetPinDialog(() => { toast("הקוד נשמר"); renderSettingsPage(container); });
+    const onBtn = container.querySelector("#btn-staff-on");
+    if (onBtn) onBtn.onclick = async () => { if (await confirmDialog("לנעול למצב עובד? כדי לפתוח תצטרך את הקוד.")) enterStaffMode(); };
+    const offBtn = container.querySelector("#btn-staff-off");
+    if (offBtn) offBtn.onclick = async () => { if (await confirmDialog("לבטל את הנעילה והקוד?")) { await removePin(); toast("הנעילה בוטלה"); renderSettingsPage(container); } };
+    container.querySelector("#btn-trash-open").onclick = () => openTrashModal(() => renderSettingsPage(container));
+    container.querySelector("#btn-report-copy").onclick = async () => {
+        const text = await buildReport();
+        try { await navigator.clipboard.writeText(text); toast("הדוח הועתק - הדבק אותו בהודעה"); }
+        catch (e) {
+            const ta = document.createElement("textarea"); ta.value = text; document.body.appendChild(ta); ta.select();
+            try { document.execCommand("copy"); toast("הדוח הועתק"); } catch (e2) { toast("לא הצלחתי להעתיק"); }
+            ta.remove();
+        }
+    };
+    container.querySelector("#btn-report-clear").onclick = () => { clearErrorLog(); toast("היומן נוקה"); };
 
     container.querySelector("#f-autosave").onchange = async (e) => { await setSetting("scan_autosave", e.target.checked); toast("נשמר"); };
 
