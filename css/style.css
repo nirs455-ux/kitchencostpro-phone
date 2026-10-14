@@ -222,3 +222,18 @@ table.simple th { background: var(--brand); color: var(--on-brand); }
     opacity: 0; transition: opacity .2s; pointer-events: none;
 }
 .toast.show { opacity: 0.95; }
+
+/* ---- סימן הסבר (i) ---- */
+.info-btn {
+    display: inline-flex; align-items: center; justify-content: center; vertical-align: middle;
+    width: 17px; height: 17px; min-width: 17px; margin: 0 5px; padding: 0;
+    border: 1px solid var(--muted); border-radius: 50%; background: transparent; color: var(--muted);
+    font: italic 700 11px/1 Georgia, serif; cursor: pointer;
+}
+.info-btn:active { background: var(--brand-soft); color: var(--brand); border-color: var(--brand); }
+.top-bar .info-btn { border-color: var(--topbar-text); color: var(--topbar-text); opacity: 0.75; }
+.info-pop {
+    position: fixed; z-index: 90; background: var(--surface); color: var(--text); border: 1px solid var(--border);
+    border-radius: var(--radius); box-shadow: var(--shadow-lg), 0 6px 20px rgba(0, 0, 0, 0.18);
+    padding: 10px 12px; font-size: 13px; line-height: 1.45; font-weight: 400;
+}
