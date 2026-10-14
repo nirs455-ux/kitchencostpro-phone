@@ -15,10 +15,15 @@ export async function addSupplier(name) {
 }
 
 // מה יימחק עם הספק: כמה חשבוניות ובאיזה סכום כולל.
+// חשבוניות פעילות (שלא בפח)
+export async function activeInvoices() {
+    return (await dbGetAll("invoices")).filter((i) => !i.deleted_at);
+}
+
 export async function getSupplierDeleteInfo(id) {
     const supplier = await dbGet("suppliers", id);
     if (!supplier) throw new Error("ספק לא נמצא");
-    const invoices = await dbGetByIndex("invoices", "supplier_id", id);
+    const invoices = (await dbGetByIndex("invoices", "supplier_id", id)).filter((i) => !i.deleted_at);
     const total = invoices.reduce((n, i) => n + (i.total_amount || 0), 0);
     return { id, name: supplier.name, invoice_count: invoices.length, invoices_total: Math.round(total * 100) / 100 };
 }
@@ -73,10 +78,10 @@ function parseInvoicePayload(data) {
     };
 }
 
-export async function listInvoicesWithItems() {
+export async function listInvoicesWithItems({ trashed = false } = {}) {
     const suppliers = await listSuppliers();
     const supplierById = Object.fromEntries(suppliers.map((s) => [s.id, s.name]));
-    const invoices = await dbGetAll("invoices");
+    const invoices = (await dbGetAll("invoices")).filter((i) => (trashed ? !!i.deleted_at : !i.deleted_at));
     const out = [];
     for (const inv of invoices) {
         const items = await dbGetByIndex("invoiceItems", "invoice_id", inv.id);
@@ -122,9 +127,32 @@ export async function saveInvoice(existingId, data) {
     return invoiceId;
 }
 
+// מחיקה "רכה": החשבונית עוברת לפח ואפשר לשחזר אותה. היא לא נספרת בסיכומים, במלאי ובהתראות מחיר.
 export async function deleteInvoice(id) {
+    const inv = await dbGet("invoices", id);
+    if (!inv) return;
+    await dbPut("invoices", { ...inv, deleted_at: new Date().toISOString() });
+}
+
+export async function restoreInvoice(id) {
+    const inv = await dbGet("invoices", id);
+    if (!inv) return;
+    const { deleted_at, ...rest } = inv;
+    await dbPut("invoices", rest);
+}
+
+// מחיקה סופית (מהפח)
+export async function purgeInvoice(id) {
     await dbDeleteWhere("invoiceItems", "invoice_id", id);
     await dbDelete("invoices", id);
+}
+
+// ניקוי אוטומטי: מה שנמצא בפח יותר מ-30 יום נמחק סופית
+export async function purgeOldTrash(days = 30) {
+    const cutoff = Date.now() - days * 86400000;
+    for (const inv of await dbGetAll("invoices")) {
+        if (inv.deleted_at && new Date(inv.deleted_at).getTime() < cutoff) await purgeInvoice(inv.id);
+    }
 }
 
 // סיכום קנייה חודשי לפי ספק - מקביל לשאילתת monthly_rows ב-suppliers_page.
@@ -150,7 +178,7 @@ export async function monthlySummaryBySupplier() {
 // ---------- התראות שינוי מחיר ----------
 // מחיר ליחידת מזווה בכל שורה = מחיר השורה / stock_factor. משווים כל קנייה לקנייה הקודמת של אותו מוצר (זיכויים לא נספרים).
 async function priceSeries() {
-    const invoices = (await dbGetAll("invoices")).filter((i) => i.document_type !== "credit");
+    const invoices = (await dbGetAll("invoices")).filter((i) => i.document_type !== "credit" && !i.deleted_at);
     const invById = Object.fromEntries(invoices.map((i) => [i.id, i]));
     const series = new Map();
     for (const it of await dbGetAll("invoiceItems")) {
@@ -251,7 +279,7 @@ export function invoicesToCsv(invoices) {
 export async function pettyCashOwed() {
     let count = 0, total = 0;
     for (const inv of await dbGetAll("invoices")) {
-        if (!inv.petty_cash || inv.reimbursed || inv.document_type === "credit") continue;
+        if (inv.deleted_at || !inv.petty_cash || inv.reimbursed || inv.document_type === "credit") continue;
         count += 1;
         total += inv.total_amount;
     }
@@ -260,12 +288,12 @@ export async function pettyCashOwed() {
 
 export async function markAllPettyCashReimbursed() {
     for (const inv of await dbGetAll("invoices")) {
-        if (inv.petty_cash && !inv.reimbursed) await dbPut("invoices", { ...inv, reimbursed: true });
+        if (!inv.deleted_at && inv.petty_cash && !inv.reimbursed) await dbPut("invoices", { ...inv, reimbursed: true });
     }
 }
 
 // חשבונית שנראית כמו כפולה: אותו ספק, אותו תאריך ואותו סכום
 export async function findDuplicateInvoice({ supplierId, date, total, excludeId = null }) {
     const list = await dbGetByIndex("invoices", "supplier_id", parseInt(supplierId, 10));
-    return list.find((i) => i.id !== excludeId && i.invoice_date === date && Math.abs(i.total_amount - total) < 0.01) || null;
+    return list.find((i) => !i.deleted_at && i.id !== excludeId && i.invoice_date === date && Math.abs(i.total_amount - total) < 0.01) || null;
 }

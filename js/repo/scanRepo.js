@@ -48,7 +48,9 @@ export async function scanInvoiceImage(apiKey, file, onRetry) {
                 await new Promise((r) => setTimeout(r, DELAYS[attempt]));
                 continue;
             }
-            throw new Error("אין חיבור לאינטרנט או שהשרת לא זמין. בדוק חיבור ונסה שוב.");
+            const err = new Error("אין חיבור לאינטרנט או שהשרת לא זמין. אפשר לנסות שוב, או לשמור את התמונה לעיבוד מאוחר.");
+            err.queueable = true;
+            throw err;
         }
         if (RETRY_STATUSES.includes(response.status) && attempt < DELAYS.length) {
             if (onRetry) onRetry(attempt + 1, DELAYS.length);
@@ -60,7 +62,9 @@ export async function scanInvoiceImage(apiKey, file, onRetry) {
     if (!response.ok) {
         const code = response.status;
         if (code === 503 || code === 429 || code === 500 || code === 502 || code === 504) {
-            throw new Error("שרת הקריאה של Google עמוס כרגע (זה זמני, לא קשור לאפליקציה). ניסינו כמה פעמים - נסה שוב בעוד דקה, התמונה נשמרה.");
+            const err = new Error("שרת הקריאה של Google עמוס כרגע (זה זמני, לא קשור לאפליקציה). ניסינו כמה פעמים. אפשר לנסות שוב, או לשמור את התמונה לעיבוד מאוחר.");
+            err.queueable = true;
+            throw err;
         }
         if (code === 400 || code === 403) throw new Error("מפתח ה-API לא תקין או חסרות הרשאות. בדוק את המפתח בהגדרות.");
         const text = await response.text();
@@ -89,10 +93,11 @@ export async function scanInvoiceImage(apiKey, file, onRetry) {
     // אריזה/ארגז אחרונים שנרשמו לכל מוצר - כדי שקנייה חוזרת לא תדרוש הזנה מחדש
     const lastFactor = new Map();
     {
-        const invDates = Object.fromEntries((await dbGetAll("invoices")).map((i) => [i.id, i.invoice_date || ""]));
+        const invDates = Object.fromEntries((await dbGetAll("invoices")).filter((i) => !i.deleted_at).map((i) => [i.id, i.invoice_date || ""]));
         const lastDate = new Map();
         for (const li of await dbGetAll("invoiceItems")) {
             if (!li.pantry_item_id) continue;
+            if (!(li.invoice_id in invDates)) continue;
             const d = invDates[li.invoice_id] || "";
             if (d >= (lastDate.get(li.pantry_item_id) ?? "")) { lastDate.set(li.pantry_item_id, d); lastFactor.set(li.pantry_item_id, li.stock_factor || null); }
         }
@@ -114,6 +119,7 @@ export async function scanInvoiceImage(apiKey, file, onRetry) {
 
         enrichedItems.push({
             name, orig_name: name, quantity, unit_price: unitPrice,
+            guess_category: it.category_guess || null, guess_unit: it.unit_guess || null,
             default_factor: match ? lastFactor.get(match.id) || null : null,
             discount_applied: it.discount_applied || 0, list_unit_price: it.list_unit_price ?? null,
             matched_pantry_item_id: match ? match.id : null,

@@ -16,7 +16,7 @@ async function purchasedSince(pantryItemId, sinceDate) {
     let total = 0;
     for (const it of items) {
         const inv = invoiceById[it.invoice_id];
-        if (!inv) continue;
+        if (!inv || inv.deleted_at) continue;
         if (sinceDate && !(inv.invoice_date > sinceDate)) continue;
         const q = it.quantity * (it.stock_factor ?? 1);
         total += inv.document_type === "credit" ? -q : q;
