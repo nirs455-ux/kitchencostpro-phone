@@ -15,198 +15,257 @@ function todayLocal() {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+const MONTHS_HE = ["ינואר", "פברואר", "מרץ", "אפריל", "מאי", "יוני", "יולי", "אוגוסט", "ספטמבר", "אוקטובר", "נובמבר", "דצמבר"];
+const monthLabel = (ym) => { const [y, m] = ym.split("-"); return `${MONTHS_HE[parseInt(m, 10) - 1] || m} ${y}`; };
+const shortDate = (d) => { const [y, m, day] = (d || "").split("-"); return day ? `${parseInt(day, 10)}.${parseInt(m, 10)}.${y.slice(2)}` : d; };
+
+// מצב התצוגה נשמר בזמן שהדף נבנה מחדש (אחרי שמירה/מחיקה)
+let uiTab = "invoices";
+let uiFilter = { q: "", mode: "all", month: "", supplier: "" };
+
 export async function renderSuppliersPage(container) {
     const suppliers = await listSuppliers();
     const invoices = await listInvoicesWithItems();
-    const monthly = await monthlySummaryBySupplier();
     const pantryItems = await listTopLevelPantryItems();
+    const owed = await pettyCashOwed();
+    const alerts = await priceChanges({ thresholdPct: 10, sinceDays: 30 });
+    const rerender = () => renderSuppliersPage(container);
+    const months = [...new Set(invoices.map((i) => (i.invoice_date || "").slice(0, 7)).filter(Boolean))].sort().reverse();
 
     container.innerHTML = `
-        <div class="btn-row">
-            <button class="btn btn-primary btn-small" id="btn-add-supplier">+ ספק חדש</button>
-            <button class="btn btn-primary btn-small" id="btn-add-invoice">+ חשבונית חדשה</button>
-            <button class="btn btn-accent btn-small" id="btn-scan">📷 סרוק חשבונית</button>
+        <div class="sup-actions">
+            <button class="btn btn-primary btn-big" id="btn-scan">📷 סרוק חשבונית</button>
+            <button class="btn btn-secondary btn-big" id="btn-add-invoice">+ ידנית</button>
         </div>
-        <div class="chips" id="supplier-chips"></div>
-        <div id="petty-owed"></div>
-        <div id="price-alerts"></div>
-        <h2>סיכום קנייה חודשי</h2>
-        <div id="monthly-summary"></div>
-        <div class="btn-row">
-            <button class="btn btn-secondary btn-small" id="btn-report">📊 דוח חודשי</button>
-            <button class="btn btn-secondary btn-small" id="btn-csv">⬇ ייצוא לאקסל (CSV)</button>
+        <div class="attn" id="attn"></div>
+        <div class="seg" id="seg">
+            <button data-tab="invoices">חשבוניות <span class="seg-n">${invoices.length}</span></button>
+            <button data-tab="summary">סיכום</button>
+            <button data-tab="suppliers">ספקים <span class="seg-n">${suppliers.length}</span></button>
         </div>
-        <h2>כל החשבוניות</h2>
-        <div class="card">
-            <div class="field"><input type="search" id="flt-q" placeholder="חיפוש: ספק, מוצר, תאריך, מי רכש..."></div>
-            <div class="form-row">
-                <div class="field"><select id="flt-month"><option value="">כל החודשים</option></select></div>
-                <div class="field"><select id="flt-mode">
-                    <option value="all">הכול</option><option value="petty">קופה קטנה</option>
-                    <option value="owed">קופה קטנה - לא הוחזר</option><option value="image">עם תמונה</option>
-                </select></div>
-            </div>
-            <div class="hint" id="flt-count"></div>
-        </div>
-        <div id="invoices-list"></div>
+        <div id="tab-body"></div>
     `;
 
-    const chipsBox = container.querySelector("#supplier-chips");
-    if (suppliers.length === 0) {
-        chipsBox.innerHTML = '<div class="muted">עדיין אין ספקים - לחץ על "+ ספק חדש".</div>';
-    }
-    for (const s of suppliers) {
-        const chip = h(`<div class="chip" style="display:flex;align-items:center;gap:8px;">${escapeHtml(s.name)}<button type="button" data-del style="border:none;background:none;color:#c0392b;font-size:15px;font-weight:700;padding:2px 4px;cursor:pointer;" aria-label="מחק ספק">✕</button></div>`);
-        chip.querySelector("[data-del]").onclick = async () => {
-            try {
-                const info = await getSupplierDeleteInfo(s.id);
-                let msg = `למחוק את הספק "${escapeHtml(info.name)}"?`;
-                if (info.invoice_count) {
-                    msg += `<br><br>יימחקו גם ${info.invoice_count} חשבוניות שלו (סה"כ ${money(info.invoices_total)}).<br>הקניות שלהן ייגרעו מהסיכום החודשי ומחישוב המלאי.`;
-                }
-                if (!(await confirmDialog(msg))) return;
-                await deleteSupplier(s.id);
-                toast("נמחק");
-                renderSuppliersPage(container);
-            } catch (err) {
-                toast(err.message);
-            }
-        };
-        chipsBox.appendChild(chip);
-    }
+    // ---- פס התראות קטן (רק אם יש) ----
+    const attn = container.querySelector("#attn");
+    if (owed.count) attn.insertAdjacentHTML("beforeend", `<button type="button" class="attn-chip warn" id="attn-owed">קופה קטנה לא הוחזרה · ${money(owed.total)}</button>`);
+    if (alerts.length) attn.insertAdjacentHTML("beforeend", `<button type="button" class="attn-chip danger" id="attn-alerts">⚠ ${alerts.length} שינויי מחיר</button>`);
+    const owedBtn = attn.querySelector("#attn-owed");
+    if (owedBtn) owedBtn.onclick = () => { uiTab = "invoices"; uiFilter = { q: "", mode: "owed", month: "", supplier: "" }; rerender(); };
+    const alertsBtn = attn.querySelector("#attn-alerts");
+    if (alertsBtn) alertsBtn.onclick = () => showPriceChangesDialog(alerts, "שינויי מחיר (30 יום אחרונים)");
 
-    const monthlyBox = container.querySelector("#monthly-summary");
-    if (Object.keys(monthly).length === 0) {
-        monthlyBox.innerHTML = '<div class="empty-state">אין עדיין נתונים - הוסף חשבונית ראשונה.</div>';
-    } else {
-        for (const [supplierName, months] of Object.entries(monthly)) {
-            const card = h(`<div class="card"><div class="card-title">${escapeHtml(supplierName)}</div></div>`);
-            for (const m of months) {
-                card.appendChild(h(`<div class="card-row"><span>${m.month}</span><span style="${m.total < 0 ? "color:#c0392b;" : ""}">${money(m.total)}</span></div>`));
-            }
-            monthlyBox.appendChild(card);
-        }
-    }
+    container.querySelector("#btn-add-invoice").onclick = () => openInvoiceModal(null, suppliers, pantryItems, container);
+    container.querySelector("#btn-scan").onclick = () => openScanModal({ supplierAware: true, onDone: rerender });
 
-    // ---- קופה קטנה שלא הוחזרה + התראות מחיר ----
-    const owed = await pettyCashOwed();
-    const owedBox = container.querySelector("#petty-owed");
-    if (owed.count) {
-        owedBox.innerHTML = `<div class="card" style="border-color:#e6a100;"><div class="card-row"><span><b>קופה קטנה שלא הוחזרה:</b> ${owed.count} קבלות</span><b>${money(owed.total)}</b></div>
-            <button class="btn btn-secondary btn-small" id="btn-reimb-all">סמן הכול כהוחזר</button></div>`;
-        owedBox.querySelector("#btn-reimb-all").onclick = async () => {
+    // ---- לשוניות ----
+    const body = container.querySelector("#tab-body");
+    const segBtns = container.querySelectorAll("#seg button");
+    const showTab = (t) => {
+        uiTab = t;
+        segBtns.forEach((b) => b.classList.toggle("active", b.dataset.tab === t));
+        if (t === "invoices") renderInvoicesTab();
+        else if (t === "summary") renderSummaryTab();
+        else renderSuppliersTab();
+    };
+    segBtns.forEach((b) => { b.onclick = () => showTab(b.dataset.tab); });
+
+    // ================= לשונית חשבוניות =================
+    function renderInvoicesTab() {
+        const supplierName = uiFilter.supplier ? (suppliers.find((s) => String(s.id) === String(uiFilter.supplier)) || {}).name : "";
+        body.innerHTML = `
+            <div class="field" style="margin-bottom:8px;"><input type="search" id="flt-q" placeholder="חיפוש חשבוניות" value="${escapeHtml(uiFilter.q)}"></div>
+            <div class="fchips" id="fchips">
+                ${[["all", "הכול"], ["petty", "קופה קטנה"], ["owed", "לא הוחזר"], ["image", "עם תמונה"]].map(([k, l]) => `<button type="button" class="chip ${uiFilter.mode === k ? "active" : ""}" data-mode="${k}">${l}</button>`).join("")}
+                <select id="flt-month" class="chip-select"><option value="">כל החודשים</option>${months.map((m) => `<option value="${m}" ${uiFilter.month === m ? "selected" : ""}>${monthLabel(m)}</option>`).join("")}</select>
+                ${supplierName ? `<button type="button" class="chip active" id="flt-sup">${escapeHtml(supplierName)} ✕</button>` : ""}
+            </div>
+            ${uiFilter.mode === "owed" && owed.count ? `<div class="card-row" style="margin:4px 2px 8px;"><span>${owed.count} קבלות · ${money(owed.total)}</span><button type="button" class="btn btn-secondary btn-small" id="btn-reimb-all">סמן הכול כהוחזר</button></div>` : ""}
+            <div id="inv-groups"></div>
+        `;
+        const q = body.querySelector("#flt-q");
+        q.addEventListener("input", () => { uiFilter.q = q.value; drawGroups(); });
+        body.querySelectorAll("[data-mode]").forEach((b) => { b.onclick = () => { uiFilter.mode = b.dataset.mode; renderInvoicesTab(); }; });
+        body.querySelector("#flt-month").onchange = (e) => { uiFilter.month = e.target.value; drawGroups(); };
+        const sup = body.querySelector("#flt-sup");
+        if (sup) sup.onclick = () => { uiFilter.supplier = ""; renderInvoicesTab(); };
+        const reimb = body.querySelector("#btn-reimb-all");
+        if (reimb) reimb.onclick = async () => {
             if (!(await confirmDialog(`לסמן ${owed.count} קבלות (${money(owed.total)}) כהוחזרו לעובדים?`))) return;
             await markAllPettyCashReimbursed();
             toast("סומן");
-            renderSuppliersPage(container);
+            uiFilter.mode = "all";
+            rerender();
         };
-    }
-    const alerts = await priceChanges({ thresholdPct: 10, sinceDays: 30 });
-    if (alerts.length) {
-        const box = container.querySelector("#price-alerts");
-        box.innerHTML = `<div class="card" style="border-color:#c0392b;"><div class="card-row"><b>⚠ ${alerts.length} שינויי מחיר ב-30 הימים האחרונים</b><button class="btn btn-secondary btn-small" id="btn-alerts">הצג</button></div></div>`;
-        box.querySelector("#btn-alerts").onclick = () => showPriceChangesDialog(alerts, "שינויי מחיר (30 יום אחרונים)");
+        drawGroups();
     }
 
-    // ---- חיפוש וסינון ----
-    const invoicesList = container.querySelector("#invoices-list");
-    const monthSel = container.querySelector("#flt-month");
-    for (const ym of [...new Set(invoices.map((i) => (i.invoice_date || "").slice(0, 7)).filter(Boolean))].sort().reverse()) {
-        monthSel.insertAdjacentHTML("beforeend", `<option value="${ym}">${ym}</option>`);
-    }
-    const filtered = () => {
-        const q = container.querySelector("#flt-q").value.trim().toLowerCase();
-        const ym = monthSel.value;
-        const mode = container.querySelector("#flt-mode").value;
+    function filteredInvoices() {
+        const q = uiFilter.q.trim().toLowerCase();
         return invoices.filter((inv) => {
-            if (ym && !(inv.invoice_date || "").startsWith(ym)) return false;
-            if (mode === "petty" && !inv.petty_cash) return false;
-            if (mode === "owed" && !(inv.petty_cash && !inv.reimbursed)) return false;
-            if (mode === "image" && !inv.has_image) return false;
+            if (uiFilter.supplier && String(inv.supplier_id) !== String(uiFilter.supplier)) return false;
+            if (uiFilter.month && !(inv.invoice_date || "").startsWith(uiFilter.month)) return false;
+            if (uiFilter.mode === "petty" && !inv.petty_cash) return false;
+            if (uiFilter.mode === "owed" && !(inv.petty_cash && !inv.reimbursed)) return false;
+            if (uiFilter.mode === "image" && !inv.has_image) return false;
             if (q) {
                 const hay = [inv.supplier_name, inv.invoice_date, inv.purchaser, ...inv.items.map((it) => it.product_name)].join(" ").toLowerCase();
                 if (!hay.includes(q)) return false;
             }
             return true;
         });
-    };
-    const renderList = () => {
-        const list = filtered();
-        invoicesList.innerHTML = "";
-        container.querySelector("#flt-count").textContent = `${list.length} מתוך ${invoices.length} חשבוניות`;
-        if (list.length === 0) {
-            invoicesList.innerHTML = `<div class="empty-state">${invoices.length ? "לא נמצאו חשבוניות תואמות." : "אין עדיין חשבוניות."}</div>`;
+    }
+
+    function drawGroups() {
+        const box = body.querySelector("#inv-groups");
+        const list = filteredInvoices();
+        if (!list.length) {
+            box.innerHTML = `<div class="empty-state">${invoices.length ? "לא נמצאו חשבוניות תואמות." : "אין עדיין חשבוניות.<br>לחץ על \"סרוק חשבונית\" כדי להתחיל."}</div>`;
             return;
         }
+        const groups = new Map();
         for (const inv of list) {
-            const card = h(`
-                <div class="card">
-                    <div class="card-title">${escapeHtml(inv.supplier_name)} ${inv.document_type === "credit" ? '<span class="tag tag-danger">זיכוי</span>' : ""}
-                        ${inv.petty_cash ? `<span class="tag">קופה קטנה${inv.purchaser ? " · " + escapeHtml(inv.purchaser) : ""}${inv.reimbursed ? " · הוחזר" : " · לא הוחזר"}</span>` : ""}</div>
-                    <div class="card-row"><span class="muted">${inv.invoice_date}</span><span>${money(inv.total_amount)}</span></div>
-                    <div class="muted">${inv.items.map((it) => escapeHtml(it.product_name)).join(", ")}</div>
-                    <div class="card-actions">
-                        ${inv.has_image ? '<button class="btn btn-accent btn-small" data-image>🖼 תמונה</button>' : ""}
-                        <button class="btn btn-secondary btn-small" data-edit>עריכה</button>
-                        <button class="btn btn-danger btn-small" data-delete>מחיקה</button>
-                    </div>
-                </div>
-            `);
-            const imgBtn = card.querySelector("[data-image]");
-            if (imgBtn) imgBtn.onclick = () => showImageFullscreen(inv.image, `${inv.supplier_name} - ${inv.invoice_date}`);
-            card.querySelector("[data-edit]").onclick = () => openInvoiceModal(inv, suppliers, pantryItems, container);
-            card.querySelector("[data-delete]").onclick = async () => {
-                if (!(await confirmDialog("למחוק את החשבונית?<br><br>הקניות שלה ייגרעו מהסיכום החודשי ומחישוב המלאי."))) return;
-                await deleteInvoice(inv.id);
-                toast("נמחק");
-                renderSuppliersPage(container);
-            };
-            invoicesList.appendChild(card);
+            const ym = (inv.invoice_date || "").slice(0, 7);
+            if (!groups.has(ym)) groups.set(ym, []);
+            groups.get(ym).push(inv);
         }
-    };
-    for (const id of ["#flt-q", "#flt-month", "#flt-mode"]) container.querySelector(id).addEventListener("input", renderList);
-    renderList();
+        box.innerHTML = "";
+        for (const [ym, arr] of groups) {
+            const total = arr.reduce((n, i) => n + (i.document_type === "credit" ? -i.total_amount : i.total_amount), 0);
+            box.appendChild(h(`<div class="month-head"><span>${ym ? monthLabel(ym) : "ללא תאריך"}</span><span>${money(total)}</span></div>`));
+            for (const inv of arr) {
+                const preview = inv.items.slice(0, 2).map((it) => escapeHtml(it.product_name)).join(", ") + (inv.items.length > 2 ? ` +${inv.items.length - 2}` : "");
+                const row = h(`
+                    <div class="inv-row">
+                        <div class="inv-main">
+                            <div class="inv-sup">${escapeHtml(inv.supplier_name)}
+                                ${inv.document_type === "credit" ? '<span class="tag tag-danger">זיכוי</span>' : ""}
+                                ${inv.petty_cash ? `<span class="tag tag-warn">קופה קטנה${inv.reimbursed ? "" : " · לא הוחזר"}</span>` : ""}</div>
+                            <div class="inv-sub">${shortDate(inv.invoice_date)} · ${preview}</div>
+                        </div>
+                        <div class="inv-amt">${money(inv.total_amount)}${inv.has_image ? ' <span title="יש תמונה">🖼</span>' : ""}</div>
+                    </div>`);
+                row.onclick = () => openInvoiceDetails(inv);
+                box.appendChild(row);
+            }
+        }
+    }
 
-    // ---- דוח חודשי וייצוא ----
-    container.querySelector("#btn-csv").onclick = () => {
-        const list = filtered();
-        if (!list.length) { toast("אין חשבוניות לייצוא"); return; }
-        const blob = new Blob([invoicesToCsv(list)], { type: "text/csv;charset=utf-8" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `חשבוניות-${monthSel.value || "הכול"}.csv`;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        URL.revokeObjectURL(url);
-    };
-    container.querySelector("#btn-report").onclick = async () => {
-        const months = [...new Set(invoices.map((i) => (i.invoice_date || "").slice(0, 7)).filter(Boolean))].sort().reverse();
-        if (!months.length) { toast("אין עדיין נתונים"); return; }
+    // ---- פרטי חשבונית (לחיצה על שורה): תוכן + פעולות במקום אחד ----
+    function openInvoiceDetails(inv) {
         const overlay = openModal(`
-            <h2>דוח חודשי</h2>
-            <div class="field"><select id="rep-month">${months.map((m) => `<option value="${m}">${m}</option>`).join("")}</select></div>
-            <div id="rep-body"></div>
-            <div class="modal-actions"><button type="button" class="btn btn-primary" id="rep-close">סגור</button></div>
+            <h2>${escapeHtml(inv.supplier_name)}</h2>
+            <div class="card-row" style="margin:-8px 0 10px;"><span>${shortDate(inv.invoice_date)}${inv.purchaser ? " · " + escapeHtml(inv.purchaser) : ""}</span>
+                <span>${inv.document_type === "credit" ? '<span class="tag tag-danger">זיכוי</span>' : ""}${inv.petty_cash ? `<span class="tag tag-warn">קופה קטנה · ${inv.reimbursed ? "הוחזר" : "לא הוחזר"}</span>` : ""}</span></div>
+            <table class="simple">
+                <thead><tr><th>מוצר</th><th>כמות</th><th>סה"כ</th></tr></thead>
+                <tbody>${inv.items.map((it) => `<tr><td>${escapeHtml(it.product_name)}</td><td>${+Number(it.quantity).toFixed(3)}</td><td>${money(it.line_total ?? it.quantity * it.unit_price)}</td></tr>`).join("")}</tbody>
+            </table>
+            <div class="card-row" style="font-weight:700;margin:10px 0;"><span>סה"כ</span><span>${money(inv.total_amount)}</span></div>
+            <div class="modal-actions" style="flex-wrap:wrap;">
+                ${inv.has_image ? '<button type="button" class="btn btn-accent" id="d-image">🖼 תמונה</button>' : ""}
+                <button type="button" class="btn btn-secondary" id="d-edit">עריכה</button>
+                <button type="button" class="btn btn-danger" id="d-delete">מחיקה</button>
+            </div>
+            <div class="modal-actions"><button type="button" class="btn btn-secondary" id="d-close">סגור</button></div>
         `);
-        const draw = async () => {
-            const r = await monthlyReport(overlay.querySelector("#rep-month").value);
-            const rows = (obj) => Object.entries(obj).sort((x, y) => y[1] - x[1]).map(([k, v]) => `<div class="card-row"><span>${escapeHtml(k)}</span><span>${money(v)}</span></div>`).join("");
-            overlay.querySelector("#rep-body").innerHTML = `
-                <div class="card"><div class="card-row"><b>סה"כ קניות (${r.invoice_count} מסמכים)</b><b>${money(r.total)}</b></div>
-                    ${r.petty_cash_count ? `<div class="card-row"><span>מתוכן קופה קטנה (${r.petty_cash_count})</span><span>${money(r.petty_cash_total)}</span></div>` : ""}</div>
-                <div class="card-title">לפי ספק</div><div class="card">${rows(r.by_supplier)}</div>
-                <div class="card-title">לפי קטגוריה</div><div class="card">${rows(r.by_category)}</div>`;
+        overlay.querySelector("#d-close").onclick = closeModal;
+        const img = overlay.querySelector("#d-image");
+        if (img) img.onclick = () => showImageFullscreen(inv.image, `${inv.supplier_name} - ${inv.invoice_date}`);
+        overlay.querySelector("#d-edit").onclick = () => { closeModal(); openInvoiceModal(inv, suppliers, pantryItems, container); };
+        overlay.querySelector("#d-delete").onclick = async () => {
+            if (!(await confirmDialog("למחוק את החשבונית?<br><br>הקניות שלה ייגרעו מהסיכום החודשי ומחישוב המלאי."))) return;
+            await deleteInvoice(inv.id);
+            closeModal();
+            toast("נמחק");
+            rerender();
         };
-        overlay.querySelector("#rep-month").onchange = draw;
-        overlay.querySelector("#rep-close").onclick = closeModal;
-        draw();
-    };
+    }
 
-    container.querySelector("#btn-add-supplier").onclick = () => openSupplierModal(container);
-    container.querySelector("#btn-add-invoice").onclick = () => openInvoiceModal(null, suppliers, pantryItems, container);
-    container.querySelector("#btn-scan").onclick = () => openScanModal({ supplierAware: true, onDone: () => renderSuppliersPage(container) });
+    // ================= לשונית סיכום =================
+    function renderSummaryTab() {
+        if (!months.length) { body.innerHTML = '<div class="empty-state">אין עדיין נתונים לסיכום.</div>'; return; }
+        const current = uiFilter.month && months.includes(uiFilter.month) ? uiFilter.month : months[0];
+        body.innerHTML = `
+            <div class="form-row" style="align-items:center;">
+                <div class="field" style="margin:0;"><select id="sum-month">${months.map((m) => `<option value="${m}" ${m === current ? "selected" : ""}>${monthLabel(m)}</option>`).join("")}</select></div>
+                <button type="button" class="btn btn-secondary btn-small" id="btn-csv">⬇ אקסל</button>
+            </div>
+            <div id="sum-body" style="margin-top:10px;"></div>
+        `;
+        const draw = async () => {
+            const ym = body.querySelector("#sum-month").value;
+            const r = await monthlyReport(ym);
+            const rows = (obj) => Object.entries(obj).sort((x, y) => y[1] - x[1]).map(([k, v]) => `<div class="card-row"><span>${escapeHtml(k)}</span><span>${money(v)}</span></div>`).join("");
+            body.querySelector("#sum-body").innerHTML = `
+                <div class="card"><div class="stat-big">${money(r.total)}</div><div class="muted">${r.invoice_count} מסמכים</div>
+                    ${r.petty_cash_count ? `<div class="card-row"><span>מתוכם קופה קטנה (${r.petty_cash_count})</span><span>${money(r.petty_cash_total)}</span></div>` : ""}</div>
+                <div class="card-title" style="margin:12px 4px 6px;">לפי ספק</div><div class="card">${rows(r.by_supplier)}</div>
+                <div class="card-title" style="margin:12px 4px 6px;">לפי קטגוריה</div><div class="card">${rows(r.by_category)}</div>`;
+        };
+        body.querySelector("#sum-month").onchange = draw;
+        body.querySelector("#btn-csv").onclick = () => {
+            const ym = body.querySelector("#sum-month").value;
+            const list = invoices.filter((i) => (i.invoice_date || "").startsWith(ym));
+            if (!list.length) { toast("אין חשבוניות לייצוא"); return; }
+            const blob = new Blob([invoicesToCsv(list)], { type: "text/csv;charset=utf-8" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `חשבוניות-${ym}.csv`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
+        };
+        draw();
+    }
+
+    // ================= לשונית ספקים =================
+    function renderSuppliersTab() {
+        body.innerHTML = `<button type="button" class="btn btn-secondary btn-block" id="btn-add-supplier" style="margin-bottom:10px;">+ ספק חדש</button><div id="sup-list"></div>`;
+        body.querySelector("#btn-add-supplier").onclick = () => openSupplierModal(container);
+        const list = body.querySelector("#sup-list");
+        if (!suppliers.length) { list.innerHTML = '<div class="empty-state">עדיין אין ספקים.<br>הם נוספים אוטומטית בסריקה, או ידנית כאן.</div>'; return; }
+        const thisMonth = new Date().toISOString().slice(0, 7);
+        for (const s of suppliers) {
+            const mine = invoices.filter((i) => i.supplier_id === s.id);
+            const monthTotal = mine.filter((i) => (i.invoice_date || "").startsWith(thisMonth)).reduce((n, i) => n + (i.document_type === "credit" ? -i.total_amount : i.total_amount), 0);
+            const last = mine.map((i) => i.invoice_date).sort().pop();
+            const row = h(`
+                <div class="inv-row">
+                    <div class="inv-main"><div class="inv-sup">${escapeHtml(s.name)}</div>
+                        <div class="inv-sub">${mine.length === 1 ? "חשבונית אחת" : mine.length + " חשבוניות"}${last ? " · אחרונה " + shortDate(last) : ""}</div></div>
+                    <div class="inv-amt">${money(monthTotal)}<div class="muted">החודש</div></div>
+                </div>`);
+            row.onclick = () => {
+                const overlay = openModal(`
+                    <h2>${escapeHtml(s.name)}</h2>
+                    <div class="modal-actions" style="flex-wrap:wrap;">
+                        <button type="button" class="btn btn-primary" id="s-show">הצג חשבוניות</button>
+                        <button type="button" class="btn btn-danger" id="s-del">מחק ספק</button>
+                    </div>
+                    <div class="modal-actions"><button type="button" class="btn btn-secondary" id="s-close">סגור</button></div>`);
+                overlay.querySelector("#s-close").onclick = closeModal;
+                overlay.querySelector("#s-show").onclick = () => { closeModal(); uiFilter = { q: "", mode: "all", month: "", supplier: String(s.id) }; uiTab = "invoices"; rerender(); };
+                overlay.querySelector("#s-del").onclick = async () => {
+                    try {
+                        const infoD = await getSupplierDeleteInfo(s.id);
+                        let msg = `למחוק את הספק "${escapeHtml(infoD.name)}"?`;
+                        if (infoD.invoice_count) msg += `<br><br>יימחקו גם ${infoD.invoice_count} חשבוניות שלו (סה"כ ${money(infoD.invoices_total)}).<br>הקניות שלהן ייגרעו מהסיכום החודשי ומחישוב המלאי.`;
+                        if (!(await confirmDialog(msg))) return;
+                        await deleteSupplier(s.id);
+                        closeModal();
+                        toast("נמחק");
+                        rerender();
+                    } catch (err) { toast(err.message); }
+                };
+            };
+            list.appendChild(row);
+        }
+    }
+
+    showTab(uiTab);
 }
 
 function openSupplierModal(container) {
