@@ -1,6 +1,6 @@
 import { getSetting, setSetting } from "../repo/settingsRepo.js";
 import { downloadExport, importAndReplace } from "../export.js";
-import { toast, confirmDialog } from "../ui.js";
+import { toast, confirmDialog, info } from "../ui.js";
 import { APP_VERSION, THEMES } from "../constants.js";
 import { chooseTheme } from "../theme.js";
 
@@ -14,30 +14,26 @@ export async function renderSettingsPage(container) {
 
     container.innerHTML = `
         <div class="card">
-            <div class="card-title">מפתח Gemini API</div>
-            <div class="hint">נדרש לסריקת חשבוניות. נשמר רק בתוך הטלפון הזה, לא נשלח לשום מקום חוץ מ-Google.</div>
+            <div class="card-title">מפתח Gemini API ${info("נדרש לסריקת חשבוניות. נשמר רק בתוך הטלפון הזה, ולא נשלח לשום מקום חוץ מ-Google.")}</div>
             <div class="field" style="margin-top:8px;"><input type="text" id="f-apikey" value="${apiKey}" placeholder="הדבק כאן את המפתח"></div>
             <button class="btn btn-primary btn-small" id="btn-save-key">שמירה</button>
         </div>
 
         <div class="card">
-            <div class="card-title">מראה האפליקציה</div>
-            <div class="hint">בחר ערכת עיצוב - משתנה מיד, ואפשר להחליף בכל רגע.</div>
+            <div class="card-title">מראה האפליקציה ${info("בחר ערכת עיצוב. השינוי מיידי, ואפשר להחליף בכל רגע.")}</div>
             <div class="chips" id="theme-chips">${THEMES.map((t) => `<button type="button" class="chip ${t.key === currentTheme ? "active" : ""}" data-theme-key="${t.key}"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${t.color};margin-left:6px;"></span>${t.label}</button>`).join("")}</div>
         </div>
 
         <div class="card">
-            <div class="card-title">סריקה מהירה</div>
+            <div class="card-title">סריקה מהירה ${info("כשכל השורות מזוהות, אין שינוי מחיר חריג, יש ספק והסכום תואם לקבלה - החשבונית נשמרת לבד אחרי 5 שניות (אפשר לעצור). אחרת תראה רק את מה שדורש בדיקה.")}</div>
             <div class="checkbox-field"><input type="checkbox" id="f-autosave" ${autoSave ? "checked" : ""}>
                 <label for="f-autosave">שמירה אוטומטית אחרי סריקה כשהכול תקין</label></div>
-            <div class="hint">כשכל השורות מזוהות, ללא שינוי מחיר חריג, ויש ספק והסכום תואם לקבלה - החשבונית נשמרת לבד אחרי 5 שניות (אפשר לעצור). אחרת תראה רק את מה שדורש בדיקה.</div>
         </div>
 
         <div class="card">
-            <div class="card-title">גיבוי (ייצוא/ייבוא)</div>
+            <div class="card-title">גיבוי (ייצוא/ייבוא) ${info("אין שרת ואין סנכרון אוטומטי - זה הגיבוי היחיד לנתונים שבטלפון. מומלץ לייצא אחרי כל עדכון משמעותי.")}</div>
             <div class="hint" style="margin-bottom:6px;"><b>גיבוי אחרון:</b> ${lastExport ? new Date(lastExport).toLocaleString("he-IL") : "עדיין לא יוצא"}
                 <br><b>אחסון קבוע:</b> ${persisted === true ? "פעיל - הדפדפן לא ימחק נתונים אוטומטית" : persisted === false ? "לא אושר ע\"י הדפדפן - מומלץ לגבות לעיתים קרובות" : "לא נתמך בדפדפן הזה"}</div>
-            <div class="hint">אין שרת ואין סנכרון אוטומטי - זה הגיבוי היחיד לנתונים שבטלפון. מומלץ לייצא אחרי כל עדכון משמעותי.</div>
             <div class="btn-row">
                 <button class="btn btn-primary btn-small" id="btn-export">📤 ייצוא קובץ גיבוי</button>
                 <button class="btn btn-secondary btn-small" id="btn-import">📥 ייבוא מקובץ</button>
@@ -47,12 +43,8 @@ export async function renderSettingsPage(container) {
         </div>
 
         <div class="card">
-            <div class="card-title">על האפליקציה</div>
+            <div class="card-title">על האפליקציה ${info("גרסת טלפון עצמאית של KitchenCostPro - כל הנתונים נשמרים רק במכשיר הזה, בלי שרת. היא לא מסונכרנת עם הגרסה שבמחשב. השתמש בייצוא וייבוא כדי להעביר נתונים בין השתיים.")}</div>
             <div class="hint"><b>גרסה:</b> ${APP_VERSION}</div>
-            <div class="hint">
-                גרסת טלפון עצמאית של KitchenCostPro - כל הנתונים נשמרים רק במכשיר הזה, בלי שרת.
-                <br>היא <b>לא</b> מסונכרנת עם הגרסה שרצה במחשב - כל אחת עם הנתונים שלה. השתמש בייצוא/ייבוא כדי להעביר נתונים בין השתיים אם צריך.
-            </div>
         </div>
     `;
 

@@ -3,7 +3,7 @@ import { listAllPantryItems } from "../repo/pantryRepo.js";
 import { dbGetAll } from "../db.js";
 import { NON_FOOD_CATEGORIES } from "../constants.js";
 import { pricePerGram, itemCost as calcItemCost, computeDishPricing } from "../formulas.js";
-import { h, openModal, closeModal, confirmDialog, toast, escapeHtml, money } from "../ui.js";
+import { h, openModal, closeModal, confirmDialog, toast, escapeHtml, money, info } from "../ui.js";
 
 async function allSources() {
     const pantry = (await listAllPantryItems()).filter((it) => !NON_FOOD_CATEGORIES.has(it.category));
@@ -30,7 +30,7 @@ export async function renderDishesPage(container) {
     const dishes = await listDishesWithItems();
     dishes.sort((a, b) => a.name.localeCompare(b.name, "he"));
 
-    container.innerHTML = `<div class="subtitle">מנות תפריט - מחיר מכירה, עלות, ואחוז רווח/פוד-קוסט בפועל.</div><div id="dishes-list"></div><button class="fab-add" id="btn-add">+</button>`;
+    container.innerHTML = `<div id="dishes-list"></div><button class="fab-add" id="btn-add">+</button>`;
     const list = container.querySelector("#dishes-list");
     if (dishes.length === 0) {
         list.innerHTML = '<div class="empty-state">אין עדיין מנות - לחץ על + כדי להוסיף.</div>';
@@ -79,9 +79,8 @@ async function openDishModal(existing, container) {
         <div class="card-row" style="font-weight:700;margin-top:10px;"><span>עלות כוללת:</span><span id="cost-display">₪0.00</span></div>
         <div class="form-row" style="margin-top:12px;">
             <div class="field"><label>מכפיל עלות (ידני, אופציונלי)</label><input type="number" step="any" id="f-multiplier" placeholder="לדוגמה: 3.5" value="${existing && existing.multiplier ? existing.multiplier : ""}"></div>
-            <div class="field"><label>יעד אחוז עלות מזון % (אופציונלי)</label><input type="number" step="any" id="f-target" placeholder="לדוגמה: 25" value="${existing && existing.target_profit_pct ? existing.target_profit_pct : ""}"></div>
+            <div class="field"><label>יעד אחוז עלות מזון % (אופציונלי) ${info("יעד 25% = מכפיל ×4. המחיר למטה מתמלא אוטומטית ברגע שמזינים מכפיל או יעד, ועדיין אפשר לערוך אותו ידנית.")}</label><input type="number" step="any" id="f-target" placeholder="לדוגמה: 25" value="${existing && existing.target_profit_pct ? existing.target_profit_pct : ""}"></div>
         </div>
-        <div class="hint" style="margin-top:-8px;margin-bottom:12px;">יעד 25% = מכפיל ×4. המחיר למטה מתמלא אוטומטית ברגע שמזינים מכפיל או יעד, ועדיין אפשר לערוך אותו ידנית.</div>
         <div class="field"><label>מחיר (₪, לפני מע"מ)</label><input type="number" step="any" id="f-price" value="${existing ? existing.price_before_vat : ""}"></div>
         <div class="field"><label>מע"מ (%)</label><input type="number" step="any" id="f-vat" value="${existing ? existing.vat_pct : 18}"></div>
         <div class="card" id="pricing-preview" style="background:#f4f5f7;"></div>

@@ -6,7 +6,7 @@ import { CATEGORY_GROUPS, UNIT_TYPES, UNIT_TYPE_LABELS } from "../constants.js";
 import { computeStockFactor } from "../invoiceParse.js";
 import { showPriceChangesDialog, renderPriceChangeRows } from "./priceAlerts.js";
 import { dbGet, dbPut, dbDelete } from "../db.js";
-import { h, openModal, closeModal, confirmDialog, toast, escapeHtml, money } from "../ui.js";
+import { h, openModal, closeModal, confirmDialog, toast, escapeHtml, money, info } from "../ui.js";
 import { openScanModal } from "./scanModal.js";
 import { compressImage, showImageFullscreen } from "../imageUtil.js";
 
@@ -22,7 +22,6 @@ export async function renderSuppliersPage(container) {
     const pantryItems = await listTopLevelPantryItems();
 
     container.innerHTML = `
-        <div class="subtitle">מעקב הזמנות לפי ספק - נפרד מהמזווה, לא משפיע על שום חישוב עלות.</div>
         <div class="btn-row">
             <button class="btn btn-primary btn-small" id="btn-add-supplier">+ ספק חדש</button>
             <button class="btn btn-primary btn-small" id="btn-add-invoice">+ חשבונית חדשה</button>
@@ -258,7 +257,7 @@ function openInvoiceModal(existing, suppliers, pantryItems, container) {
         </div>
         <div class="card" style="background:#fffaf0;">
             <div class="checkbox-field"><input type="checkbox" id="f-petty" ${existing && existing.petty_cash ? "checked" : ""}>
-                <label for="f-petty">קופה קטנה - עובד קנה בדרך וקיבל החזר במזומן</label></div>
+                <label for="f-petty">קופה קטנה ${info("עובד קנה בדרך וקיבל החזר במזומן, והביא קבלה. אפשר לסמן מי רכש ואם הוחזר לו.")}</label></div>
             <div id="petty-fields" style="display:none;">
                 <div class="field"><label>מי רכש (אופציונלי)</label><input type="text" id="f-purchaser" value="${existing ? escapeHtml(existing.purchaser || "") : ""}" placeholder="שם העובד"></div>
                 <div class="checkbox-field"><input type="checkbox" id="f-reimb" ${existing && existing.reimbursed ? "checked" : ""}>
@@ -267,7 +266,7 @@ function openInvoiceModal(existing, suppliers, pantryItems, container) {
         </div>
         <datalist id="inv-pantry-names">${[...pantryItems].map((p) => `<option value="${escapeHtml(p.name)}"></option>`).join("")}</datalist>
         <div id="repeat-box" class="card" style="display:none;">
-            <div class="hint">הזמנה קבועה? העתק שורות מחשבונית קודמת של הספק ושנה רק מה שהשתנה:</div>
+            <div class="card-title" style="font-size:13px;">הזמנה קבועה ${info("מעתיק את השורות מחשבונית קודמת של הספק, ואתה משנה רק מה שהשתנה.")}</div>
             <div class="form-row"><div class="field"><select id="repeat-sel"></select></div>
                 <button type="button" class="btn btn-accent btn-small" id="btn-repeat">העתק</button></div>
         </div>
@@ -309,9 +308,8 @@ function openInvoiceModal(existing, suppliers, pantryItems, container) {
                     </select>
                 </div>
                 <div id="inv-new-${id}" style="display:none;background:#eef6fb;border-radius:8px;padding:8px;margin-bottom:6px;">
-                    <div class="hint">המוצר ייווצר במזווה עם המחיר ליחידה מהשורה הזו.</div>
                     <div class="form-row">
-                        <div class="field"><label>קטגוריה</label>
+                        <div class="field"><label>קטגוריה ${info("המוצר ייווצר במזווה עם המחיר ליחידה מהשורה הזו.")}</label>
                             <select id="inv-cat-${id}"><option value="">בחר...</option>${Object.keys(CATEGORY_GROUPS).map((c) => `<option value="${c}">${c}</option>`).join("")}</select></div>
                         <div class="field"><label>נמדד ב-</label>
                             <select id="inv-ut-${id}">${UNIT_TYPES.map((u) => `<option value="${u}" ${u === "unit" ? "selected" : ""}>${UNIT_TYPE_LABELS[u]}</option>`).join("")}</select></div>
@@ -326,7 +324,7 @@ function openInvoiceModal(existing, suppliers, pantryItems, container) {
                 <div class="hint" id="inv-pk-prev-${id}" style="margin:6px 0;font-weight:600;"></div>
                 ${prefill && prefill.stock_factor ? `<div class="hint">כל יחידה בחשבונית = ${Math.round(prefill.stock_factor * 1000) / 1000} יחידות מלאי (נשמר מהסריקה)</div>` : ""}
                 <details style="margin-top:4px;">
-                    <summary style="cursor:pointer;color:#777;font-size:13px;">אפשרויות נוספות (אריזה, מחיר ליחידה, עדכון מחיר)</summary>
+                    <summary style="cursor:pointer;color:#777;font-size:13px;">אפשרויות נוספות</summary>
                     <div style="padding-top:8px;">
                         <div class="field"><label>מחיר ליחידה / ק"ג (מחושב לבד מהסכום)</label>
                             <input type="number" step="any" inputmode="decimal" id="inv-price-${id}" value="${prefill ? prefill.unit_price : ""}"></div>

@@ -11,7 +11,6 @@ export async function renderInventoryPage(container) {
     const items = await buildInventoryView();
 
     container.innerHTML = `
-        <div class="subtitle">הזן את הכמות שנספרה בפועל - המערכת מחשבת לבד את היתרה התיאורטית ומציגה את ההפרש.</div>
         <div class="field"><label>תאריך הספירה</label><input type="date" id="count-date" value="${todayLocal()}"></div>
         <div id="inventory-filter"></div>
         <div id="inventory-list"></div>

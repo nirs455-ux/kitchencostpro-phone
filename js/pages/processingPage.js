@@ -1,7 +1,7 @@
 import { listAllPantryItems, updatePantryItemYield, addBreakdownProduct, deletePantryItem, deleteAllChildren, getDeleteInfo, deleteConfirmText } from "../repo/pantryRepo.js";
 import { CATEGORY_GROUPS } from "../constants.js";
 import { effectivePrice } from "../formulas.js";
-import { h, openModal, closeModal, confirmDialog, toast, escapeHtml } from "../ui.js";
+import { h, openModal, closeModal, confirmDialog, toast, escapeHtml, info } from "../ui.js";
 import { getFilter, applyFilter, mountFilterBar, groupBySection, groupTitleEl } from "../filters.js";
 
 export async function renderProcessingPage(container) {
@@ -10,7 +10,6 @@ export async function renderProcessingPage(container) {
     for (const p of topLevel) p.children = all.filter((it) => it.parent_id === p.id);
 
     container.innerHTML = `
-        <div class="subtitle">כאן קובעים ניצולת/קפוא לכל מוצר, או יוצרים ממנו תוצר מפורק (למשל: דג שלם → פילה). המחיר האמיתי מוצג רק כאן.</div>
         <div id="processing-filter"></div>
         <div id="processing-list"></div>
     `;
@@ -137,8 +136,7 @@ function openYieldModal(it, container) {
             <div class="field"><label>משקל לפני (גרם, אופציונלי)</label><input type="number" step="any" id="f-wb" value="${it.weight_before ?? ""}"></div>
             <div class="field"><label>משקל אחרי (גרם, אופציונלי)</label><input type="number" step="any" id="f-wa" value="${it.weight_after ?? ""}"></div>
         </div>
-        <div class="field"><label>או: ניצולת ידנית (%)</label><input type="number" step="any" id="f-yield" value="${it.yield_pct}"></div>
-        <div class="hint">אם ממלאים משקל לפני+אחרי, הניצולת מחושבת אוטומטית מהם ומתעלמת מהשדה הידני.</div>
+        <div class="field"><label>או: ניצולת ידנית (%) ${info("אם ממלאים משקל לפני ואחרי, הניצולת מחושבת אוטומטית מהם ומתעלמת מהשדה הידני.")}</label><input type="number" step="any" id="f-yield" value="${it.yield_pct}"></div>
         <div class="checkbox-field field" style="margin-top:10px;">
             <input type="checkbox" id="f-frozen" ${it.is_frozen ? "checked" : ""}>
             <label for="f-frozen">❄ מוצר קפוא</label>
@@ -176,8 +174,7 @@ function openYieldModal(it, container) {
 function openBreakdownModal(parent, container) {
     const overlay = openModal(`
         <h2>תוצר חדש מתוך ${escapeHtml(parent.name)}</h2>
-        <div class="hint">התוצר יורש קטגוריה/יחידה/מחיר מחומר הגלם - כאן קובעים רק שם וניצולת משלו.</div>
-        <div class="field"><label>שם התוצר</label><input type="text" id="f-name" placeholder="לדוגמה: פילה"></div>
+        <div class="field"><label>שם התוצר ${info("התוצר יורש קטגוריה, יחידה ומחיר מחומר הגלם. כאן קובעים רק שם וניצולת משלו.")}</label><input type="text" id="f-name" placeholder="לדוגמה: פילה"></div>
         <div class="form-row">
             <div class="field"><label>משקל לפני (גרם)</label><input type="number" step="any" id="f-wb"></div>
             <div class="field"><label>משקל אחרי (גרם)</label><input type="number" step="any" id="f-wa"></div>

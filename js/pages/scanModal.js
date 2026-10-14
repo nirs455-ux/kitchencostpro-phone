@@ -2,7 +2,7 @@ import { scanInvoiceImage, applyScannedInvoice } from "../repo/scanRepo.js";
 import { getSetting } from "../repo/settingsRepo.js";
 import { listSuppliers, addSupplier } from "../repo/suppliersRepo.js";
 import { CATEGORY_GROUPS, UNIT_TYPES, UNIT_TYPE_LABELS } from "../constants.js";
-import { h, openModal, closeModal, toast, escapeHtml } from "../ui.js";
+import { h, openModal, closeModal, toast, escapeHtml, info } from "../ui.js";
 import { compressImage } from "../imageUtil.js";
 import { priceChanges } from "../repo/suppliersRepo.js";
 import { showPriceChangesDialog } from "./priceAlerts.js";
@@ -18,9 +18,8 @@ export async function openScanModal({ supplierAware, onDone }) {
     const suppliers = supplierAware ? await listSuppliers() : [];
 
     const overlay = openModal(`
-        <h2>סריקת חשבונית</h2>
+        <h2>סריקת חשבונית ${info(`צלם או העלה תמונה של חשבונית - נזהה ממנה ${supplierAware ? "ספק, תאריך ו" : ""}מוצרים אוטומטית.`)}</h2>
         <div id="scan-upload-area">
-            <div class="hint" style="margin-bottom:10px;">צלם או העלה תמונה של חשבונית - נזהה ממנה ${supplierAware ? "ספק, תאריך ו" : ""}מוצרים אוטומטית.</div>
             <div class="btn-row">
                 <button type="button" class="btn btn-accent" id="btn-pick-camera">📷 צלם חשבונית</button>
                 <button type="button" class="btn btn-secondary" id="btn-pick-gallery">🖼️ בחר מהגלריה / קבצים</button>
@@ -33,12 +32,11 @@ export async function openScanModal({ supplierAware, onDone }) {
         <div id="scan-results" style="display:none;">
             ${supplierAware ? `
             <div class="field">
-                <label>ספק</label>
+                <label>ספק ${info("בחירת ספק תשמור זאת גם כחשבונית בדף הספקים, ותעדכן את הקניות בדף המלאי. בלי בחירה - רק המחיר במזווה יתעדכן.")}</label>
                 <select id="scan-supplier">
                     <option value="">ללא שיוך לחשבונית (רק עדכון מזווה)</option>
                     ${suppliers.map((s) => `<option value="${s.id}">${escapeHtml(s.name)}</option>`).join("")}
                 </select>
-                <div class="hint">בחירת ספק תשמור זאת גם כחשבונית בדף הספקים, ותעדכן את הקניות בדף המלאי. בלי בחירה - רק המחיר במזווה יתעדכן.</div>
                 <div class="hint-warn" id="scan-no-supplier" style="display:none;">לא נבחר ספק - החשבונית לא תישמר בדף הספקים, רק המזווה יתעדכן.</div>
             </div>
             <div class="field"><label>תאריך</label><input type="date" id="scan-date" value="${todayLocal()}"></div>
@@ -302,7 +300,6 @@ export async function openScanModal({ supplierAware, onDone }) {
                         <input type="checkbox" id="scan-frozen-${idx}" ${it._frozen ? "checked" : ""}>
                         <label for="scan-frozen-${idx}">❄ מוצר קפוא</label>
                     </div>
-                    <div class="hint">${it.matched_pantry_item_id ? "מוצר קיים - יעודכן מחיר" : "מוצר חדש - יתווסף למזווה"}</div>
                 </div>
             `);
             box.appendChild(row);

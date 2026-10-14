@@ -24,8 +24,7 @@ export async function renderRecipesPage(container) {
     const recipes = await listRecipesWithItems();
     recipes.sort((a, b) => a.category.localeCompare(b.category, "he") || a.name.localeCompare(b.name, "he"));
 
-    container.innerHTML = `<div class="subtitle">מתכוני בסיס (רטבים, מרקים וכו') שמשמשים כמרכיבים במנות.</div>
-        <div class="btn-row"><button class="btn btn-accent" id="btn-scan-recipe">📷 סרוק מתכון (תמונה / קובץ)</button></div>
+    container.innerHTML = `<div class="btn-row"><button class="btn btn-accent" id="btn-scan-recipe">📷 סרוק מתכון (תמונה / קובץ)</button></div>
         <div id="recipes-list"></div><button class="fab-add" id="btn-add">+</button>`;
     const list = container.querySelector("#recipes-list");
     if (recipes.length === 0) {

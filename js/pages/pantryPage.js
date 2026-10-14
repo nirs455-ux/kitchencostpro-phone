@@ -22,7 +22,6 @@ export async function renderPantryPage(container) {
     sortItems(sortMode);
 
     container.innerHTML = `
-        <div class="subtitle">חומרי גלם, מחיר קנייה, ותוצרי סריקת חשבוניות. הניצולת/פירוק נעשים בעמוד "עיבוד".</div>
         <div class="btn-row">
             <button class="btn btn-accent" id="btn-scan">📷 סרוק חשבונית</button>
         </div>
