@@ -1,3 +1,4 @@
+import { CATEGORY_GROUPS, UNIT_TYPES } from "./constants.js";
 // פרסור סריקת חשבונית/קבלה - טהור (בלי רשת/DB). משקף את INVOICE_SCAN_PROMPT, merge_discount_lines ו-compute_stock_factor
 // ב-main.py, ונבדק מול אותם קלטים בדיוק (tests/invoice_parse.verify.*).
 
@@ -9,7 +10,7 @@ export const INVOICE_SCAN_PROMPT =
     '  "invoice_date": "תאריך בפורמט YYYY-MM-DD אם מופיע, אחרת null",\n' +
     '  "invoice_total": 123.45,\n' +
     '  "items": [\n' +
-    '    {"name": "שם המוצר בעברית", "quantity": 1.0, "unit_price": 10.0, "line_total": 10.0, "is_discount": false}\n' +
+    '    {"name": "שם המוצר בעברית", "quantity": 1.0, "unit_price": 10.0, "line_total": 10.0, "is_discount": false, "category_guess": "ירקניה", "unit_guess": "weight"}\n' +
     "  ]\n" +
     "}\n" +
     "quantity ו-unit_price חייבים להיות מספרים. line_total הוא הסכום שמודפס בשורה (יכול להיות שלילי). " +
@@ -18,6 +19,8 @@ export const INVOICE_SCAN_PROMPT =
     "החזר אותה כשורה נפרדת עם is_discount=true ו-line_total=סכום ההנחה כפי שמודפס (שלילי). " +
     "אל תפחית את ההנחה בעצמך ממחיר המוצר, ואל תשנה את quantity/unit_price של המוצר עצמו. " +
     "הנחות כלליות על כל החשבונית (מועדון, הנחה בסוף הקבלה) - אל תחזיר בכלל. בכל שאר השורות is_discount=false.\n" +
+    "category_guess: הקטגוריה המתאימה ביותר למוצר, אחת מהבאות בלבד: מהים, קצביה, ירקניה, יבשים, מחלבה, בר, מחסן (ניקיון/חד-פעמי). " +
+    "unit_guess: weight אם המוצר נמכר לפי משקל, liter אם נוזל לפי נפח, unit אם נמכר ביחידות/חבילות/גבעולים.\n" +
     "invoice_total הוא הסכום הסופי לתשלום כפי שמודפס בתחתית הקבלה (מספר), או null אם לא מופיע בבירור.\n" +
     "שים לב במיוחד לשנה בתאריך: העתק אותה בדיוק כפי שהיא כתובה בתמונה, ספרה ספרה - אל תנחש ואל תעגל אותה.";
 
@@ -55,7 +58,13 @@ export function mergeDiscountLines(items) {
             continue;
         }
         if (qty === null || price === null) continue;
-        merged.push({ name, quantity: qty, unit_price: price, discount_applied: 0 });
+        const cat = String(it.category_guess ?? "").trim();
+        const unit = String(it.unit_guess ?? "").trim();
+        merged.push({
+            name, quantity: qty, unit_price: price, discount_applied: 0,
+            category_guess: cat in CATEGORY_GROUPS ? cat : null,
+            unit_guess: UNIT_TYPES.includes(unit) ? unit : null,
+        });
     }
     for (const m of merged) {
         if (m.discount_applied && m.quantity > 0) {

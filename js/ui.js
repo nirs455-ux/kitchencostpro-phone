@@ -20,12 +20,67 @@ export function openModal(innerHtml, { onClose } = {}) {
     closeModal();
     const root = document.getElementById("modal-root");
     const overlay = h(`<div class="modal-overlay open"><div class="modal">${innerHtml}</div></div>`);
+    // כל הקלדה/שינוי בחלון מסמנים אותו כ"מלוכלך" - סגירה בלחיצה בחוץ או ב"ביטול" תשאל קודם
+    overlay.__dirty = false;
+    overlay.addEventListener("input", () => { overlay.__dirty = true; });
+    overlay.addEventListener("change", () => { overlay.__dirty = true; });
     overlay.addEventListener("click", (e) => {
-        if (e.target === overlay) closeModal();
+        if (e.target === overlay) attemptClose(overlay);
     });
     root.appendChild(overlay);
     currentModalCleanup = onClose || null;
     return overlay;
+}
+
+// סגירה זהירה: אם יש שינויים שלא נשמרו - שואלים. מחזיר true אם נסגר.
+export function attemptClose(overlay) {
+    if (overlay && overlay.__dirty && !window.confirm("יש שינויים שלא נשמרו. לסגור בכל זאת?")) return false;
+    closeModal();
+    return true;
+}
+
+export function markDirty(overlay) {
+    if (overlay) overlay.__dirty = true;
+}
+
+// עוטף פעולה אסינכרונית כך שלחיצה כפולה לא תריץ אותה פעמיים (והכפתור ננעל בזמן הריצה)
+export function busy(fn) {
+    let running = false;
+    return async function (...args) {
+        if (running) return;
+        running = true;
+        const btn = this && this.tagName === "BUTTON" ? this : null;
+        if (btn) btn.disabled = true;
+        try {
+            return await fn.apply(this, args);
+        } finally {
+            running = false;
+            if (btn) btn.disabled = false;
+        }
+    };
+}
+
+// הודעה עם כפתור פעולה (למשל "בטל") שנעלמת אחרי כמה שניות
+export function toastAction(msg, label, onClick, ms = 10000) {
+    let el = document.getElementById("toast-action");
+    if (!el) {
+        el = document.createElement("div");
+        el.id = "toast-action";
+        el.className = "toast-action";
+        document.body.appendChild(el);
+    }
+    el.innerHTML = "<span></span><button type=\"button\"></button>";
+    el.querySelector("span").textContent = msg;
+    const btn = el.querySelector("button");
+    btn.textContent = label;
+    el.classList.add("show");
+    clearTimeout(el._t);
+    el._t = setTimeout(() => el.classList.remove("show"), ms);
+    btn.onclick = async () => {
+        el.classList.remove("show");
+        clearTimeout(el._t);
+        await onClick();
+    };
 }
 
 export function closeModal() {

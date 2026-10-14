@@ -2,7 +2,7 @@
 // אבל עצמאי לגמרי - שתי הגרסאות לא מסונכרנות זו עם זו (ראה ייצוא/ייבוא).
 
 const DB_NAME = "kitchencostpro";
-const DB_VERSION = 1;
+const DB_VERSION = 2; // 2: נוסף מאגר scanQueue (תור סריקות שממתינות לעיבוד)
 
 const STORES = {
     pantryItems: "id",
@@ -17,6 +17,9 @@ const STORES = {
     settings: "key",
 };
 
+// מאגרים שאינם חלק מהגיבוי/ייבוא (זמניים): תור סריקות
+const EXTRA_STORES = { scanQueue: "id" };
+
 let dbPromise = null;
 
 export function openDB() {
@@ -30,17 +33,30 @@ export function openDB() {
                     db.createObjectStore(name, { keyPath, autoIncrement: keyPath === "id" });
                 }
             }
-            // אינדקסים לשאילתות נפוצות
+            for (const [name, keyPath] of Object.entries(EXTRA_STORES)) {
+                if (!db.objectStoreNames.contains(name)) db.createObjectStore(name, { keyPath, autoIncrement: true });
+            }
+            // אינדקסים לשאילתות נפוצות (נוצרים רק אם עוד לא קיימים - חשוב בשדרוג מגרסה קודמת)
             const tx = req.transaction;
-            tx.objectStore("recipeItems").createIndex("recipe_id", "recipe_id");
-            tx.objectStore("dishItems").createIndex("dish_id", "dish_id");
-            tx.objectStore("invoices").createIndex("supplier_id", "supplier_id");
-            tx.objectStore("invoiceItems").createIndex("invoice_id", "invoice_id");
-            tx.objectStore("invoiceItems").createIndex("pantry_item_id", "pantry_item_id");
-            tx.objectStore("inventoryCounts").createIndex("pantry_item_id", "pantry_item_id");
-            tx.objectStore("pantryItems").createIndex("parent_id", "parent_id");
+            const ensureIndex = (store, name) => {
+                const os = tx.objectStore(store);
+                if (!os.indexNames.contains(name)) os.createIndex(name, name);
+            };
+            ensureIndex("recipeItems", "recipe_id");
+            ensureIndex("dishItems", "dish_id");
+            ensureIndex("invoices", "supplier_id");
+            ensureIndex("invoiceItems", "invoice_id");
+            ensureIndex("invoiceItems", "pantry_item_id");
+            ensureIndex("inventoryCounts", "pantry_item_id");
+            ensureIndex("pantryItems", "parent_id");
         };
-        req.onsuccess = () => resolve(req.result);
+        req.onsuccess = () => {
+            const db = req.result;
+            // אם עדכון גרסה מגיע מלשונית/חלון אחר - סוגרים את החיבור כדי שהשדרוג לא ייתקע
+            db.onversionchange = () => { db.close(); dbPromise = null; };
+            resolve(db);
+        };
+        req.onblocked = () => console.warn("שדרוג מסד הנתונים ממתין - סגור לשוניות אחרות של האפליקציה");
         req.onerror = () => reject(req.error);
     });
     return dbPromise;

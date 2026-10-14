@@ -5,13 +5,20 @@ import { renderDishesPage } from "./pages/dishesPage.js";
 import { renderSuppliersPage } from "./pages/suppliersPage.js";
 import { renderInventoryPage } from "./pages/inventoryPage.js";
 import { renderSettingsPage } from "./pages/settingsPage.js";
+import { renderHomePage } from "./pages/homePage.js";
 import { getSetting } from "./repo/settingsRepo.js";
 import { dbGetAll } from "./db.js";
 import { downloadExport } from "./export.js";
 import { applyTheme } from "./theme.js";
 import { info } from "./ui.js";
+import { purgeOldTrash } from "./repo/suppliersRepo.js";
+import { consumeSharedFile } from "./share.js";
+import { isStaffMode, openUnlockDialog } from "./staff.js";
+import { installErrorHandlers } from "./errorLog.js";
+import { openScanModal } from "./pages/scanModal.js";
 
 const PAGES = {
+    home: { title: "בית", render: renderHomePage, info: "מסך הבית: סריקה מהירה, ומה שדורש תשומת לב עכשיו." },
     pantry: { title: "מזווה", render: renderPantryPage,
         info: "חומרי גלם, מחיר קנייה, ותוצרי סריקת חשבוניות. הניצולת והפירוק נעשים בעמוד \"עיבוד\"." },
     processing: { title: "עיבוד", render: renderProcessingPage,
@@ -27,12 +34,16 @@ const PAGES = {
     settings: { title: "הגדרות", render: renderSettingsPage, info: "" },
 };
 
+installErrorHandlers();
+const STAFF_PAGES = new Set(["home", "inventory"]);
+
 const view = document.getElementById("view");
 const pageTitle = document.getElementById("page-title");
 const navButtons = document.querySelectorAll("#bottom-nav button");
 
 async function navigate(pageKey) {
-    if (!PAGES[pageKey]) pageKey = "pantry";
+    if (!PAGES[pageKey]) pageKey = "home";
+    if (isStaffMode() && !STAFF_PAGES.has(pageKey)) pageKey = "home"; // מצב עובד: רק בית וספירת מלאי
     location.hash = pageKey;
     navButtons.forEach((b) => b.classList.toggle("active", b.dataset.page === pageKey));
     pageTitle.textContent = "KitchenCostPro - " + PAGES[pageKey].title;
@@ -52,18 +63,38 @@ navButtons.forEach((btn) => {
 
 window.addEventListener("hashchange", () => {
     const key = location.hash.replace("#", "");
+    if (key === "share") return;
     if (PAGES[key]) navigate(key);
 });
 
-navigate(location.hash.replace("#", "") || "pantry");
+document.getElementById("btn-settings").addEventListener("click", () => navigate("settings"));
+if (isStaffMode()) {
+    // מצב עובד: מסתירים הגדרות ושאר הלשוניות, ומציגים כפתור נעילה לפתיחה בקוד
+    document.getElementById("btn-settings").style.display = "none";
+    const unlock = document.getElementById("btn-unlock");
+    unlock.style.display = "";
+    unlock.addEventListener("click", openUnlockDialog);
+    document.querySelectorAll("#bottom-nav button").forEach((b) => { if (!STAFF_PAGES.has(b.dataset.page)) b.style.display = "none"; });
+}
+document.getElementById("page-title").addEventListener("click", () => navigate("home"));
+
+navigate(location.hash.replace("#", "") === "share" ? "home" : (location.hash.replace("#", "") || "home"));
+
+// הגענו דרך "שתף": אם נשלחה תמונה - פותחים ישר את הסריקה
+(async () => {
+    const shared = await consumeSharedFile();
+    if (shared) openScanModal({ supplierAware: true, initialFile: shared, onDone: () => navigate("home") });
+})();
 
 applyTheme();
+purgeOldTrash().catch(() => {});
 
 // אחסון קבוע: מבקש מהדפדפן לא למחוק את הנתונים אוטומטית כשנגמר מקום
 if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
 
 // תזכורת גיבוי: אם יש נתונים ולא יוצא גיבוי מעל 7 ימים - מציג פס עליון (פעם אחת בכל פתיחה)
 async function maybeShowBackupBanner() {
+    if (isStaffMode()) return;
     try {
         const items = await dbGetAll("pantryItems");
         const invoices = await dbGetAll("invoices");
