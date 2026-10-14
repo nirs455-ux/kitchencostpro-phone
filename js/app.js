@@ -8,6 +8,7 @@ import { renderSettingsPage } from "./pages/settingsPage.js";
 import { getSetting } from "./repo/settingsRepo.js";
 import { dbGetAll } from "./db.js";
 import { downloadExport } from "./export.js";
+import { applyTheme } from "./theme.js";
 
 const PAGES = {
     pantry: { title: "מזווה", render: renderPantryPage },
@@ -47,6 +48,8 @@ window.addEventListener("hashchange", () => {
 });
 
 navigate(location.hash.replace("#", "") || "pantry");
+
+applyTheme();
 
 // אחסון קבוע: מבקש מהדפדפן לא למחוק את הנתונים אוטומטית כשנגמר מקום
 if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
