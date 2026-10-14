@@ -19,31 +19,52 @@ function fileToBase64(file) {
     });
 }
 
-export async function scanInvoiceImage(apiKey, file) {
+export async function scanInvoiceImage(apiKey, file, onRetry) {
     if (!apiKey) throw new Error("לא הוגדר מפתח API של Gemini. הזן אותו במסך ההגדרות.");
     // דחיסה לפני שליחה: העלאה מהירה בהרבה בלי לפגוע בקריאות הטקסט
     const small = await compressImage(file);
     const imageData = await fileToBase64(small);
     const mimeType = small.type || "image/jpeg";
 
+    // שרת Gemini לפעמים עמוס (503/429) - זה זמני. מנסים שוב אוטומטית עם המתנה גדלה, בלי לבקש מהמשתמש לצלם מחדש.
+    const RETRY_STATUSES = [429, 500, 502, 503, 504];
+    const DELAYS = [2000, 4000, 8000, 12000];
     let response;
-    try {
-        response = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${apiKey}`,
-            {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    contents: [{ parts: [{ text: INVOICE_SCAN_PROMPT }, { inline_data: { mime_type: mimeType, data: imageData } }] }],
-                }),
+    for (let attempt = 0; attempt <= DELAYS.length; attempt++) {
+        try {
+            response = await fetch(
+                `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${apiKey}`,
+                {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        contents: [{ parts: [{ text: INVOICE_SCAN_PROMPT }, { inline_data: { mime_type: mimeType, data: imageData } }] }],
+                    }),
+                }
+            );
+        } catch (e) {
+            if (attempt < DELAYS.length) {
+                if (onRetry) onRetry(attempt + 1, DELAYS.length);
+                await new Promise((r) => setTimeout(r, DELAYS[attempt]));
+                continue;
             }
-        );
-    } catch (e) {
-        throw new Error(`שגיאת רשת בפנייה ל-API: ${e.message}`);
+            throw new Error("אין חיבור לאינטרנט או שהשרת לא זמין. בדוק חיבור ונסה שוב.");
+        }
+        if (RETRY_STATUSES.includes(response.status) && attempt < DELAYS.length) {
+            if (onRetry) onRetry(attempt + 1, DELAYS.length);
+            await new Promise((r) => setTimeout(r, DELAYS[attempt]));
+            continue;
+        }
+        break;
     }
     if (!response.ok) {
+        const code = response.status;
+        if (code === 503 || code === 429 || code === 500 || code === 502 || code === 504) {
+            throw new Error("שרת הקריאה של Google עמוס כרגע (זה זמני, לא קשור לאפליקציה). ניסינו כמה פעמים - נסה שוב בעוד דקה, התמונה נשמרה.");
+        }
+        if (code === 400 || code === 403) throw new Error("מפתח ה-API לא תקין או חסרות הרשאות. בדוק את המפתח בהגדרות.");
         const text = await response.text();
-        throw new Error(`שגיאה מה-API (${response.status}): ${text.slice(0, 300)}`);
+        throw new Error(`שגיאה מהשרת (${code}): ${text.slice(0, 120)}`);
     }
     const result = await response.json();
     let parsed;
