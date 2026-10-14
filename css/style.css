@@ -237,3 +237,30 @@ table.simple th { background: var(--brand); color: var(--on-brand); }
     border-radius: var(--radius); box-shadow: var(--shadow-lg), 0 6px 20px rgba(0, 0, 0, 0.18);
     padding: 10px 12px; font-size: 13px; line-height: 1.45; font-weight: 400;
 }
+
+/* ---- דף ספקים: מבנה חדש ---- */
+.btn-big { padding: 14px 16px; font-size: 16px; font-weight: 700; }
+.sup-actions { display: flex; gap: 8px; margin: 6px 0 10px; }
+.sup-actions .btn-primary { flex: 2; }
+.sup-actions .btn-secondary { flex: 1; }
+.attn { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+.attn:empty { display: none; }
+.attn-chip { border: 1px solid transparent; border-radius: 16px; padding: 6px 12px; font-size: 12.5px; font-weight: 600; cursor: pointer; font-family: inherit; }
+.attn-chip.warn { background: var(--warn-soft); border-color: var(--warn-border); color: var(--text); }
+.attn-chip.danger { background: var(--danger-soft); color: var(--danger); }
+.seg { display: flex; background: var(--btn-secondary); border-radius: var(--radius-btn); padding: 3px; margin: 4px 0 12px; }
+.seg button { flex: 1; border: none; background: transparent; padding: 9px 4px; font-size: 14px; border-radius: calc(var(--radius-btn) - 2px); color: var(--text-2); cursor: pointer; font-family: inherit; }
+.seg button.active { background: var(--surface); color: var(--text); font-weight: 700; box-shadow: var(--shadow); }
+.seg-n { display: inline-block; min-width: 18px; padding: 0 5px; margin-right: 3px; border-radius: 9px; background: var(--brand-soft); color: var(--brand); font-size: 11px; font-weight: 700; }
+.fchips { display: flex; gap: 6px; overflow-x: auto; white-space: nowrap; padding-bottom: 8px; margin-bottom: 2px; align-items: center; }
+.fchips .chip { flex: 0 0 auto; }
+.chip-select { flex: 0 0 auto; border: 1px solid var(--input-border); background: var(--surface); color: var(--text-2); border-radius: 16px; padding: 6px 10px; font-size: 13px; font-family: inherit; }
+.month-head { display: flex; justify-content: space-between; align-items: baseline; font-weight: 700; font-size: 14px; color: var(--text-2); margin: 14px 4px 6px; }
+.inv-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; background: var(--surface); border-radius: var(--radius); padding: 11px 14px; margin-bottom: 6px; box-shadow: var(--shadow); cursor: pointer; }
+.inv-row:active { background: var(--brand-soft); }
+.inv-main { min-width: 0; flex: 1; }
+.inv-sup { font-weight: 700; font-size: 15px; }
+.inv-sub { color: var(--muted); font-size: 12.5px; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.inv-amt { font-weight: 700; font-size: 15px; text-align: left; white-space: nowrap; }
+.tag-warn { background: var(--warn-soft); color: var(--text-2); border: 1px solid var(--warn-border); margin-right: 4px; }
+.stat-big { font-size: 28px; font-weight: 700; color: var(--brand); line-height: 1.1; }
