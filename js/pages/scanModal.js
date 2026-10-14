@@ -129,7 +129,11 @@ export async function openScanModal({ supplierAware, onDone }) {
         overlay.querySelector("#scan-loading").style.display = "block";
         overlay.querySelector("#scan-cancel-only").style.display = "none";
         try {
-            const data = await scanInvoiceImage(apiKey, file);
+            const loading = overlay.querySelector("#scan-loading");
+            loading.textContent = "קורא את החשבונית...";
+            const data = await scanInvoiceImage(apiKey, file, (n, total) => {
+                loading.textContent = `השרת עמוס, מנסה שוב (${n}/${total})...`;
+            });
             scannedItems = data.items || [];
             printedTotal = data.invoice_total;
             if (supplierAware) {
@@ -159,6 +163,12 @@ export async function openScanModal({ supplierAware, onDone }) {
             const el = overlay.querySelector("#scan-upload-area .error-msg");
             el.textContent = err.message;
             el.style.display = "block";
+            // התמונה כבר נבחרה - מאפשרים ניסיון חוזר בלחיצה אחת, בלי לצלם מחדש
+            if (!overlay.querySelector("#btn-scan-retry")) {
+                const rb = h(`<button type="button" class="btn btn-primary btn-block" id="btn-scan-retry" style="margin-top:8px;">🔄 נסה שוב עם אותה תמונה</button>`);
+                el.after(rb);
+                rb.onclick = () => { rb.remove(); processFile(scannedFile); };
+            }
         }
     };
     overlay.querySelector("#scan-file-camera").addEventListener("change", onFileChosen);
