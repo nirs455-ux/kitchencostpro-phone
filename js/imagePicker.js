@@ -1,10 +1,9 @@
 // בורר תמונה/קובץ: מצלמה בתוך האפליקציה (עם חזרה לקלט capture אם לא זמינה) וגלריה/קבצים.
-import { openModal, closeModal } from "./ui.js";
+import { openModal, closeModal, info } from "./ui.js";
 
 export function openImagePicker({ title, hint, onFile }) {
     const overlay = openModal(`
-        <h2>${title}</h2>
-        <div class="hint" style="margin-bottom:10px;">${hint}</div>
+        <h2>${title} ${hint ? info(hint.replace(/<[^>]+>/g, "")) : ""}</h2>
         <div class="btn-row">
             <button type="button" class="btn btn-accent" id="pick-camera">📷 צלם</button>
             <button type="button" class="btn btn-secondary" id="pick-gallery">🖼️ בחר מהגלריה / קבצים</button>

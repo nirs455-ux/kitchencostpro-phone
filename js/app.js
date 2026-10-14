@@ -9,15 +9,22 @@ import { getSetting } from "./repo/settingsRepo.js";
 import { dbGetAll } from "./db.js";
 import { downloadExport } from "./export.js";
 import { applyTheme } from "./theme.js";
+import { info } from "./ui.js";
 
 const PAGES = {
-    pantry: { title: "מזווה", render: renderPantryPage },
-    processing: { title: "עיבוד", render: renderProcessingPage },
-    recipes: { title: "מתכונים", render: renderRecipesPage },
-    dishes: { title: "מנות ורווחיות", render: renderDishesPage },
-    suppliers: { title: "ספקים וחשבוניות", render: renderSuppliersPage },
-    inventory: { title: "ספירת מלאי", render: renderInventoryPage },
-    settings: { title: "הגדרות", render: renderSettingsPage },
+    pantry: { title: "מזווה", render: renderPantryPage,
+        info: "חומרי גלם, מחיר קנייה, ותוצרי סריקת חשבוניות. הניצולת והפירוק נעשים בעמוד \"עיבוד\"." },
+    processing: { title: "עיבוד", render: renderProcessingPage,
+        info: "כאן קובעים ניצולת וקפוא לכל מוצר, או יוצרים ממנו תוצר מפורק (למשל: דג שלם ← פילה). המחיר האמיתי מוצג רק כאן." },
+    recipes: { title: "מתכונים", render: renderRecipesPage,
+        info: "מתכוני בסיס (רטבים, מרקים וכו') שמשמשים כמרכיבים במנות." },
+    dishes: { title: "מנות ורווחיות", render: renderDishesPage,
+        info: "מנות תפריט: מחיר מכירה, עלות, ואחוז רווח ופוד-קוסט בפועל." },
+    suppliers: { title: "ספקים וחשבוניות", render: renderSuppliersPage,
+        info: "מעקב הזמנות וחשבוניות לפי ספק. בחשבונית שמשויכת למוצר במזווה, המחיר והמלאי מתעדכנים." },
+    inventory: { title: "ספירת מלאי", render: renderInventoryPage,
+        info: "מזינים את הכמות שנספרה בפועל, והמערכת מחשבת את היתרה התיאורטית ומציגה את ההפרש." },
+    settings: { title: "הגדרות", render: renderSettingsPage, info: "" },
 };
 
 const view = document.getElementById("view");
@@ -29,6 +36,7 @@ async function navigate(pageKey) {
     location.hash = pageKey;
     navButtons.forEach((b) => b.classList.toggle("active", b.dataset.page === pageKey));
     pageTitle.textContent = "KitchenCostPro - " + PAGES[pageKey].title;
+    document.getElementById("page-info").innerHTML = PAGES[pageKey].info ? info(PAGES[pageKey].info) : "";
     view.innerHTML = '<div class="empty-state">טוען...</div>';
     try {
         await PAGES[pageKey].render(view);

@@ -73,3 +73,43 @@ export function escapeHtml(s) {
         "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
     }[c]));
 }
+
+
+// ---- סימן הסבר קטן (i): ההסבר מופיע רק בלחיצה ----
+const INFO_GLYPH = "i"; // אפשר להחליף ל-"*" אם מעדיפים כוכבית
+
+export function info(text) {
+    return `<button type="button" class="info-btn" data-info="${escapeHtml(text)}" aria-label="הסבר">${INFO_GLYPH}</button>`;
+}
+
+let infoPop = null;
+function closeInfoPop() {
+    if (infoPop) { infoPop.remove(); infoPop = null; }
+}
+if (typeof document !== "undefined") {
+    document.addEventListener("click", (e) => {
+        const btn = e.target.closest && e.target.closest(".info-btn");
+        if (!btn) { closeInfoPop(); return; }
+        e.preventDefault();
+        e.stopPropagation();
+        const same = infoPop && infoPop.__btn === btn;
+        closeInfoPop();
+        if (same) return;
+        const pop = document.createElement("div");
+        pop.className = "info-pop";
+        pop.textContent = btn.dataset.info;
+        pop.__btn = btn;
+        document.body.appendChild(pop);
+        // ממקם מתחת לסימן, בתוך גבולות המסך
+        const r = btn.getBoundingClientRect();
+        const w = Math.min(280, window.innerWidth - 24);
+        pop.style.width = w + "px";
+        let left = r.left + r.width / 2 - w / 2;
+        left = Math.max(12, Math.min(left, window.innerWidth - w - 12));
+        pop.style.left = left + "px";
+        const below = r.bottom + 8;
+        pop.style.top = (below + pop.offsetHeight > window.innerHeight - 12 ? Math.max(12, r.top - 8 - pop.offsetHeight) : below) + "px";
+        infoPop = pop;
+    }, true);
+    window.addEventListener("scroll", closeInfoPop, true);
+}

@@ -1,5 +1,5 @@
 // עזרי תמונה לחשבוניות: כיווץ לפני שמירה (כדי לא למלא את אחסון הטלפון), הצגה במסך מלא, והמרה לגיבוי.
-import { openModal, closeModal, escapeHtml } from "./ui.js";
+import { openModal, closeModal, escapeHtml, info } from "./ui.js";
 
 const MAX_SIDE = 1800;
 const JPEG_QUALITY = 0.82;
@@ -29,11 +29,10 @@ export async function compressImage(file) {
 export function showImageFullscreen(blob, title) {
     const url = URL.createObjectURL(blob);
     const overlay = openModal(`
-        <h2>${escapeHtml(title || "תמונת חשבונית")}</h2>
+        <h2>${escapeHtml(title || "תמונת חשבונית")} ${info("לחץ על התמונה כדי להגדיל או להקטין.")}</h2>
         <div style="max-height:70vh;overflow:auto;border:1px solid #ddd;border-radius:8px;background:#fafafa;">
             <img id="img-full" src="${url}" alt="תמונת חשבונית" style="width:100%;display:block;cursor:zoom-in;">
         </div>
-        <div class="hint">לחץ על התמונה כדי להגדיל/להקטין.</div>
         <div class="modal-actions">
             <button type="button" class="btn btn-secondary" id="img-save">💾 שמור עותק בטלפון</button>
             <button type="button" class="btn btn-primary" id="img-close">סגור</button>
