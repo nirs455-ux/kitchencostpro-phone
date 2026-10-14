@@ -1,4 +1,4 @@
-const CACHE_NAME = "kcp-v13";
+const CACHE_NAME = "kcp-v14";
 const ASSETS = [
     "./",
     "./index.html",
@@ -16,6 +16,12 @@ const ASSETS = [
     "./js/imageUtil.js",
     "./js/theme.js",
     "./js/pages/priceAlerts.js",
+    "./js/pages/trashModal.js",
+    "./js/pages/homePage.js",
+    "./js/repo/scanQueue.js",
+    "./js/share.js",
+    "./js/staff.js",
+    "./js/errorLog.js",
     "./js/imagePicker.js",
     "./js/export.js",
     "./js/repo/pantryRepo.js",
@@ -50,7 +56,23 @@ self.addEventListener("activate", (event) => {
     );
 });
 
+// "שתף לאפליקציה": קבלת תמונה מאפליקציה אחרת (וואטסאפ, גלריה) - שומרים אותה זמנית ופותחים את האפליקציה לסריקה
 self.addEventListener("fetch", (event) => {
+    const reqUrl = new URL(event.request.url);
+    if (event.request.method === "POST" && reqUrl.pathname.endsWith("/share-target")) {
+        event.respondWith((async () => {
+            try {
+                const form = await event.request.formData();
+                const file = form.get("image");
+                if (file && file.size) {
+                    const cache = await caches.open("kcp-share");
+                    await cache.put("shared-image", new Response(file, { headers: { "Content-Type": file.type || "image/jpeg" } }));
+                }
+            } catch (e) { /* ממשיכים לפתוח את האפליקציה גם אם נכשל */ }
+            return Response.redirect(new URL("./index.html#share", self.registration.scope).href, 303);
+        })());
+        return;
+    }
     if (event.request.method !== "GET") return;
     const url = new URL(event.request.url);
     // בקשות ל-Gemini API תמיד ישירות לרשת - לא לשמור במטמון תוצאות סריקה
