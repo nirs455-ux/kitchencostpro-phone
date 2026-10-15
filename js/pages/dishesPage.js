@@ -16,7 +16,7 @@ async function allSources() {
         }
     }
     const recipes = await dbGetAll("recipes");
-    for (const r of recipes.sort((a, b) => a.name.localeCompare(b.name, "he"))) {
+    for (const r of recipes.filter((x) => x.status !== "draft").sort((a, b) => a.name.localeCompare(b.name, "he"))) {
         out.push({ source_type: "recipe", source_id: r.id, name: `📖 ${r.name}`, indent: false, ppgSource: null, recipeCostPerGram: r.cost_per_gram });
     }
     return out;
