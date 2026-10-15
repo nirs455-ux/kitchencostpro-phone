@@ -35,20 +35,23 @@ export async function renderRecipesPage(container) {
     container.querySelector("#btn-add").onclick = () => openRecipeModal(null, container);
     container.querySelector("#btn-scan-recipe").onclick = () => openImagePicker({
         title: "סריקת מתכון",
-        hint: "צלם או העלה תמונה/PDF של מתכון - נזהה שם, מרכיבים וכמויות, ותוכל לבדוק ולתקן לפני שמירה.",
-        onFile: async (file) => {
-            const apiKey = await getSetting("gemini_api_key");
-            openModal('<div style="text-align:center;padding:24px;color:#666;">קורא את המתכון...</div>');
-            try {
-                const draft = await scanRecipeImage(apiKey, file);
-                closeModal();
-                openRecipeModal(null, container, draft);
-            } catch (e) {
-                const overlay = openModal(`<h2>שגיאה בסריקה</h2><div class="error-msg" style="display:block;">${escapeHtml(e.message)}</div><div class="modal-actions"><button class="btn btn-secondary" id="err-close">סגור</button></div>`);
-                overlay.querySelector("#err-close").onclick = closeModal;
-            }
-        },
+        hint: "צלם או העלה מתכון בכל פורמט: תמונה, PDF, Word, Excel, טקסט ועוד. נזהה שם, מרכיבים וכמויות, ותוכל לבדוק ולתקן לפני שמירה.",
+        onFile: (file) => scanRecipeFile(file, container),
     });
+}
+
+// סורק קובץ מתכון מכל סוג (תמונה / PDF / Word / Excel / טקסט...) ופותח טיוטה לבדיקה. משמש גם ל"שתף".
+export async function scanRecipeFile(file, container) {
+    const apiKey = await getSetting("gemini_api_key");
+    openModal('<div style="text-align:center;padding:24px;color:#666;">קורא את המתכון...</div>');
+    try {
+        const draft = await scanRecipeImage(apiKey, file);
+        closeModal();
+        openRecipeModal(null, container, draft);
+    } catch (e) {
+        const overlay = openModal(`<h2>שגיאה בסריקה</h2><div class="error-msg" style="display:block;">${escapeHtml(e.message)}</div><div class="modal-actions"><button class="btn btn-secondary" id="err-close">סגור</button></div>`);
+        overlay.querySelector("#err-close").onclick = closeModal;
+    }
 }
 
 function renderRecipeCard(r, container) {

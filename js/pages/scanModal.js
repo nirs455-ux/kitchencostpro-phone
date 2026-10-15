@@ -5,6 +5,7 @@ import { CATEGORY_GROUPS, UNIT_TYPES, UNIT_TYPE_LABELS } from "../constants.js";
 import { h, openModal, closeModal, toast, escapeHtml, info, busy, attemptClose } from "../ui.js";
 import { compressImage } from "../imageUtil.js";
 import { addToQueue } from "../repo/scanQueue.js";
+import { FILE_ACCEPT } from "../filePrep.js";
 import { logError } from "../errorLog.js";
 import { priceChanges } from "../repo/suppliersRepo.js";
 import { showPriceChangesDialog } from "./priceAlerts.js";
@@ -24,10 +25,12 @@ export async function openScanModal({ supplierAware, onDone, initialFile = null 
         <div id="scan-upload-area">
             <div class="btn-row">
                 <button type="button" class="btn btn-accent" id="btn-pick-camera">📷 צלם חשבונית</button>
-                <button type="button" class="btn btn-secondary" id="btn-pick-gallery">🖼️ בחר מהגלריה / קבצים</button>
+                <button type="button" class="btn btn-secondary" id="btn-pick-gallery">🖼️ גלריה / קבצים</button>
+                <button type="button" class="btn btn-secondary" id="btn-pick-any">📁 כל קובץ</button>
             </div>
             <input type="file" id="scan-file-camera" accept="image/*" capture="environment" style="display:none">
-            <input type="file" id="scan-file-gallery" accept="image/*" style="display:none">
+            <input type="file" id="scan-file-gallery" accept="${FILE_ACCEPT}" style="display:none">
+            <input type="file" id="scan-file-any" style="display:none">
             <div class="error-msg"></div>
         </div>
         <div id="scan-loading" style="display:none;text-align:center;padding:24px;color:#666;">קורא את החשבונית...</div>
@@ -71,6 +74,7 @@ export async function openScanModal({ supplierAware, onDone, initialFile = null 
 
     let scannedItems = [];
     let scannedFile = null;
+    let scannedAttachment = null; // הקובץ שיישמר עם החשבונית (תמונה מכווצת / PDF / המסמך המקורי)
     let printedTotal = null;
     const pettyBox = overlay.querySelector("#scan-petty");
     if (pettyBox) pettyBox.addEventListener("change", () => { overlay.querySelector("#scan-purchaser-wrap").style.display = pettyBox.checked ? "block" : "none"; });
@@ -85,6 +89,7 @@ export async function openScanModal({ supplierAware, onDone, initialFile = null 
 
     overlay.querySelector("#btn-pick-camera").onclick = () => openInAppCamera();
     overlay.querySelector("#btn-pick-gallery").onclick = () => overlay.querySelector("#scan-file-gallery").click();
+    overlay.querySelector("#btn-pick-any").onclick = () => overlay.querySelector("#scan-file-any").click();
 
     // מצלמה בתוך האפליקציה (מבקשת הרשאה בעצמה). אם היא לא זמינה/נדחתה - חוזרים לשיטת הקלט הרגילה.
     async function openInAppCamera() {
@@ -145,6 +150,8 @@ export async function openScanModal({ supplierAware, onDone, initialFile = null 
                 }
             }
             printedTotal = data.invoice_total;
+            scannedAttachment = data.attachment || null;
+            if (data.partial) toast("הקובץ ישן - הקריאה עשויה להיות חלקית, בדוק את השורות");
             if (supplierAware) {
                 if (data.invoice_date) overlay.querySelector("#scan-date").value = data.invoice_date;
                 if (data.supplier_name) {
@@ -193,6 +200,7 @@ export async function openScanModal({ supplierAware, onDone, initialFile = null 
     };
     overlay.querySelector("#scan-file-camera").addEventListener("change", onFileChosen);
     overlay.querySelector("#scan-file-gallery").addEventListener("change", onFileChosen);
+    overlay.querySelector("#scan-file-any").addEventListener("change", onFileChosen);
 
     // שומר את מה שהוקלד בשדות לפני ציור מחדש (כדי שלחיצה על "כן/לא" לא תמחק עריכות)
     function captureInputs() {
@@ -474,7 +482,7 @@ export async function openScanModal({ supplierAware, onDone, initialFile = null 
                 const existing = (await listSuppliers()).find((x) => x.name === name);
                 supplierId = existing ? existing.id : await addSupplier(name);
             }
-            const image = supplierId && scannedFile ? await compressImage(scannedFile) : undefined;
+            const image = supplierId && (scannedAttachment || scannedFile) ? (scannedAttachment || (await compressImage(scannedFile))) : undefined;
             const pettyCash = supplierAware && overlay.querySelector("#scan-petty").checked;
             const purchaser = supplierAware ? overlay.querySelector("#scan-purchaser").value : "";
             const result = await applyScannedInvoice({ items, supplierId, invoiceDate, image, pettyCash, purchaser });
