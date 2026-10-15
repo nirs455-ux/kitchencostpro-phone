@@ -5,9 +5,28 @@ import { ALLERGENS, suggestAllergens, allergenLabels } from "../allergens.js";
 import { openScanModal } from "./scanModal.js";
 import { dbGetAll } from "../db.js";
 import { getSetting, setSetting } from "../repo/settingsRepo.js";
+import { renderProcessingPage } from "./processingPage.js";
+import { renderInventoryPage } from "./inventoryPage.js";
+import { isStaffMode } from "../staff.js";
 import { getFilter, applyFilter, mountFilterBar, groupBySection, groupTitleEl } from "../filters.js";
 
+// מזווה = שלוש לשוניות: מוצרים | ספירת מלאי | עיבוד וניצולת. מצב עובד רואה רק ספירת מלאי.
+const TABS = [["products", "מוצרים"], ["inventory", "ספירת מלאי"], ["processing", "עיבוד וניצולת"]];
+let currentTab = "products";
+export function setPantryTab(t) { currentTab = TABS.some((x) => x[0] === t) ? t : "products"; }
+
 export async function renderPantryPage(container) {
+    if (isStaffMode()) currentTab = "inventory";
+    const seg = isStaffMode() ? "" : `<div class="seg" id="pantry-seg">${TABS.map(([k, l]) => `<button type="button" data-tab="${k}" class="${k === currentTab ? "active" : ""}">${l}</button>`).join("")}</div>`;
+    container.innerHTML = `${seg}<div id="pantry-tab"></div>`;
+    const sub = container.querySelector("#pantry-tab");
+    container.querySelectorAll("#pantry-seg [data-tab]").forEach((b) => { b.onclick = () => { currentTab = b.dataset.tab; renderPantryPage(container); }; });
+    if (currentTab === "inventory") await renderInventoryPage(sub);
+    else if (currentTab === "processing") await renderProcessingPage(sub);
+    else await renderPantryProducts(sub);
+}
+
+export async function renderPantryProducts(container) {
     const items = await listTopLevelPantryItems();
     // תאריך קנייה אחרונה לכל מוצר (לפי חשבוניות; זיכויים לא נספרים) - לאפשרות המיון "קנייה אחרונה"
     const lastBought = new Map();
@@ -57,7 +76,7 @@ export async function renderPantryPage(container) {
                     if (!(await confirmDialog(deleteConfirmText(await getDeleteInfo(id))))) return;
                     await deletePantryItem(id);
                     toast("נמחק");
-                    renderPantryPage(container);
+                    renderPantryProducts(container);
                 } catch (e) {
                     toast(e.message);
                 }
@@ -76,7 +95,7 @@ export async function renderPantryPage(container) {
     renderList();
 
     container.querySelector("#btn-add").onclick = () => openPantryModal(null, container);
-    container.querySelector("#btn-scan").onclick = () => openScanModal({ supplierAware: false, onDone: () => renderPantryPage(container) });
+    container.querySelector("#btn-scan").onclick = () => openScanModal({ supplierAware: false, onDone: () => renderPantryProducts(container) });
 }
 
 function renderPantryCard(it) {
@@ -207,7 +226,7 @@ function openPantryModal(existing, container) {
             }
             closeModal();
             toast("נשמר");
-            renderPantryPage(container);
+            renderPantryProducts(container);
         } catch (e) {
             const el = overlay.querySelector(".error-msg");
             el.textContent = e.message;
