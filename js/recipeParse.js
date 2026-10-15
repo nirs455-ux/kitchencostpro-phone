@@ -13,6 +13,7 @@ export const RECIPE_SCAN_PROMPT =
     '  "name": "שם המתכון",\n' +
     '  "category": "אחת מ: ' + RECIPE_CATEGORIES.join(", ") + '",\n' +
     '  "final_weight_g": משקל סופי של המתכון בגרם אם כתוב במפורש, אחרת null,\n' +
+    '  "method": "הוראות ההכנה כפי שכתובות במתכון (טקסט חופשי, אפשר בכמה שורות), או null אם אין",\n' +
     '  "ingredients": [\n' +
     '    {"name": "שם המרכיב בעברית", "quantity": 2.5, "unit": "g"}\n' +
     "  ]\n" +
@@ -70,5 +71,6 @@ export function buildRecipeDraft(parsed, pantryItems) {
             fuzzy,
         });
     }
-    return { name, category, final_weight: finalWeight, ingredients };
+    const method = String(parsed.method || "").trim() || null;
+    return { name, category, final_weight: finalWeight, method, ingredients };
 }

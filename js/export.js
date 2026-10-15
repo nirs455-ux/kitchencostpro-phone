@@ -13,6 +13,11 @@ export async function exportAllData() {
                 if (r.image instanceof Blob) r.image = { __image: await blobToDataUrl(r.image) };
             }
         }
+        if (name === "recipes") {
+            for (const r of rows) {
+                if (r.source_file instanceof Blob) r.source_file = { __image: await blobToDataUrl(r.source_file) };
+            }
+        }
         data.stores[name] = rows;
     }
     return data;
@@ -46,6 +51,7 @@ export async function importAndReplace(fileText) {
         if (!Array.isArray(rows)) throw new Error(`קובץ גיבוי פגום (${name})`);
         for (const row of rows) {
             if (name === "invoices" && row.image && row.image.__image) row.image = dataUrlToBlob(row.image.__image);
+            if (name === "recipes" && row.source_file && row.source_file.__image) row.source_file = dataUrlToBlob(row.source_file.__image);
             prepared.push([name, row]);
         }
     }
