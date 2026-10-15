@@ -32,6 +32,7 @@ async function resolveDishItems(items) {
         } else if (sourceType === "recipe") {
             const row = await dbGet("recipes", sourceId);
             if (!row) throw new Error("מתכון לא נמצא");
+            if (row.status === "draft") throw new Error(`המתכון '${row.name}' עדיין טיוטה (חסרים רכיבים). השלם אותו בדף המתכונים לפני שימוש במנה.`);
             ppg = row.cost_per_gram;
             sourceName = row.name;
         } else {

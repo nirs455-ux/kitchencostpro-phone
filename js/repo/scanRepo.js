@@ -7,6 +7,8 @@ import { saveInvoice } from "./suppliersRepo.js";
 import { getSetting, setSetting } from "./settingsRepo.js";
 import { compressImage } from "../imageUtil.js";
 import { prepareParts } from "../filePrep.js";
+import { suggestAllergens } from "../allergens.js";
+import { buildBasePrompt, parseBaseAnswer } from "../bakers.js";
 import { NON_FOOD_CATEGORIES } from "../constants.js";
 import { RECIPE_SCAN_PROMPT, buildRecipeDraft } from "../recipeParse.js";
 import { INVOICE_SCAN_PROMPT, mergeDiscountLines, computeStockFactor, toFloat } from "../invoiceParse.js";
@@ -218,7 +220,7 @@ export async function applyScannedInvoice({ items, supplierId, invoiceDate, imag
             pantryItemId = await dbPut("pantryItems", {
                 name: p.name, category: p.category, subcategory: null, unit_type: p.unitType, unit_amount: p.unitAmount,
                 price: p.pantryPrice, yield_pct: 100, weight_before: null, weight_after: null,
-                is_frozen: isFrozen, parent_id: null,
+                is_frozen: isFrozen, parent_id: null, allergens: suggestAllergens(p.name), allergens_auto: true,
             });
             createdByName.set(p.name.toLowerCase(), pantryItemId);
         }
@@ -291,7 +293,10 @@ export async function scanRecipeImage(apiKey, file) {
         throw new Error(`לא הצלחתי לפרש את התשובה: ${e.message}`);
     }
     const pantry = (await dbGetAll("pantryItems")).filter((r) => !NON_FOOD_CATEGORIES.has(r.category));
-    return buildRecipeDraft(parsed, pantry);
+    const draft = buildRecipeDraft(parsed, pantry);
+    // המקור נשמר עם המתכון ("מתכון כפי שהוא"): הקובץ המקורי (תמונה מכווצת / PDF / מסמך), ואם הוא מסמך טקסט - גם הטקסט שחולץ
+    draft.source_file = prepared.attachment || null;
+    return draft;
 }
 
 
@@ -311,5 +316,35 @@ export async function createPantryItemFromInvoice({ name, category, unitType, un
     return dbPut("pantryItems", {
         name, category, subcategory: null, unit_type: unitType, unit_amount: amount,
         price, yield_pct: 100, weight_before: null, weight_after: null, is_frozen: 0, parent_id: null,
+        allergens: suggestAllergens(name), allergens_auto: true,
     });
+}
+
+// מבקש מ-Gemini להציע את הרכיב המרכזי (בסיס לאחוזי אופים). מחזיר { ids, reason } או null (אין מפתח / כשל / תשובה לא תקינה).
+export async function suggestRecipeBase(apiKey, recipeName, items) {
+    if (!apiKey || !items.length) return null;
+    const prompt = buildBasePrompt(recipeName, items);
+    for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+            const response = await fetch(
+                `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${apiKey}`,
+                { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }) }
+            );
+            if ((response.status === 429 || response.status === 503) && attempt < 2) {
+                await new Promise((r) => setTimeout(r, 1500));
+                continue;
+            }
+            if (!response.ok) return null;
+            const result = await response.json();
+            let text = result.candidates[0].content.parts[0].text.trim();
+            if (text.startsWith("```")) {
+                text = text.split("```")[1];
+                if (text.startsWith("json")) text = text.slice(4);
+            }
+            return parseBaseAnswer(JSON.parse(text.trim()), items);
+        } catch (e) {
+            return null;
+        }
+    }
+    return null;
 }

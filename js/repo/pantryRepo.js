@@ -1,4 +1,5 @@
 // לוגיקת מזווה - תרגום מדויק של _validate_payload / add_item / update_item / update_item_yield / delete_item מ-main.py.
+import { suggestAllergens } from "../allergens.js";
 import { dbGetAll, dbGet, dbPut, dbDelete, dbGetByIndex } from "../db.js";
 import { CATEGORY_GROUPS, UNIT_TYPES } from "../constants.js";
 import { computeYieldPct } from "../formulas.js";
@@ -61,6 +62,9 @@ export async function addPantryItem(data) {
         name, category: data.category, subcategory, unit_type: data.unit_type, unit_amount: unitAmount,
         price, yield_pct: yieldPct, weight_before: weightBefore, weight_after: weightAfter,
         is_frozen: isFrozen ? 1 : 0, parent_id: null,
+        // אלרגנים: מהטופס אם הוגדרו, אחרת הצעה לפי שם (מסומנת כאוטומטית עד שהמשתמש מאשר)
+        allergens: Array.isArray(data.allergens) ? data.allergens : suggestAllergens(name),
+        allergens_auto: !Array.isArray(data.allergens),
     };
     const id = await dbPut("pantryItems", row);
     return id;
@@ -118,6 +122,7 @@ export async function updatePantryItem(id, data) {
         name, category: data.category, subcategory: newSubcategory, unit_type: data.unit_type,
         unit_amount: unitAmount, price, is_frozen: isFrozen ? 1 : 0,
     });
+    if (Array.isArray(data.allergens)) { existing.allergens = data.allergens; existing.allergens_auto = false; }
     await dbPut("pantryItems", existing);
 }
 

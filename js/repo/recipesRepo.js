@@ -44,18 +44,34 @@ export async function saveRecipe(existingId, data) {
     const name = (data.name || "").trim();
     if (!name) throw new Error("יש להזין שם מתכון");
     if (!RECIPE_CATEGORIES.includes(data.category)) throw new Error("קטגוריה לא תקינה");
-    if (!data.items || data.items.length === 0) throw new Error("יש להוסיף לפחות מרכיב אחד");
+    // רכיבים שעדיין לא במזווה נשמרים כטיוטה (draft_ingredients) ואפשר להשלים אותם אחר כך; העלות מחושבת רק מהרכיבים שבמזווה
+    const draftIngredients = (data.draft_ingredients || [])
+        .map((d) => ({ name: String(d.name || "").trim(), quantity: d.quantity ?? null, unit: d.unit ?? null }))
+        .filter((d) => d.name);
+    const items = data.items || [];
+    if (items.length === 0 && draftIngredients.length === 0) throw new Error("יש להוסיף לפחות מרכיב אחד");
 
-    const { resolved, totalCost, rawWeight } = await resolveRecipeItems(data.items);
+    const { resolved, totalCost, rawWeight } = await resolveRecipeItems(items);
     const { finalWeight, isAutoWeight } = computeWeight(data.final_weight, rawWeight);
     const costPerGram = recipeCostPerGram(totalCost, finalWeight);
 
     const recipeRow = {
         name, category: data.category, final_weight: finalWeight, is_auto_weight: isAutoWeight,
         total_cost: Math.round(totalCost * 100) / 100, cost_per_gram: costPerGram,
+        status: draftIngredients.length ? "draft" : "ready",
+        draft_ingredients: draftIngredients,
+        method: (data.method || "").trim() || null,
     };
+    // קובץ המקור: Blob חדש = החלפה; null = הסרה; לא הועבר = נשמר הקיים
+    if (data.source_file instanceof Blob) recipeRow.source_file = data.source_file;
+    if (data.source_text) recipeRow.source_text = data.source_text;
     let recipeId = existingId;
     if (existingId) {
+        const prev = await dbGet("recipes", existingId);
+        if (prev) {
+            if (data.source_file === undefined && prev.source_file) recipeRow.source_file = prev.source_file;
+            if (!data.source_text && prev.source_text) recipeRow.source_text = prev.source_text;
+        }
         recipeRow.id = existingId;
         await dbPut("recipes", recipeRow);
         await dbDeleteWhere("recipeItems", "recipe_id", existingId);
@@ -71,4 +87,11 @@ export async function saveRecipe(existingId, data) {
 export async function deleteRecipe(id) {
     await dbDeleteWhere("recipeItems", "recipe_id", id);
     await dbDelete("recipes", id);
+}
+
+// שומר את בחירת הבסיס (למתכון באחוזים): ids = מזהי מוצרי מזווה, source = manual | auto | ai
+export async function setRecipeBase(id, { base_ids, base_source, base_reason }) {
+    const r = await dbGet("recipes", id);
+    if (!r) throw new Error("מתכון לא נמצא");
+    await dbPut("recipes", { ...r, base_ids, base_source, base_reason: base_reason || "" });
 }
