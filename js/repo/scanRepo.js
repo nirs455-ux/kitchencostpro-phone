@@ -6,6 +6,7 @@ import { CATEGORY_GROUPS, UNIT_TYPES } from "../constants.js";
 import { saveInvoice } from "./suppliersRepo.js";
 import { getSetting, setSetting } from "./settingsRepo.js";
 import { compressImage } from "../imageUtil.js";
+import { prepareParts } from "../filePrep.js";
 import { NON_FOOD_CATEGORIES } from "../constants.js";
 import { RECIPE_SCAN_PROMPT, buildRecipeDraft } from "../recipeParse.js";
 import { INVOICE_SCAN_PROMPT, mergeDiscountLines, computeStockFactor, toFloat } from "../invoiceParse.js";
@@ -21,10 +22,8 @@ function fileToBase64(file) {
 
 export async function scanInvoiceImage(apiKey, file, onRetry) {
     if (!apiKey) throw new Error("לא הוגדר מפתח API של Gemini. הזן אותו במסך ההגדרות.");
-    // דחיסה לפני שליחה: העלאה מהירה בהרבה בלי לפגוע בקריאות הטקסט
-    const small = await compressImage(file);
-    const imageData = await fileToBase64(small);
-    const mimeType = small.type || "image/jpeg";
+    // הכנת הקובץ: תמונה (מכווצת) / PDF נשלחים כמו שהם; Word / Excel / טקסט וכו' - חילוץ טקסט
+    const prepared = await prepareParts(file, "תוכן החשבונית");
 
     // שרת Gemini לפעמים עמוס (503/429) - זה זמני. מנסים שוב אוטומטית עם המתנה גדלה, בלי לבקש מהמשתמש לצלם מחדש.
     const RETRY_STATUSES = [429, 500, 502, 503, 504];
@@ -38,7 +37,7 @@ export async function scanInvoiceImage(apiKey, file, onRetry) {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
-                        contents: [{ parts: [{ text: INVOICE_SCAN_PROMPT }, { inline_data: { mime_type: mimeType, data: imageData } }] }],
+                        contents: [{ parts: [{ text: INVOICE_SCAN_PROMPT }, ...prepared.parts] }],
                     }),
                 }
             );
@@ -134,7 +133,7 @@ export async function scanInvoiceImage(apiKey, file, onRetry) {
         });
     }
 
-    return { supplier_name: parsed.supplier_name || null, invoice_date: parsed.invoice_date || null, invoice_total: toFloat(parsed.invoice_total), items: enrichedItems };
+    return { supplier_name: parsed.supplier_name || null, invoice_date: parsed.invoice_date || null, invoice_total: toFloat(parsed.invoice_total), items: enrichedItems, attachment: prepared.attachment, partial: !!prepared.partial };
 }
 
 // מחיל את שורות הסריקה על המזווה (ואופציונלית שומר כחשבונית מקושרת לספק). מקביל ל-apply_scanned_invoice.
@@ -250,8 +249,8 @@ export async function applyScannedInvoice({ items, supplierId, invoiceDate, imag
 // סריקת מתכון מתמונה: מחזיר טיוטה (name, category, final_weight, ingredients) - שום דבר לא נשמר.
 export async function scanRecipeImage(apiKey, file) {
     if (!apiKey) throw new Error("לא הוגדר מפתח API של Gemini. הזן אותו במסך ההגדרות.");
-    const imageData = await fileToBase64(file);
-    const mimeType = file.type || "image/jpeg";
+    const prepared = await prepareParts(file, "טקסט המתכון");
+    const filePart = prepared.parts;
 
     let response;
     for (let attempt = 0; attempt < 3; attempt++) {
@@ -262,7 +261,7 @@ export async function scanRecipeImage(apiKey, file) {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
-                        contents: [{ parts: [{ text: RECIPE_SCAN_PROMPT }, { inline_data: { mime_type: mimeType, data: imageData } }] }],
+                        contents: [{ parts: [{ text: RECIPE_SCAN_PROMPT }, ...filePart] }],
                     }),
                 }
             );
