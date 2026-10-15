@@ -1,4 +1,4 @@
-import { renderPantryPage } from "./pages/pantryPage.js";
+import { renderPantryPage, setPantryTab } from "./pages/pantryPage.js";
 import { renderProcessingPage } from "./pages/processingPage.js";
 import { renderRecipesPage } from "./pages/recipesPage.js";
 import { renderDishesPage } from "./pages/dishesPage.js";
@@ -22,7 +22,7 @@ import { openModal, closeModal } from "./ui.js";
 const PAGES = {
     home: { title: "בית", render: renderHomePage, info: "מסך הבית: סריקה מהירה, ומה שדורש תשומת לב עכשיו." },
     pantry: { title: "מזווה", render: renderPantryPage,
-        info: "חומרי גלם, מחיר קנייה, ותוצרי סריקת חשבוניות. הניצולת והפירוק נעשים בעמוד \"עיבוד\"." },
+        info: "חומרי גלם ומחירים (מוצרים), ספירת מלאי, וניצולת/פירוק (עיבוד וניצולת) - בלשוניות למעלה." },
     processing: { title: "עיבוד", render: renderProcessingPage,
         info: "כאן קובעים ניצולת וקפוא לכל מוצר, או יוצרים ממנו תוצר מפורק (למשל: דג שלם ← פילה). המחיר האמיתי מוצג רק כאן." },
     recipes: { title: "מתכונים", render: renderRecipesPage,
@@ -47,12 +47,18 @@ async function navigate(pageKey) {
     if (!PAGES[pageKey]) pageKey = "home";
     if (isStaffMode() && !STAFF_PAGES.has(pageKey)) pageKey = "home"; // מצב עובד: רק בית וספירת מלאי
     location.hash = pageKey;
-    navButtons.forEach((b) => b.classList.toggle("active", b.dataset.page === pageKey));
-    pageTitle.textContent = "KitchenCostPro - " + PAGES[pageKey].title;
-    document.getElementById("page-info").innerHTML = PAGES[pageKey].info ? info(PAGES[pageKey].info) : "";
+    // ספירת מלאי ועיבוד הם לשוניות של המזווה (הכתובות #inventory ו-#processing ממשיכות לעבוד)
+    const inPantry = pageKey === "inventory" || pageKey === "processing";
+    if (inPantry) setPantryTab(pageKey);
+    else if (pageKey === "pantry") setPantryTab("products");
+    const shown = inPantry ? PAGES.pantry : PAGES[pageKey];
+    const navKey = inPantry && !isStaffMode() ? "pantry" : pageKey;
+    navButtons.forEach((b) => b.classList.toggle("active", b.dataset.page === navKey));
+    pageTitle.textContent = "KitchenCostPro - " + shown.title;
+    document.getElementById("page-info").innerHTML = shown.info ? info(shown.info) : "";
     view.innerHTML = '<div class="empty-state">טוען...</div>';
     try {
-        await PAGES[pageKey].render(view);
+        await shown.render(view);
     } catch (e) {
         console.error(e);
         view.innerHTML = `<div class="empty-state">שגיאה בטעינת הדף: ${e.message}</div>`;
@@ -76,7 +82,7 @@ if (isStaffMode()) {
     const unlock = document.getElementById("btn-unlock");
     unlock.style.display = "";
     unlock.addEventListener("click", openUnlockDialog);
-    document.querySelectorAll("#bottom-nav button").forEach((b) => { if (!STAFF_PAGES.has(b.dataset.page)) b.style.display = "none"; });
+    document.querySelectorAll("#bottom-nav button").forEach((b) => { b.style.display = STAFF_PAGES.has(b.dataset.page) ? "" : "none"; });
 }
 document.getElementById("page-title").addEventListener("click", () => navigate("home"));
 
