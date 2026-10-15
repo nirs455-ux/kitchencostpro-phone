@@ -25,23 +25,30 @@ export async function compressImage(file) {
     }
 }
 
-// מציג תמונה במסך מלא; לחיצה על התמונה מגדילה/מקטינה כדי לקרוא את הפרטים.
+// מציג קובץ שמור במסך מלא: תמונה (עם הגדלה בלחיצה), PDF (בתוך החלון), או מסמך אחר (הורדה).
 export function showImageFullscreen(blob, title) {
     const url = URL.createObjectURL(blob);
+    const type = blob.type || "";
+    const isImage = type.startsWith("image/");
+    const isPdf = type === "application/pdf";
+    const body = isImage
+        ? `<div style="max-height:70vh;overflow:auto;border:1px solid #ddd;border-radius:8px;background:#fafafa;"><img id="img-full" src="${url}" alt="תמונת חשבונית" style="width:100%;display:block;cursor:zoom-in;"></div>`
+        : isPdf
+            ? `<iframe src="${url}" style="width:100%;height:68vh;border:1px solid #ddd;border-radius:8px;" title="PDF"></iframe>`
+            : `<div class="empty-state">הקובץ הזה אינו תמונה. לחץ "שמור עותק" כדי לפתוח אותו באפליקציה המתאימה.</div>`;
     const overlay = openModal(`
-        <h2>${escapeHtml(title || "תמונת חשבונית")} ${info("לחץ על התמונה כדי להגדיל או להקטין.")}</h2>
-        <div style="max-height:70vh;overflow:auto;border:1px solid #ddd;border-radius:8px;background:#fafafa;">
-            <img id="img-full" src="${url}" alt="תמונת חשבונית" style="width:100%;display:block;cursor:zoom-in;">
-        </div>
+        <h2>${escapeHtml(title || "קובץ החשבונית")} ${isImage ? info("לחץ על התמונה כדי להגדיל או להקטין.") : ""}</h2>
+        ${body}
         <div class="modal-actions">
-            <button type="button" class="btn btn-secondary" id="img-save">💾 שמור עותק בטלפון</button>
+            <button type="button" class="btn btn-secondary" id="img-save">💾 שמור עותק</button>
             <button type="button" class="btn btn-primary" id="img-close">סגור</button>
         </div>
     `);
-    // דפדפן לא יכול ליצור אלבום בגלריה בעצמו; בטלפון נפתח חלון השיתוף ("שמור תמונה"), ובמחשב הקובץ יורד כרגיל
+    // דפדפן לא יכול ליצור אלבום בגלריה בעצמו; בטלפון נפתח חלון השיתוף ("שמור"), ובמחשב הקובץ יורד כרגיל
     overlay.querySelector("#img-save").onclick = async () => {
-        const fileName = `חשבונית-${(title || "").replace(/[^\w֐-׿-]+/g, "_") || "תמונה"}.jpg`;
-        const file = new File([blob], fileName, { type: blob.type || "image/jpeg" });
+        const ext = isImage ? ".jpg" : isPdf ? ".pdf" : "";
+        const fileName = `חשבונית-${(title || "").replace(/[^\w\u0590-\u05FF-]+/g, "_") || "קובץ"}${ext}`;
+        const file = new File([blob], fileName, { type: type || "application/octet-stream" });
         try {
             if (navigator.canShare && navigator.canShare({ files: [file] })) {
                 await navigator.share({ files: [file], title: "חשבונית" });
@@ -58,12 +65,14 @@ export function showImageFullscreen(blob, title) {
         a.remove();
     };
     const img = overlay.querySelector("#img-full");
-    let zoomed = false;
-    img.onclick = () => {
-        zoomed = !zoomed;
-        img.style.width = zoomed ? "300%" : "100%";
-        img.style.cursor = zoomed ? "zoom-out" : "zoom-in";
-    };
+    if (img) {
+        let zoomed = false;
+        img.onclick = () => {
+            zoomed = !zoomed;
+            img.style.width = zoomed ? "300%" : "100%";
+            img.style.cursor = zoomed ? "zoom-out" : "zoom-in";
+        };
+    }
     overlay.querySelector("#img-close").onclick = () => { closeModal(); URL.revokeObjectURL(url); };
 }
 

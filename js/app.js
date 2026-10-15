@@ -16,6 +16,8 @@ import { consumeSharedFile } from "./share.js";
 import { isStaffMode, openUnlockDialog } from "./staff.js";
 import { installErrorHandlers } from "./errorLog.js";
 import { openScanModal } from "./pages/scanModal.js";
+import { scanRecipeFile } from "./pages/recipesPage.js";
+import { openModal, closeModal } from "./ui.js";
 
 const PAGES = {
     home: { title: "בית", render: renderHomePage, info: "מסך הבית: סריקה מהירה, ומה שדורש תשומת לב עכשיו." },
@@ -83,7 +85,17 @@ navigate(location.hash.replace("#", "") === "share" ? "home" : (location.hash.re
 // הגענו דרך "שתף": אם נשלחה תמונה - פותחים ישר את הסריקה
 (async () => {
     const shared = await consumeSharedFile();
-    if (shared) openScanModal({ supplierAware: true, initialFile: shared, onDone: () => navigate("home") });
+    if (shared) {
+        // קובץ שנשלח דרך "שתף": שואלים מה זה - חשבונית או מתכון
+        const ov = openModal(`<h2>מה לעשות עם הקובץ?</h2>
+            <div class="btn-row" style="flex-direction:column;">
+                <button type="button" class="btn btn-primary btn-big" id="sh-invoice">🧾 חשבונית / קבלה</button>
+                <button type="button" class="btn btn-accent btn-big" id="sh-recipe">📖 מתכון</button>
+                <button type="button" class="btn btn-secondary" id="sh-cancel">ביטול</button></div>`);
+        ov.querySelector("#sh-cancel").onclick = closeModal;
+        ov.querySelector("#sh-invoice").onclick = () => { closeModal(); openScanModal({ supplierAware: true, initialFile: shared, onDone: () => navigate("home") }); };
+        ov.querySelector("#sh-recipe").onclick = async () => { closeModal(); await navigate("recipes"); scanRecipeFile(shared, view); };
+    }
 })();
 
 applyTheme();

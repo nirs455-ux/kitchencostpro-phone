@@ -1,15 +1,18 @@
 // בורר תמונה/קובץ: מצלמה בתוך האפליקציה (עם חזרה לקלט capture אם לא זמינה) וגלריה/קבצים.
 import { openModal, closeModal, info } from "./ui.js";
+import { FILE_ACCEPT } from "./filePrep.js";
 
 export function openImagePicker({ title, hint, onFile }) {
     const overlay = openModal(`
         <h2>${title} ${hint ? info(hint.replace(/<[^>]+>/g, "")) : ""}</h2>
         <div class="btn-row">
             <button type="button" class="btn btn-accent" id="pick-camera">📷 צלם</button>
-            <button type="button" class="btn btn-secondary" id="pick-gallery">🖼️ בחר מהגלריה / קבצים</button>
+            <button type="button" class="btn btn-secondary" id="pick-gallery">🖼️ גלריה / קבצים</button>
+            <button type="button" class="btn btn-secondary" id="pick-any">📁 כל קובץ</button>
         </div>
         <input type="file" id="pick-file-camera" accept="image/*" capture="environment" style="display:none">
-        <input type="file" id="pick-file-gallery" accept="image/*,.pdf" style="display:none">
+        <input type="file" id="pick-file-gallery" accept="${FILE_ACCEPT}" style="display:none">
+        <input type="file" id="pick-file-any" style="display:none">
         <div class="modal-actions"><button type="button" class="btn btn-secondary" id="pick-cancel">ביטול</button></div>
     `);
 
@@ -22,6 +25,9 @@ export function openImagePicker({ title, hint, onFile }) {
     overlay.querySelector("#pick-gallery").onclick = () => overlay.querySelector("#pick-file-gallery").click();
     overlay.querySelector("#pick-file-camera").addEventListener("change", (e) => choose(e.target.files[0]));
     overlay.querySelector("#pick-file-gallery").addEventListener("change", (e) => choose(e.target.files[0]));
+    // "כל קובץ": בלי סינון סוגים - לטלפונים/אפליקציות ענן שמסתירים קבצים לפי הסוג
+    overlay.querySelector("#pick-any").onclick = () => overlay.querySelector("#pick-file-any").click();
+    overlay.querySelector("#pick-file-any").addEventListener("change", (e) => choose(e.target.files[0]));
 
     overlay.querySelector("#pick-camera").onclick = async () => {
         const fallback = () => overlay.querySelector("#pick-file-camera").click();
