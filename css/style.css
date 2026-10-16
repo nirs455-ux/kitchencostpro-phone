@@ -278,3 +278,20 @@ table.simple th { background: var(--brand); color: var(--on-brand); }
 .attn-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; background: var(--surface); border-radius: var(--radius); padding: 10px 14px; margin-bottom: 6px; box-shadow: var(--shadow); font-size: 14px; border-right: 4px solid var(--warn-border); }
 .attn-row.danger { border-right-color: var(--danger); }
 .attn-row.ok { border-right-color: var(--ok); color: var(--ok); font-weight: 600; }
+
+/* קופה קטנה: אדום = ממתין להחזר, ירוק = הוחזר */
+.petty-tag { display: inline-block; border: none; font-family: inherit; font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 10px; cursor: pointer; margin-inline-start: 6px; }
+.petty-tag.owed { background: var(--danger-soft); color: var(--danger); }
+.petty-tag.paid { background: var(--ok-soft); color: var(--ok); }
+.inv-row.petty-owed { border-inline-start: 4px solid var(--danger); }
+.inv-row.petty-paid { border-inline-start: 4px solid var(--ok); }
+
+/* מסך קבצים */
+.files-folder { cursor: pointer; }
+.files-folder:active { background: var(--brand-soft); }
+.files-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+.files-tile { background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; cursor: pointer; }
+.files-tile img, .files-doc { width: 100%; height: 130px; object-fit: cover; display: block; background: var(--brand-soft); }
+.files-doc { display: flex; align-items: center; justify-content: center; font-size: 30px; font-weight: 700; color: var(--brand); }
+.files-cap { padding: 6px 8px; font-size: 12px; display: flex; flex-direction: column; }
+.files-cap span { color: var(--text-2); }
