@@ -6,6 +6,7 @@ import { renderSuppliersPage } from "./pages/suppliersPage.js";
 import { renderInventoryPage } from "./pages/inventoryPage.js";
 import { renderSettingsPage } from "./pages/settingsPage.js";
 import { renderHomePage } from "./pages/homePage.js";
+import { renderFilesPage, openFilesFolder } from "./pages/filesPage.js";
 import { getSetting } from "./repo/settingsRepo.js";
 import { dbGetAll } from "./db.js";
 import { downloadExport } from "./export.js";
@@ -33,6 +34,7 @@ const PAGES = {
         info: "מעקב הזמנות וחשבוניות לפי ספק. בחשבונית שמשויכת למוצר במזווה, המחיר והמלאי מתעדכנים." },
     inventory: { title: "ספירת מלאי", render: renderInventoryPage,
         info: "מזינים את הכמות שנספרה בפועל, והמערכת מחשבת את היתרה התיאורטית ומציגה את ההפרש." },
+    files: { title: "קבצים", render: renderFilesPage, info: "כל התמונות והמסמכים שנשמרו באפליקציה: קבלות וחשבוניות, מתכונים, וקבצים שהתקבלו. בהמשך יסונכרנו לתיקייה KitchenCostPro בענן." },
     settings: { title: "הגדרות", render: renderSettingsPage, info: "" },
 };
 
@@ -46,6 +48,7 @@ const navButtons = document.querySelectorAll("#bottom-nav button");
 async function navigate(pageKey) {
     if (!PAGES[pageKey]) pageKey = "home";
     if (isStaffMode() && !STAFF_PAGES.has(pageKey)) pageKey = "home"; // מצב עובד: רק בית וספירת מלאי
+    if (pageKey === "files" && location.hash !== "#files") openFilesFolder(null);
     location.hash = pageKey;
     // ספירת מלאי ועיבוד הם לשוניות של המזווה (הכתובות #inventory ו-#processing ממשיכות לעבוד)
     const inPantry = pageKey === "inventory" || pageKey === "processing";
