@@ -286,6 +286,14 @@ export async function pettyCashOwed() {
     return { count, total: Math.round(total * 100) / 100 };
 }
 
+// מחליף סטטוס החזר של חשבונית קופה קטנה (אדום = ממתין, ירוק = הוחזר). מחזיר false אם החשבונית לא קופה קטנה.
+export async function setPettyReimbursed(id, reimbursed) {
+    const inv = await dbGet("invoices", id);
+    if (!inv || !inv.petty_cash) return false;
+    await dbPut("invoices", { ...inv, reimbursed: !!reimbursed });
+    return true;
+}
+
 export async function markAllPettyCashReimbursed() {
     for (const inv of await dbGetAll("invoices")) {
         if (!inv.deleted_at && inv.petty_cash && !inv.reimbursed) await dbPut("invoices", { ...inv, reimbursed: true });

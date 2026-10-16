@@ -3,6 +3,7 @@ import { suggestAllergens } from "../allergens.js";
 import { dbGetAll, dbGet, dbPut, dbDelete, dbGetByIndex } from "../db.js";
 import { CATEGORY_GROUPS, UNIT_TYPES } from "../constants.js";
 import { computeYieldPct } from "../formulas.js";
+import { partPrice } from "../eggs.js";
 
 export async function listAllPantryItems() {
     return dbGetAll("pantryItems");
@@ -124,6 +125,7 @@ export async function updatePantryItem(id, data) {
     });
     if (Array.isArray(data.allergens)) { existing.allergens = data.allergens; existing.allergens_auto = false; }
     await dbPut("pantryItems", existing);
+    await syncEggChildren(existing);
 }
 
 // עדכון ניצולת/משקל/קפוא (עמוד 2 - עיבוד). מקביל ל-PUT /api/items/<id>/yield.
@@ -205,4 +207,56 @@ export async function deleteAllChildren(id) {
         await purgePantryItem(child.id);
     }
     return children.length;
+}
+
+// ---- תבנית ביצים: חלבון וחלמון כתוצרים של ביצה, העלות מחולקת לפי משקל ----
+
+// מעדכן את מחיר החלבון/חלמון לפי מחיר הביצה (נקרא בכל מקום שמחיר מוצר משתנה)
+export async function syncEggChildren(parent) {
+    if (!parent || parent.parent_id) return;
+    for (const c of await getChildren(parent.id)) {
+        if (!c.egg_part) continue;
+        const price = partPrice(parent.price, c.egg_liquid_g, c.unit_amount);
+        if (price !== c.price) await dbPut("pantryItems", { ...c, price });
+    }
+}
+
+export async function getEggChildren(parentId) {
+    return (await getChildren(parentId)).filter((c) => c.egg_part);
+}
+
+// יוצר/מעדכן חלבון וחלמון לביצה. משקל הביצה (ללא קליפה) = חלבון + חלמון והוא נקבע כמשקל ליחידה של הביצה.
+export async function applyEggTemplate(parentId, { white, yolk }) {
+    const parent = await dbGet("pantryItems", parentId);
+    if (!parent || parent.parent_id) throw new Error("ביצה לא נמצאה");
+    if (parent.unit_type !== "unit") throw new Error("הביצה צריכה להיות מוגדרת ביחידות במזווה");
+    white = parseFloat(white); yolk = parseFloat(yolk);
+    if (!(white > 0) || !(yolk > 0)) throw new Error("יש להזין משקל חלבון וחלמון");
+    const liquid = Math.round((white + yolk) * 100) / 100;
+    parent.unit_amount = liquid;
+    await dbPut("pantryItems", parent);
+    const existing = await getEggChildren(parentId);
+    for (const [part, label, g] of [["white", "חלבון", white], ["yolk", "חלמון", yolk]]) {
+        const row = {
+            name: `${label} - ${parent.name}`, category: parent.category, subcategory: parent.subcategory,
+            unit_type: "unit", unit_amount: g, price: partPrice(parent.price, liquid, g), yield_pct: 100,
+            weight_before: null, weight_after: null, is_frozen: parent.is_frozen ? 1 : 0, parent_id: parentId,
+            egg_part: part, egg_liquid_g: liquid,
+        };
+        const prev = existing.find((c) => c.egg_part === part);
+        if (prev) row.id = prev.id, row.name = prev.name;
+        await dbPut("pantryItems", row);
+    }
+}
+
+// קובע אלרגנים למוצר (מאושר ידנית). תוצר מפורק יורש מחומר הגלם, לכן שומרים תמיד על מוצר ברמה העליונה.
+export async function setItemAllergens(id, keys) {
+    const row = await dbGet("pantryItems", id);
+    if (!row) throw new Error("מוצר לא נמצא");
+    const target = row.parent_id ? await dbGet("pantryItems", row.parent_id) : row;
+    if (!target) throw new Error("מוצר לא נמצא");
+    target.allergens = [...new Set(keys)];
+    target.allergens_auto = false;
+    await dbPut("pantryItems", target);
+    return target;
 }
