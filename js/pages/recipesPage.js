@@ -1,7 +1,8 @@
 // ספר מתכונים: מתכון נשמר גם כשחסרים רכיבים (טיוטה שאפשר להשלים אחר כך), המסמך המקורי נשמר איתו,
 // ויש תצוגת פרטים עם רשימת רכיבים לתווית והצהרת אלרגנים.
 import { listRecipesWithItems, saveRecipe, deleteRecipe, setRecipeBase } from "../repo/recipesRepo.js";
-import { listAllPantryItems, addPantryItem } from "../repo/pantryRepo.js";
+import { listAllPantryItems, addPantryItem, setItemAllergens } from "../repo/pantryRepo.js";
+import { ALLERGENS, allergenLabels } from "../allergens.js";
 import { RECIPE_CATEGORIES, NON_FOOD_CATEGORIES, CATEGORY_GROUPS, UNIT_TYPES, UNIT_TYPE_LABELS } from "../constants.js";
 import { pricePerGram, itemCost as calcItemCost } from "../formulas.js";
 import { h, openModal, closeModal, confirmDialog, toast, escapeHtml, money, busy, attemptClose, info } from "../ui.js";
@@ -12,6 +13,7 @@ import { dbGetAll, dbGet } from "../db.js";
 import { buildLabel } from "../recipeLabel.js";
 import { suggestBaseHeuristic, computePercentages, scaleToBase, fmtPct } from "../bakers.js";
 import { RECIPE_UNIT_GRAMS } from "../recipeParse.js";
+import { recipeEggSummary, eggSummaryText } from "../eggs.js";
 import { showImageFullscreen } from "../imageUtil.js";
 
 let recipeFilter = "all"; // all | ready | draft
@@ -134,6 +136,7 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
     let showPercent = false;
     let scaleGrams = null; // כמות בסיס מבוקשת (להגדלה)
     const nameOf = (i) => (byId.get(i.pantry_item_id) || {}).name || i.ingredient_name;
+    const eggNotes = recipeEggSummary(r.items, rows);
     const items = () => r.items.map((i) => ({ id: i.pantry_item_id, name: nameOf(i), quantity_g: i.quantity_g }));
 
     // בסיס: שמור (ידני/אושר) או הצעה אוטומטית שעוד לא אושרה
@@ -147,6 +150,21 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
         r.base_ids = ids; r.base_source = source; r.base_reason = reason;
     };
 
+    // שורות לעריכת אלרגנים: מוצר ברמה העליונה לכל רכיב (תוצר מפורק יורש מחומר הגלם)
+    const allergenRows = () => {
+        const seen = new Set();
+        const out = [];
+        for (const i of r.items) {
+            const row = byId.get(i.pantry_item_id);
+            if (!row) continue;
+            const src = row.parent_id ? byId.get(row.parent_id) || row : row;
+            if (seen.has(src.id)) continue;
+            seen.add(src.id);
+            const text = !Array.isArray(src.allergens) ? "לא הוגדרו" : src.allergens.length ? escapeHtml(allergenLabels(src.allergens).join(", ")) : "ללא אלרגנים" + (src.allergens_auto ? " (הצעה)" : "");
+            out.push({ id: src.id, name: src.name, text: Array.isArray(src.allergens) && src.allergens.length && src.allergens_auto ? text + " (הצעה)" : text });
+        }
+        return out;
+    };
     const draw = () => {
         const label = buildLabel({ items: r.items, pantryById: byId, showPercent });
         const labelText = label.text + (missing.length ? `\n(הרשימה כוללת רק רכיבים שכבר במזווה. חסרים ${missing.length} רכיבים: ${missing.map((m) => m.name).join(", ")})` : "");
@@ -155,11 +173,12 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
         if (tab === "recipe") {
             body = `
             <table class="simple"><thead><tr><th>רכיב</th><th>גרם</th><th>עלות</th></tr></thead><tbody>
-                ${[...r.items].sort((a, b) => b.quantity_g - a.quantity_g).map((i) => `<tr><td>${escapeHtml(nameOf(i))}</td><td>${+Number(i.quantity_g).toFixed(1)}</td><td>${money(i.item_cost)}</td></tr>`).join("")}
+                ${[...r.items].sort((a, b) => b.quantity_g - a.quantity_g).map((i) => `<tr><td>${escapeHtml(nameOf(i))}${i.free ? ' <span class="tag">שארית · עלות 0</span>' : ""}</td><td>${+Number(i.quantity_g).toFixed(1)}</td><td>${money(i.item_cost)}</td></tr>`).join("")}
                 ${missing.map((m) => `<tr style="color:#c0392b;"><td>⚠ ${escapeHtml(m.name)}</td><td colspan="2">${escapeHtml(originalText(m) || "—")} · לא במזווה</td></tr>`).join("")}
             </tbody></table>
             ${r.status === "draft" ? `<div class="hint-warn">העלות חלקית - מחושבת רק מהרכיבים שבמזווה. לחץ "השלם" כדי להוסיף את החסרים.</div>`
                 : `<div class="card-row" style="font-weight:700;margin:8px 0;"><span>עלות כוללת ${money(r.total_cost)}</span><span>${money(r.cost_per_gram)} / גרם</span></div>`}
+            ${eggNotes.map((e) => `<div class="hint-warn" style="background:var(--brand-soft);color:var(--text);">${escapeHtml(eggSummaryText(e))}</div>`).join("")}
             ${r.method ? `<div class="card-title" style="margin:12px 0 4px;">הוראות הכנה</div><div style="white-space:pre-wrap;font-size:14px;">${escapeHtml(r.method)}</div>` : ""}
             ${r.source_file ? '<div class="btn-row"><button type="button" class="btn btn-accent btn-small" id="d-source">📎 המסמך המקורי</button></div>' : ""}`;
         } else if (tab === "percent") {
@@ -191,7 +210,9 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
             body = `
             <div class="card-title" style="margin:6px 0 4px;">רשימת רכיבים לתווית ${info("רכיבים לפי משקל יורד, והצהרת אלרגנים מצטברת מהרכיבים. זו טיוטה לעזר - האחריות לתיוג ולתקנות היא של בעל העסק. רכיב שלא הוגדרו לו אלרגנים מסומן כ'לא הוגדר' ולא כ'ללא אלרגנים'.")}</div>
             <div class="card" style="white-space:pre-wrap;font-size:14px;line-height:1.6;">${escapeHtml(labelText)}</div>
-            <div class="checkbox-field" style="margin-bottom:8px;"><input type="checkbox" id="d-pct" ${showPercent ? "checked" : ""}><label for="d-pct">הצג אחוזים</label></div>
+            <div class="card-title" style="margin:10px 0 4px;">אלרגנים לפי רכיב ${info("כאן מאשרים או מתקנים אילו אלרגנים יש בכל רכיב. השינוי נשמר במוצר ומשפיע על כל המתכונים שמשתמשים בו. ההצעה האוטומטית לפי שם המוצר היא רק עזר.")}</div>
+            ${allergenRows().map((x) => `<div class="card-row" style="padding:6px 0;border-bottom:1px solid var(--border,#0001);"><span><b>${escapeHtml(x.name)}</b><br><span class="muted">${x.text}</span></span><button type="button" class="btn btn-secondary btn-small" data-al-edit="${x.id}">ערוך</button></div>`).join("")}
+            <div class="checkbox-field" style="margin:10px 0 8px;"><input type="checkbox" id="d-pct" ${showPercent ? "checked" : ""}><label for="d-pct">הצג אחוזים</label></div>
             <div class="btn-row">
                 <button type="button" class="btn btn-secondary btn-small" id="d-copy">📋 העתק</button>
                 <button type="button" class="btn btn-secondary btn-small" id="d-share">📤 שתף</button>
@@ -255,6 +276,9 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
         if (pPrint) pPrint.onclick = () => printLabel(r.name + " - באחוזים", bakersText());
 
         // ---- לשונית רכיבים ואלרגנים ----
+        overlay.querySelectorAll("[data-al-edit]").forEach((b) => {
+            b.onclick = () => openAllergenModal(byId.get(Number(b.dataset.alEdit)), (updated) => { byId.set(updated.id, updated); draw(); });
+        });
         const dPct = overlay.querySelector("#d-pct");
         if (dPct) dPct.onchange = (e) => { showPercent = e.target.checked; draw(); };
         const dCopy = overlay.querySelector("#d-copy");
@@ -267,6 +291,29 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
         if (dPrint) dPrint.onclick = () => printLabel(r.name, labelText);
     };
     draw();
+}
+
+// עריכת אלרגנים של מוצר (נפתח מתוך המתכון). onSaved מקבל את שורת המוצר המעודכנת.
+function openAllergenModal(row, onSaved) {
+    let sel = new Set(Array.isArray(row.allergens) ? row.allergens : []);
+    const overlay = openModal(`
+        <h2>אלרגנים - ${escapeHtml(row.name)}</h2>
+        <div class="chips" id="al-chips"></div>
+        <div class="hint">${Array.isArray(row.allergens) && !row.allergens_auto ? "" : "הוצע אוטומטית לפי השם - בדוק בתווית היצרן ואשר"}</div>
+        <div class="modal-actions"><button type="button" class="btn btn-secondary" id="al-cancel">ביטול</button><button type="button" class="btn btn-primary" id="al-save">שמירה</button></div>`);
+    const box = overlay.querySelector("#al-chips");
+    const draw = () => {
+        box.innerHTML = ALLERGENS.map((a) => `<button type="button" class="chip ${sel.has(a.key) ? "active" : ""}" data-al="${a.key}">${a.label}</button>`).join("");
+        box.querySelectorAll("[data-al]").forEach((b) => { b.onclick = () => { if (sel.has(b.dataset.al)) sel.delete(b.dataset.al); else sel.add(b.dataset.al); draw(); }; });
+    };
+    draw();
+    overlay.querySelector("#al-cancel").onclick = closeModal;
+    overlay.querySelector("#al-save").onclick = busy(async () => {
+        const updated = await setItemAllergens(row.id, [...sel]);
+        closeModal();
+        toast("נשמר");
+        onSaved(updated);
+    });
 }
 
 function scanNoticeHtml(draft) {
@@ -310,6 +357,7 @@ async function openRecipeModal(existing, container, draft = null) {
         <div class="field" style="margin-top:12px;"><label>משקל סופי ידני (גרם, אופציונלי - ריק = סכום המרכיבים)</label><input type="number" step="any" id="f-manual-weight" value="${existing && !existing.is_auto_weight ? existing.final_weight : ""}"></div>
         ${(existing && existing.source_file) || (draft && draft.source_file) ? '<div class="hint">📎 המסמך המקורי יישמר עם המתכון.</div>' : ""}
         <div class="card-row" style="font-weight:700;"><span>עלות כוללת:</span><span id="total-cost-display">₪0.00</span></div>
+        <div class="hint" id="egg-note"></div>
         <div class="hint" id="partial-note" style="display:none;color:#c0392b;">העלות חלקית - יש רכיבים שעדיין לא במזווה.</div>
         <div class="error-msg"></div>
         <div class="modal-actions">
@@ -337,6 +385,7 @@ async function openRecipeModal(existing, container, draft = null) {
                     <button type="button" class="remove-row-btn" data-remove="${id}">✕</button>
                 </div>
                 <div class="line-total" id="ing-line-${id}"></div>
+                <label class="checkbox-field" id="ing-free-wrap-${id}" style="display:none;margin:4px 0;font-size:13px;"><input type="checkbox" id="ing-free-${id}" ${prefill && prefill.free ? "checked" : ""}> שארית שנשמרה מהכנה קודמת (עלות 0) ${info("מסמנים כשהחלבון/החלמון הזה נשאר מהכנה אחרת (למשל מאיולי), ולכן הוא לא מחויב שוב. הכמות עדיין נספרת במשקל המתכון.")}</label>
                 ${um ? `<button type="button" class="btn btn-secondary btn-small" id="ing-qa-btn-${id}" style="margin-top:6px;">➕ הוסף "${escapeHtml(um.name)}" למזווה</button>
                 <div id="ing-qa-${id}" style="display:none;background:#eef6fb;border-radius:8px;padding:8px;margin-top:6px;">
                     <div class="form-row">
@@ -363,6 +412,7 @@ async function openRecipeModal(existing, container, draft = null) {
             }
             recalc();
         });
+        row.querySelector(`#ing-free-${id}`).addEventListener("change", recalc);
         row.querySelector(`#ing-qty-${id}`).addEventListener("input", recalc);
         row.querySelector("[data-remove]").onclick = () => { row.remove(); rowMeta.delete(id); recalc(); };
 
@@ -417,8 +467,14 @@ async function openRecipeModal(existing, container, draft = null) {
             const meta = rowMeta.get(Number(id));
             const s = sources.find((x) => x.id === sourceId);
             const lineEl = overlay.querySelector(`#ing-line-${id}`);
+            const freeWrap = overlay.querySelector(`#ing-free-wrap-${id}`);
+            if (freeWrap) {
+                freeWrap.style.display = s && s.item.egg_part ? "" : "none";
+                if (!(s && s.item.egg_part)) overlay.querySelector(`#ing-free-${id}`).checked = false;
+            }
+            const isFree = !!(s && s.item.egg_part && overlay.querySelector(`#ing-free-${id}`).checked);
             if (s && qty > 0) {
-                const cost = calcItemCost(pricePerGram(s.item), qty);
+                const cost = isFree ? 0 : calcItemCost(pricePerGram(s.item), qty);
                 lineEl.textContent = money(cost);
                 total += cost;
             } else {
@@ -427,6 +483,12 @@ async function openRecipeModal(existing, container, draft = null) {
             }
         });
         overlay.querySelector("#total-cost-display").textContent = money(total);
+        const eggLines = [];
+        box.querySelectorAll(".item-row-inputs").forEach((row) => {
+            const id = row.id.replace("ing-row-", "");
+            eggLines.push({ pantry_item_id: overlay.querySelector(`#ing-source-${id}`).value, quantity_g: overlay.querySelector(`#ing-qty-${id}`).value });
+        });
+        overlay.querySelector("#egg-note").innerHTML = recipeEggSummary(eggLines, sources.map((x) => x.item)).map((e) => escapeHtml(eggSummaryText(e))).join("<br>");
         overlay.querySelector("#partial-note").style.display = hasUnmatched ? "block" : "none";
         return total;
     }
@@ -456,7 +518,8 @@ async function openRecipeModal(existing, container, draft = null) {
             const pantry_item_id = overlay.querySelector(`#ing-source-${id}`).value;
             const quantity_g = overlay.querySelector(`#ing-qty-${id}`).value;
             const meta = rowMeta.get(Number(id));
-            if (pantry_item_id && quantity_g) items.push({ pantry_item_id, quantity_g });
+            const freeEl = overlay.querySelector(`#ing-free-${id}`);
+            if (pantry_item_id && quantity_g) items.push({ pantry_item_id, quantity_g, free: !!(freeEl && freeEl.checked) });
             else if (meta && meta.um) draftIngredients.push({ name: meta.um.name, quantity: meta.um.quantity, unit: meta.um.unit });
         });
         const el = overlay.querySelector(".error-msg");

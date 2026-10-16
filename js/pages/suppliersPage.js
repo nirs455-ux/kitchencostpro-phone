@@ -1,6 +1,6 @@
 import { listSuppliers, addSupplier, deleteSupplier, getSupplierDeleteInfo, listInvoicesWithItems, saveInvoice, validateInvoicePayload, deleteInvoice, monthlySummaryBySupplier,
-    priceChanges, monthlyReport, invoicesToCsv, pettyCashOwed, markAllPettyCashReimbursed, findDuplicateInvoice } from "../repo/suppliersRepo.js";
-import { listTopLevelPantryItems } from "../repo/pantryRepo.js";
+    priceChanges, monthlyReport, invoicesToCsv, pettyCashOwed, markAllPettyCashReimbursed, setPettyReimbursed, findDuplicateInvoice } from "../repo/suppliersRepo.js";
+import { listTopLevelPantryItems, syncEggChildren } from "../repo/pantryRepo.js";
 import { createPantryItemFromInvoice } from "../repo/scanRepo.js";
 import { CATEGORY_GROUPS, UNIT_TYPES, UNIT_TYPE_LABELS } from "../constants.js";
 import { computeStockFactor } from "../invoiceParse.js";
@@ -57,7 +57,7 @@ export async function renderSuppliersPage(container) {
 
     // ---- פס התראות קטן (רק אם יש) ----
     const attn = container.querySelector("#attn");
-    if (owed.count) attn.insertAdjacentHTML("beforeend", `<button type="button" class="attn-chip warn" id="attn-owed">קופה קטנה לא הוחזרה · ${money(owed.total)}</button>`);
+    if (owed.count) attn.insertAdjacentHTML("beforeend", `<button type="button" class="attn-chip warn" id="attn-owed">🔴 ${owed.count === 1 ? "קבלה אחת ממתינה" : owed.count + " קבלות ממתינות"} להחזר · ${money(owed.total)}</button>`);
     if (alerts.length) attn.insertAdjacentHTML("beforeend", `<button type="button" class="attn-chip danger" id="attn-alerts">⚠ ${alerts.length} שינויי מחיר</button>`);
     const owedBtn = attn.querySelector("#attn-owed");
     if (owedBtn) owedBtn.onclick = () => { uiTab = "invoices"; uiFilter = { q: "", mode: "owed", month: "", supplier: "" }; rerender(); };
@@ -85,7 +85,7 @@ export async function renderSuppliersPage(container) {
         body.innerHTML = `
             <div class="field" style="margin-bottom:8px;"><input type="search" id="flt-q" placeholder="חיפוש חשבוניות" value="${escapeHtml(uiFilter.q)}"></div>
             <div class="fchips" id="fchips">
-                ${[["all", "הכול"], ["petty", "קופה קטנה"], ["owed", "לא הוחזר"], ["image", "עם תמונה"]].map(([k, l]) => `<button type="button" class="chip ${uiFilter.mode === k ? "active" : ""}" data-mode="${k}">${l}</button>`).join("")}
+                ${uiFilter.mode === "owed" ? '<button type="button" class="chip active" id="flt-owed">🔴 ממתינות להחזר ✕</button>' : ""}
                 <select id="flt-month" class="chip-select"><option value="">כל החודשים</option>${months.map((m) => `<option value="${m}" ${uiFilter.month === m ? "selected" : ""}>${monthLabel(m)}</option>`).join("")}</select>
                 ${supplierName ? `<button type="button" class="chip active" id="flt-sup">${escapeHtml(supplierName)} ✕</button>` : ""}
                 ${trashCount ? `<button type="button" class="chip" id="btn-trash">🗑 פח (${trashCount})</button>` : ""}
@@ -95,7 +95,8 @@ export async function renderSuppliersPage(container) {
         `;
         const q = body.querySelector("#flt-q");
         q.addEventListener("input", () => { uiFilter.q = q.value; drawGroups(); });
-        body.querySelectorAll("[data-mode]").forEach((b) => { b.onclick = () => { uiFilter.mode = b.dataset.mode; renderInvoicesTab(); }; });
+        const fOwed = body.querySelector("#flt-owed");
+        if (fOwed) fOwed.onclick = () => { uiFilter.mode = "all"; renderInvoicesTab(); };
         body.querySelector("#flt-month").onchange = (e) => { uiFilter.month = e.target.value; drawGroups(); };
         const trashBtn = body.querySelector("#btn-trash");
         if (trashBtn) trashBtn.onclick = () => openTrashModal(rerender);
@@ -117,9 +118,7 @@ export async function renderSuppliersPage(container) {
         return invoices.filter((inv) => {
             if (uiFilter.supplier && String(inv.supplier_id) !== String(uiFilter.supplier)) return false;
             if (uiFilter.month && !(inv.invoice_date || "").startsWith(uiFilter.month)) return false;
-            if (uiFilter.mode === "petty" && !inv.petty_cash) return false;
             if (uiFilter.mode === "owed" && !(inv.petty_cash && !inv.reimbursed)) return false;
-            if (uiFilter.mode === "image" && !inv.has_image) return false;
             if (q) {
                 const hay = [inv.supplier_name, inv.invoice_date, inv.purchaser, ...inv.items.map((it) => it.product_name)].join(" ").toLowerCase();
                 if (!hay.includes(q)) return false;
@@ -148,16 +147,24 @@ export async function renderSuppliersPage(container) {
             for (const inv of arr) {
                 const preview = inv.items.slice(0, 2).map((it) => escapeHtml(it.product_name)).join(", ") + (inv.items.length > 2 ? ` +${inv.items.length - 2}` : "");
                 const row = h(`
-                    <div class="inv-row">
+                    <div class="inv-row ${inv.petty_cash ? (inv.reimbursed ? "petty-paid" : "petty-owed") : ""}">
                         <div class="inv-main">
                             <div class="inv-sup">${escapeHtml(inv.supplier_name)}
                                 ${inv.document_type === "credit" ? '<span class="tag tag-danger">זיכוי</span>' : ""}
-                                ${inv.petty_cash ? `<span class="tag tag-warn">קופה קטנה${inv.reimbursed ? "" : " · לא הוחזר"}</span>` : ""}</div>
+                                ${inv.petty_cash ? `<button type="button" class="petty-tag ${inv.reimbursed ? "paid" : "owed"}" data-petty="${inv.id}">${inv.reimbursed ? "הוחזר" : "ממתין להחזר"}</button>` : ""}</div>
                             <div class="inv-sub">${shortDate(inv.invoice_date)} · ${preview}</div>
                         </div>
                         <div class="inv-amt">${money(inv.total_amount)}${inv.has_image ? ' <span title="יש תמונה">🖼</span>' : ""}</div>
                     </div>`);
                 row.onclick = () => openInvoiceDetails(inv);
+                const pt = row.querySelector("[data-petty]");
+                if (pt) pt.onclick = async (e) => {
+                    e.stopPropagation(); // לא פותח את החשבונית
+                    const was = !!inv.reimbursed;
+                    await setPettyReimbursed(inv.id, !was);
+                    toastAction(was ? "סומן: ממתין להחזר" : "סומן: הוחזר", "בטל", async () => { await setPettyReimbursed(inv.id, was); rerender(); });
+                    rerender();
+                };
                 box.appendChild(row);
             }
         }
@@ -168,7 +175,7 @@ export async function renderSuppliersPage(container) {
         const overlay = openModal(`
             <h2>${escapeHtml(inv.supplier_name)}</h2>
             <div class="card-row" style="margin:-8px 0 10px;"><span>${shortDate(inv.invoice_date)}${inv.purchaser ? " · " + escapeHtml(inv.purchaser) : ""}</span>
-                <span>${inv.document_type === "credit" ? '<span class="tag tag-danger">זיכוי</span>' : ""}${inv.petty_cash ? `<span class="tag tag-warn">קופה קטנה · ${inv.reimbursed ? "הוחזר" : "לא הוחזר"}</span>` : ""}</span></div>
+                <span>${inv.document_type === "credit" ? '<span class="tag tag-danger">זיכוי</span>' : ""}${inv.petty_cash ? `<span class="petty-tag ${inv.reimbursed ? "paid" : "owed"}">קופה קטנה · ${inv.reimbursed ? "הוחזר" : "ממתין להחזר"}</span>` : ""}</span></div>
             <table class="simple">
                 <thead><tr><th>מוצר</th><th>כמות</th><th>סה"כ</th></tr></thead>
                 <tbody>${inv.items.map((it) => `<tr><td>${escapeHtml(it.product_name)}</td><td>${+Number(it.quantity).toFixed(3)}</td><td>${money(it.line_total ?? it.quantity * it.unit_price)}</td></tr>`).join("")}</tbody>
@@ -733,7 +740,7 @@ function openInvoiceModal(existing, suppliers, pantryItems, container) {
             }
             for (const u of priceUpdates) {
                 const p = await dbGet("pantryItems", u.id);
-                if (p) { p.price = u.price; await dbPut("pantryItems", p); }
+                if (p) { p.price = u.price; await dbPut("pantryItems", p); await syncEggChildren(p); }
             }
             closeModal();
             toast("נשמר");

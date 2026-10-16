@@ -66,7 +66,9 @@ export async function renderHomePage(container) {
         <div id="home-attn"></div>
         <div class="card-title" style="margin:14px 4px 6px;">חשבוניות אחרונות</div>
         <div id="home-recent"></div>
+        <button class="btn btn-secondary btn-block" id="home-files" style="margin:12px 0;">📁 קבצים</button>
     `;
+    container.querySelector("#home-files").onclick = () => go("files");
 
     const scan = () => openScanModal({ supplierAware: true, onDone: rerender });
     container.querySelector("#home-scan").onclick = scan;
@@ -77,7 +79,7 @@ export async function renderHomePage(container) {
     const items = [];
     if (queue.length) items.push({ cls: "warn", icon: "⏳", text: `${queue.length} חשבוניות מחכות לעיבוד`, btn: "עבד", fn: () => processQueue(queue, rerender) });
     if (alerts.length) items.push({ cls: "danger", icon: "⚠", text: `${alerts.length} שינויי מחיר ב-30 הימים האחרונים`, btn: "הצג", fn: () => showPriceChangesDialog(alerts, "שינויי מחיר (30 יום אחרונים)") });
-    if (owed.count) items.push({ cls: "warn", icon: "💶", text: `קופה קטנה שלא הוחזרה: ${owed.count} קבלות · ${money(owed.total)}`, btn: "פתח", fn: () => { setSuppliersView("invoices", { mode: "owed" }); go("suppliers"); } });
+    if (owed.count) items.push({ cls: "warn", icon: "💶", text: `🔴 ${owed.count === 1 ? "קבלת קופה קטנה אחת ממתינה" : owed.count + " קבלות קופה קטנה ממתינות"} להחזר · ${money(owed.total)}`, btn: "פתח", fn: () => { setSuppliersView("invoices", { mode: "owed" }); go("suppliers"); } });
     if (noWeight.length) items.push({ cls: "warn", icon: "⚖", text: `${noWeight.length} מוצרים ביחידות בלי משקל ליחידה (לא ניתן להשתמש בהם במתכון)`, btn: "למזווה", fn: () => go("pantry") });
     if (pantry.length + invoices.length > 0 && daysSince(lastExport) >= 7) items.push({ cls: "warn", icon: "💾", text: lastExport ? `לא יוצא גיבוי ${daysSince(lastExport)} ימים` : "עדיין לא יוצא גיבוי", btn: "ייצא", fn: async () => { await downloadExport(); rerender(); } });
     if (counts.length && daysSince(lastCount) >= 14) items.push({ cls: "warn", icon: "📋", text: `ספירת המלאי האחרונה לפני ${daysSince(lastCount)} ימים`, btn: "לספירה", fn: () => go("inventory") });

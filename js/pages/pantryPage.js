@@ -1,7 +1,6 @@
 import { listTopLevelPantryItems, addPantryItem, updatePantryItem, deletePantryItem, getDeleteInfo, deleteConfirmText } from "../repo/pantryRepo.js";
 import { CATEGORY_GROUPS, UNIT_TYPES, UNIT_TYPE_LABELS } from "../constants.js";
 import { h, openModal, closeModal, confirmDialog, toast, escapeHtml, busy, attemptClose, info } from "../ui.js";
-import { ALLERGENS, suggestAllergens, allergenLabels } from "../allergens.js";
 import { openScanModal } from "./scanModal.js";
 import { dbGetAll } from "../db.js";
 import { getSetting, setSetting } from "../repo/settingsRepo.js";
@@ -102,7 +101,6 @@ function renderPantryCard(it) {
     return h(`
         <div class="card">
             <div class="card-title">${escapeHtml(it.name)} ${it.is_frozen ? '<span class="tag tag-frozen">❄ קפוא</span>' : ""}${it.unit_type === "unit" && !it.unit_amount ? '<span class="tag tag-danger">חסר משקל ליחידה</span>' : ""}</div>
-            <div class="muted" style="margin-top:2px;">${Array.isArray(it.allergens) ? (it.allergens.length ? "אלרגנים: " + escapeHtml(allergenLabels(it.allergens).join(", ")) : "ללא אלרגנים מסומנים") : "אלרגנים: לא הוגדרו"}</div>
             <div class="card-row">
                 <span class="tag">${escapeHtml(it.category)}${it.subcategory ? " / " + escapeHtml(it.subcategory) : ""}</span>
                 <span class="price-raw">₪${Number(it.price).toFixed(2)} / ${UNIT_TYPE_LABELS[it.unit_type]}</span>
@@ -127,11 +125,6 @@ function openPantryModal(existing, container) {
         <h2>${isEdit ? "עריכת מוצר" : "מוצר חדש"}</h2>
         <div class="field"><label>שם מוצר</label><input type="text" id="f-name" value="${existing ? escapeHtml(existing.name) : ""}"></div>
         <div class="field">
-            <label>אלרגנים ${info("מסמנים אילו אלרגנים קיימים במוצר. הם נכנסים אוטומטית להצהרת האלרגנים של מתכונים שמשתמשים בו. ההצעה לפי השם היא רק עזר - בדוק בתווית היצרן.")}</label>
-            <div class="chips" id="f-allergens"></div>
-            <div class="hint" id="f-allergens-note"></div>
-        </div>
-        <div class="field">
             <label>קטגוריה</label>
             <select id="f-category">
                 <option value="">בחר קטגוריה...</option>
@@ -155,10 +148,6 @@ function openPantryModal(existing, container) {
             </div>
         </div>
         <div class="field"><label>מחיר קנייה (₪)</label><input type="number" step="any" id="f-price" value="${existing ? existing.price : ""}"></div>
-        <div class="checkbox-field field">
-            <input type="checkbox" id="f-frozen" ${existing && existing.is_frozen ? "checked" : ""}>
-            <label for="f-frozen">❄ מוצר קפוא</label>
-        </div>
         <div class="error-msg"></div>
         <div class="modal-actions">
             <button class="btn btn-secondary" id="btn-cancel">ביטול</button>
@@ -179,27 +168,6 @@ function openPantryModal(existing, container) {
     function syncUnitAmount() {
         unitAmountWrap.style.display = unitTypeSelect.value === "unit" ? "block" : "none";
     }
-    // ---- אלרגנים: צ'יפים לבחירה + הצעה אוטומטית לפי השם (עד שהמשתמש נוגע ידנית) ----
-    let allergenSel = new Set(existing ? (Array.isArray(existing.allergens) ? existing.allergens : []) : []);
-    let allergenTouched = !!existing && Array.isArray(existing.allergens) && !existing.allergens_auto;
-    const allergenBox = overlay.querySelector("#f-allergens");
-    const allergenNote = overlay.querySelector("#f-allergens-note");
-    const drawAllergens = () => {
-        allergenBox.innerHTML = ALLERGENS.map((a) => `<button type="button" class="chip ${allergenSel.has(a.key) ? "active" : ""}" data-al="${a.key}">${a.label}</button>`).join("");
-        allergenBox.querySelectorAll("[data-al]").forEach((b) => {
-            b.onclick = () => {
-                allergenTouched = true;
-                if (allergenSel.has(b.dataset.al)) allergenSel.delete(b.dataset.al); else allergenSel.add(b.dataset.al);
-                drawAllergens();
-            };
-        });
-        allergenNote.textContent = allergenTouched ? (allergenSel.size ? "" : "סומן: ללא אלרגנים") : (isEdit && !Array.isArray(existing.allergens) ? "עדיין לא הוגדרו אלרגנים למוצר הזה" : "הוצע אוטומטית לפי השם - בדוק ואשר");
-    };
-    const nameInput = overlay.querySelector("#f-name");
-    const autoSuggest = () => { if (!allergenTouched) { allergenSel = new Set(suggestAllergens(nameInput.value)); drawAllergens(); } };
-    nameInput.addEventListener("input", autoSuggest);
-    if (!isEdit) autoSuggest(); else drawAllergens();
-
     catSelect.onchange = syncSubcategory;
     unitTypeSelect.onchange = syncUnitAmount;
     syncSubcategory();
@@ -214,10 +182,9 @@ function openPantryModal(existing, container) {
             unit_type: unitTypeSelect.value,
             unit_amount: overlay.querySelector("#f-unit-amount").value,
             price: overlay.querySelector("#f-price").value,
-            is_frozen: overlay.querySelector("#f-frozen").checked,
+            is_frozen: existing ? !!existing.is_frozen : false, // קפוא נקבע בעיבוד וניצולת
         };
-        // אלרגנים נשמרים כשהמשתמש נגע בהם, או במוצר חדש (ההצעה); במוצר קיים שלא הוגדר ולא נגעו - נשאר "לא הוגדר"
-        if (allergenTouched || !isEdit) data.allergens = [...allergenSel];
+        // אלרגנים לא מוצגים כאן: מוצר חדש מקבל הצעה אוטומטית לפי השם, ועריכה/אישור נעשים במתכון
         try {
             if (isEdit) {
                 await updatePantryItem(existing.id, data);

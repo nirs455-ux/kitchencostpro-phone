@@ -19,6 +19,7 @@ export async function renderSettingsPage(container) {
     try { persisted = navigator.storage && navigator.storage.persisted ? await navigator.storage.persisted() : null; } catch (e) { /* לא נתמך */ }
 
     container.innerHTML = `
+        <div class="card"><button class="btn btn-secondary btn-block" id="btn-files">📁 קבצים (קבלות, מתכונים, התקבלו)</button></div>
         <div class="card">
             <div class="card-title">מפתח Gemini API ${info("נדרש לסריקת חשבוניות. נשמר רק בתוך הטלפון הזה, ולא נשלח לשום מקום חוץ מ-Google.")}</div>
             <div class="field" style="margin-top:8px;"><input type="text" id="f-apikey" value="${apiKey}" placeholder="הדבק כאן את המפתח"></div>
@@ -72,6 +73,7 @@ export async function renderSettingsPage(container) {
             <div class="hint"><b>גרסה:</b> ${APP_VERSION}</div>
         </div>
     `;
+    container.querySelector("#btn-files").onclick = () => { location.hash = "files"; };
 
     container.querySelector("#btn-save-key").onclick = async () => {
         await setSetting("gemini_api_key", container.querySelector("#f-apikey").value.trim());
