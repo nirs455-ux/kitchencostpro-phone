@@ -6,21 +6,25 @@ import { dbGetAll } from "../db.js";
 import { getSetting, setSetting } from "../repo/settingsRepo.js";
 import { renderProcessingPage } from "./processingPage.js";
 import { renderInventoryPage } from "./inventoryPage.js";
+import { renderWastePage } from "./wastePage.js";
 import { isStaffMode } from "../staff.js";
 import { getFilter, applyFilter, mountFilterBar, groupBySection, groupTitleEl } from "../filters.js";
 
 // מזווה = שלוש לשוניות: מוצרים | ספירת מלאי | עיבוד וניצולת. מצב עובד רואה רק ספירת מלאי.
-const TABS = [["products", "מוצרים"], ["inventory", "ספירת מלאי"], ["processing", "עיבוד וניצולת"]];
+const TABS = [["products", "מוצרים"], ["inventory", "ספירה"], ["processing", "עיבוד"], ["waste", "פחת"]];
+const STAFF_TABS = ["inventory", "waste"]; // מצב עובד: ספירת מלאי ורישום פחת בלבד
 let currentTab = "products";
 export function setPantryTab(t) { currentTab = TABS.some((x) => x[0] === t) ? t : "products"; }
 
 export async function renderPantryPage(container) {
-    if (isStaffMode()) currentTab = "inventory";
-    const seg = isStaffMode() ? "" : `<div class="seg" id="pantry-seg">${TABS.map(([k, l]) => `<button type="button" data-tab="${k}" class="${k === currentTab ? "active" : ""}">${l}</button>`).join("")}</div>`;
+    if (isStaffMode() && !STAFF_TABS.includes(currentTab)) currentTab = "inventory";
+    const tabs = isStaffMode() ? TABS.filter(([k]) => STAFF_TABS.includes(k)) : TABS;
+    const seg = `<div class="seg" id="pantry-seg">${tabs.map(([k, l]) => `<button type="button" data-tab="${k}" class="${k === currentTab ? "active" : ""}">${l}</button>`).join("")}</div>`;
     container.innerHTML = `${seg}<div id="pantry-tab"></div>`;
     const sub = container.querySelector("#pantry-tab");
     container.querySelectorAll("#pantry-seg [data-tab]").forEach((b) => { b.onclick = () => { currentTab = b.dataset.tab; renderPantryPage(container); }; });
-    if (currentTab === "inventory") await renderInventoryPage(sub);
+    if (currentTab === "waste") await renderWastePage(sub);
+    else if (currentTab === "inventory") await renderInventoryPage(sub);
     else if (currentTab === "processing") await renderProcessingPage(sub);
     else await renderPantryProducts(sub);
 }

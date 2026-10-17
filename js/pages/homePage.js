@@ -20,6 +20,7 @@ function renderStaffHome(container) {
         <button class="btn btn-primary btn-big btn-block" id="staff-shoot" style="margin:14px 0 6px;">📷 צלם קבלה</button>
         <div class="hint" style="text-align:center;margin-bottom:14px;">הקבלה נשלחת לבדיקה של המנהל</div>
         <button class="btn btn-secondary btn-big btn-block" id="staff-count">📋 ספירת מלאי</button>
+        <button class="btn btn-secondary btn-big btn-block" id="staff-waste" style="margin-top:10px;">🗑 רישום זריקה</button>
         <div id="staff-sent" class="hint" style="text-align:center;margin-top:14px;"></div>`;
     const input = container.querySelector("#staff-file");
     container.querySelector("#staff-shoot").onclick = () => input.click();
@@ -32,6 +33,7 @@ function renderStaffHome(container) {
         container.querySelector("#staff-sent").textContent = `נשלחו ${(await listQueue()).length} קבלות שמחכות למנהל`;
     });
     container.querySelector("#staff-count").onclick = () => go("inventory");
+    container.querySelector("#staff-waste").onclick = () => go("waste");
 }
 
 export async function renderHomePage(container) {
@@ -66,9 +68,11 @@ export async function renderHomePage(container) {
         <div id="home-attn"></div>
         <div class="card-title" style="margin:14px 4px 6px;">חשבוניות אחרונות</div>
         <div id="home-recent"></div>
-        <button class="btn btn-secondary btn-block" id="home-files" style="margin:12px 0;">📁 קבצים</button>
+        <button class="btn btn-secondary btn-block" id="home-waste" style="margin:12px 0 0;">🗑 רישום זריקה</button>
+        <button class="btn btn-secondary btn-block" id="home-files" style="margin:8px 0 12px;">📁 קבצים</button>
     `;
     container.querySelector("#home-files").onclick = () => go("files");
+    container.querySelector("#home-waste").onclick = () => go("waste");
 
     const scan = () => openScanModal({ supplierAware: true, onDone: rerender });
     container.querySelector("#home-scan").onclick = scan;
