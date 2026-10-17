@@ -8,6 +8,7 @@ import { getSetting, setSetting } from "./settingsRepo.js";
 import { compressImage } from "../imageUtil.js";
 import { prepareParts } from "../filePrep.js";
 import { suggestAllergens } from "../allergens.js";
+import { syncEggChildren } from "./pantryRepo.js";
 import { buildBasePrompt, parseBaseAnswer } from "../bakers.js";
 import { NON_FOOD_CATEGORIES } from "../constants.js";
 import { RECIPE_SCAN_PROMPT, buildRecipeDraft } from "../recipeParse.js";
@@ -213,6 +214,7 @@ export async function applyScannedInvoice({ items, supplierId, invoiceDate, imag
             if (!p.existing.parent_id) Object.assign(p.existing, { price: p.pantryPrice, category: p.category, is_frozen: isFrozen });
             else Object.assign(p.existing, { price: p.pantryPrice, is_frozen: isFrozen });
             await dbPut("pantryItems", p.existing);
+            await syncEggChildren(p.existing);
             pantryItemId = p.existing.id;
         } else if (createdByName.has(p.name.toLowerCase())) {
             pantryItemId = createdByName.get(p.name.toLowerCase());

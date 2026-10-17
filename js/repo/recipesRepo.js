@@ -26,10 +26,11 @@ async function resolveRecipeItems(items) {
         if (!row) throw new Error("מרכיב לא נמצא במזווה");
         if (row.unit_type === "unit" && !row.unit_amount) throw new Error(`'${row.name}' חסר משקל ליחידה - השלם אותו במזווה לפני השימוש במתכון`);
         const ppg = pricePerGram(row);
-        const cost = calcItemCost(ppg, qty);
+        const free = !!it.free && !!row.egg_part; // שארית ביצה שנשמרה מהכנה קודמת - לא מחויבת
+        const cost = free ? 0 : calcItemCost(ppg, qty);
         totalCost += cost;
         rawWeight += qty;
-        resolved.push({ pantry_item_id: pantryId, ingredient_name: row.name, quantity_g: qty, price_per_gram: ppg, item_cost: cost });
+        resolved.push({ pantry_item_id: pantryId, ingredient_name: row.name, quantity_g: qty, price_per_gram: ppg, item_cost: cost, ...(free ? { free: true } : {}) });
     }
     return { resolved, totalCost, rawWeight };
 }
