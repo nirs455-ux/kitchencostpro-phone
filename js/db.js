@@ -2,7 +2,7 @@
 // אבל עצמאי לגמרי - שתי הגרסאות לא מסונכרנות זו עם זו (ראה ייצוא/ייבוא).
 
 const DB_NAME = "kitchencostpro";
-const DB_VERSION = 2; // 2: נוסף מאגר scanQueue (תור סריקות שממתינות לעיבוד)
+const DB_VERSION = 3; // 2: נוסף מאגר scanQueue (תור סריקות שממתינות לעיבוד). 3: נוסף wasteLogs (פחת / זריקות)
 
 const STORES = {
     pantryItems: "id",
@@ -14,6 +14,7 @@ const STORES = {
     invoices: "id",
     invoiceItems: "id",
     inventoryCounts: "id",
+    wasteLogs: "id",
     settings: "key",
 };
 

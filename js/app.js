@@ -34,6 +34,7 @@ const PAGES = {
         info: "מנות תפריט: מחיר מכירה, עלות, ואחוז רווח ופוד-קוסט בפועל." },
     suppliers: { title: "ספקים וחשבוניות", render: renderSuppliersPage,
         info: "מעקב הזמנות וחשבוניות לפי ספק. בחשבונית שמשויכת למוצר במזווה, המחיר והמלאי מתעדכנים." },
+    waste: { title: "פחת", render: renderPantryPage, info: "" },
     inventory: { title: "ספירת מלאי", render: renderInventoryPage,
         info: "מזינים את הכמות שנספרה בפועל, והמערכת מחשבת את היתרה התיאורטית ומציגה את ההפרש." },
     files: { title: "קבצים", render: renderFilesPage, info: "כל התמונות והמסמכים שנשמרו באפליקציה: קבלות וחשבוניות, מתכונים, וקבצים שהתקבלו. בהמשך יסונכרנו לתיקייה KitchenCostPro בענן." },
@@ -41,7 +42,7 @@ const PAGES = {
 };
 
 installErrorHandlers();
-const STAFF_PAGES = new Set(["home", "inventory"]);
+const STAFF_PAGES = new Set(["home", "inventory", "waste"]);
 
 const view = document.getElementById("view");
 const pageTitle = document.getElementById("page-title");
@@ -53,11 +54,11 @@ async function navigate(pageKey) {
     if (pageKey === "files" && location.hash !== "#files") openFilesFolder(null);
     location.hash = pageKey;
     // ספירת מלאי ועיבוד הם לשוניות של המזווה (הכתובות #inventory ו-#processing ממשיכות לעבוד)
-    const inPantry = pageKey === "inventory" || pageKey === "processing";
+    const inPantry = pageKey === "inventory" || pageKey === "processing" || pageKey === "waste";
     if (inPantry) setPantryTab(pageKey);
     else if (pageKey === "pantry") setPantryTab("products");
     const shown = inPantry ? PAGES.pantry : PAGES[pageKey];
-    const navKey = inPantry && !isStaffMode() ? "pantry" : pageKey;
+    const navKey = inPantry && !isStaffMode() ? "pantry" : pageKey === "waste" ? "inventory" : pageKey;
     navButtons.forEach((b) => b.classList.toggle("active", b.dataset.page === navKey));
     pageTitle.textContent = "KitchenCostPro - " + shown.title;
     document.getElementById("page-info").innerHTML = shown.info ? info(shown.info) : "";
