@@ -1,6 +1,6 @@
 import { listTopLevelPantryItems, addPantryItem, updatePantryItem, deletePantryItem, getDeleteInfo, deleteConfirmText } from "../repo/pantryRepo.js";
 import { CATEGORY_GROUPS, UNIT_TYPES, UNIT_TYPE_LABELS } from "../constants.js";
-import { h, openModal, closeModal, confirmDialog, toast, escapeHtml, busy, attemptClose, info } from "../ui.js";
+import { h, openModal, closeModal, confirmDialog, toast, escapeHtml, busy, attemptClose, info, cur, curLabel } from "../ui.js";
 import { openScanModal } from "./scanModal.js";
 import { dbGetAll } from "../db.js";
 import { getSetting, setSetting } from "../repo/settingsRepo.js";
@@ -103,7 +103,7 @@ function renderPantryCard(it) {
             <div class="card-title">${escapeHtml(it.name)} ${it.is_frozen ? '<span class="tag tag-frozen">❄ קפוא</span>' : ""}${it.unit_type === "unit" && !it.unit_amount ? '<span class="tag tag-danger">חסר משקל ליחידה</span>' : ""}</div>
             <div class="card-row">
                 <span class="tag">${escapeHtml(it.category)}${it.subcategory ? " / " + escapeHtml(it.subcategory) : ""}</span>
-                <span class="price-raw">₪${Number(it.price).toFixed(2)} / ${UNIT_TYPE_LABELS[it.unit_type]}</span>
+                <span class="price-raw">${cur()}${Number(it.price).toFixed(2)} / ${UNIT_TYPE_LABELS[it.unit_type]}</span>
             </div>
             <div class="card-actions">
                 <button class="btn btn-secondary btn-small" data-edit="${it.id}">עריכה</button>
@@ -147,7 +147,7 @@ function openPantryModal(existing, container) {
                 <input type="number" step="any" id="f-unit-amount" value="${existing && existing.unit_amount != null ? existing.unit_amount : ""}">
             </div>
         </div>
-        <div class="field"><label>מחיר קנייה (₪)</label><input type="number" step="any" id="f-price" value="${existing ? existing.price : ""}"></div>
+        <div class="field"><label>מחיר קנייה (${curLabel()})</label><input type="number" step="any" id="f-price" value="${existing ? existing.price : ""}"></div>
         <div class="error-msg"></div>
         <div class="modal-actions">
             <button class="btn btn-secondary" id="btn-cancel">ביטול</button>

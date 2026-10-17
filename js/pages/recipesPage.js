@@ -5,7 +5,7 @@ import { listAllPantryItems, addPantryItem, setItemAllergens } from "../repo/pan
 import { ALLERGENS, allergenLabels } from "../allergens.js";
 import { RECIPE_CATEGORIES, NON_FOOD_CATEGORIES, CATEGORY_GROUPS, UNIT_TYPES, UNIT_TYPE_LABELS } from "../constants.js";
 import { pricePerGram, itemCost as calcItemCost } from "../formulas.js";
-import { h, openModal, closeModal, confirmDialog, toast, escapeHtml, money, busy, attemptClose, info } from "../ui.js";
+import { h, openModal, closeModal, confirmDialog, toast, escapeHtml, money, busy, attemptClose, info, cur, curLabel } from "../ui.js";
 import { openImagePicker } from "../imagePicker.js";
 import { scanRecipeImage, suggestRecipeBase } from "../repo/scanRepo.js";
 import { getSetting } from "../repo/settingsRepo.js";
@@ -356,7 +356,7 @@ async function openRecipeModal(existing, container, draft = null) {
         <div class="field" style="margin-top:12px;"><label>הוראות הכנה (אופציונלי)</label><textarea id="f-method" rows="4" style="width:100%;">${src && src.method ? escapeHtml(src.method) : ""}</textarea></div>
         <div class="field" style="margin-top:12px;"><label>משקל סופי ידני (גרם, אופציונלי - ריק = סכום המרכיבים)</label><input type="number" step="any" id="f-manual-weight" value="${existing && !existing.is_auto_weight ? existing.final_weight : ""}"></div>
         ${(existing && existing.source_file) || (draft && draft.source_file) ? '<div class="hint">📎 המסמך המקורי יישמר עם המתכון.</div>' : ""}
-        <div class="card-row" style="font-weight:700;"><span>עלות כוללת:</span><span id="total-cost-display">₪0.00</span></div>
+        <div class="card-row" style="font-weight:700;"><span>עלות כוללת:</span><span id="total-cost-display">${cur()}0.00</span></div>
         <div class="hint" id="egg-note"></div>
         <div class="hint" id="partial-note" style="display:none;color:#c0392b;">העלות חלקית - יש רכיבים שעדיין לא במזווה.</div>
         <div class="error-msg"></div>
@@ -393,7 +393,7 @@ async function openRecipeModal(existing, container, draft = null) {
                         <div class="field"><label>נמדד ב-</label><select id="qa-ut-${id}">${UNIT_TYPES.map((u) => `<option value="${u}">${UNIT_TYPE_LABELS[u]}</option>`).join("")}</select></div>
                     </div>
                     <div class="form-row">
-                        <div class="field"><label id="qa-price-label-${id}">מחיר לק"ג (₪)</label><input type="number" step="any" id="qa-price-${id}"></div>
+                        <div class="field"><label id="qa-price-label-${id}">מחיר לק"ג (${curLabel()})</label><input type="number" step="any" id="qa-price-${id}"></div>
                         <div class="field" id="qa-ua-wrap-${id}" style="display:none;"><label>משקל ליחידה (גרם)</label><input type="number" step="any" id="qa-ua-${id}"></div>
                     </div>
                     <button type="button" class="btn btn-primary btn-small" id="qa-add-${id}">הוסף למזווה</button>
@@ -421,7 +421,7 @@ async function openRecipeModal(existing, container, draft = null) {
             row.querySelector(`#ing-qa-btn-${id}`).onclick = () => { qa.style.display = qa.style.display === "none" ? "block" : "none"; };
             const ut = row.querySelector(`#qa-ut-${id}`);
             const syncQa = () => {
-                row.querySelector(`#qa-price-label-${id}`).textContent = ut.value === "liter" ? 'מחיר לליטר (₪)' : ut.value === "unit" ? "מחיר ליחידה (₪)" : 'מחיר לק"ג (₪)';
+                row.querySelector(`#qa-price-label-${id}`).textContent = ut.value === "liter" ? `מחיר לליטר (${curLabel()})` : ut.value === "unit" ? `מחיר ליחידה (${curLabel()})` : `מחיר לק"ג (${curLabel()})`;
                 row.querySelector(`#qa-ua-wrap-${id}`).style.display = ut.value === "unit" ? "block" : "none";
             };
             ut.addEventListener("change", syncQa);

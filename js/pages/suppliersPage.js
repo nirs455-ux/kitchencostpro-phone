@@ -8,7 +8,7 @@ import { showPriceChangesDialog, renderPriceChangeRows } from "./priceAlerts.js"
 import { openTrashModal } from "./trashModal.js";
 import { restoreInvoice } from "../repo/suppliersRepo.js";
 import { dbGet, dbPut, dbDelete } from "../db.js";
-import { h, openModal, closeModal, confirmDialog, toast, escapeHtml, money, info, busy, attemptClose, toastAction } from "../ui.js";
+import { h, openModal, closeModal, confirmDialog, toast, escapeHtml, money, info, busy, attemptClose, toastAction, cur } from "../ui.js";
 import { openScanModal } from "./scanModal.js";
 import { compressImage, showImageFullscreen } from "../imageUtil.js";
 
@@ -350,7 +350,7 @@ function openInvoiceModal(existing, suppliers, pantryItems, container) {
         </div>
         <div id="items-box"></div>
         <button type="button" class="btn btn-secondary btn-small" id="btn-add-row">+ הוסף שורה</button>
-        <div class="card-row" style="font-weight:700;margin-top:10px;"><span>סה"כ:</span><span id="total-display">₪0.00</span></div>
+        <div class="card-row" style="font-weight:700;margin-top:10px;"><span>סה"כ:</span><span id="total-display">${cur()}0.00</span></div>
         <div class="field" style="margin-top:10px;">
             <label>תמונת החשבונית (אופציונלי)</label>
             <div class="btn-row">
@@ -489,7 +489,7 @@ function openInvoiceModal(existing, suppliers, pantryItems, container) {
             let price = num(priceEl);
             if (isNaN(price) && q > 0 && !isNaN(num(totalEl))) price = num(totalEl) / q;
             if (!ut) {
-                row.querySelector(`#inv-pk-prev-${id}`).textContent = !isNaN(price) && price > 0 ? `מחיר ליחידה: ₪${price.toFixed(2)}` : "";
+                row.querySelector(`#inv-pk-prev-${id}`).textContent = !isNaN(price) && price > 0 ? `מחיר ליחידה: ${cur()}${price.toFixed(2)}` : "";
                 return;
             }
             const { factor, error } = computeStockFactor(ut, parseFloat(row.querySelector(`#inv-case-${id}`).value) || null,
@@ -506,10 +506,10 @@ function openInvoiceModal(existing, suppliers, pantryItems, container) {
             }
             if (error) { prev.textContent = error; return; }
             const p = pantryItems.find((x) => String(x.id) === pantrySel.value);
-            const old = p && p.price != null ? ` (במזווה כרגע: ₪${Number(p.price).toFixed(2)})` : "";
+            const old = p && p.price != null ? ` (במזווה כרגע: ${cur()}${Number(p.price).toFixed(2)})` : "";
             const packs = q > 0 ? q : 1;
             const unitsText = ut === "unit" && (factor || 1) > 1 && q > 0 ? `${packs === 1 ? "אריזה אחת" : packs + " אריזות"} × ${+(factor).toFixed(3)} = ${+(packs * factor).toFixed(3)} יחידות. ` : "";
-            prev.textContent = !isNaN(price) && price > 0 ? `${unitsText}מחיר במזווה: ₪${(price / (factor || 1)).toFixed(2)} ל${label}${old}` : "";
+            prev.textContent = !isNaN(price) && price > 0 ? `${unitsText}מחיר במזווה: ${cur()}${(price / (factor || 1)).toFixed(2)} ל${label}${old}` : "";
         };
         for (const el of [qtyEl, priceEl, totalEl, row.querySelector(`#inv-case-${id}`), row.querySelector(`#inv-pack-${id}`)]) el.addEventListener("input", updatePreview);
         packSel.addEventListener("change", updatePreview);
@@ -688,7 +688,7 @@ function openInvoiceModal(existing, suppliers, pantryItems, container) {
                 if (!category) return showErr(`'${product_name}': בחר קטגוריה למוצר החדש במזווה`);
                 const unitAmount = overlay.querySelector(`#inv-ua-${id}`).value;
                 if (unitAmount !== "" && !(parseFloat(unitAmount) > 0)) return showErr(`'${product_name}': משקל ליחידה לא תקין`);
-                if (Number.isFinite(pantryPrice) && pantryPrice > 2000) sanity.push(`'${product_name}': המחיר במזווה יהיה ₪${pantryPrice.toFixed(2)} ל${unitType === "unit" ? "יחידה" : unitType === "liter" ? "ליטר" : 'ק"ג'}`);
+                if (Number.isFinite(pantryPrice) && pantryPrice > 2000) sanity.push(`'${product_name}': המחיר במזווה יהיה ${cur()}${pantryPrice.toFixed(2)} ל${unitType === "unit" ? "יחידה" : unitType === "liter" ? "ליטר" : 'ק"ג'}`);
                 const key = product_name.trim().toLowerCase();
                 if (pantryItems.some((p) => p.name.trim().toLowerCase() === key)) return showErr(`'${product_name}' כבר קיים במזווה - בחר אותו מהרשימה במקום ליצור חדש`);
                 if (newProducts.some((np) => np.item.product_name.trim().toLowerCase() === key)) return showErr(`'${product_name}' מופיע פעמיים כמוצר חדש`);
@@ -698,7 +698,7 @@ function openInvoiceModal(existing, suppliers, pantryItems, container) {
                 priceUpdates.push({ id: existingPantry.id, price: pantryPrice });
                 const oldPrice = Number(existingPantry.price);
                 if (oldPrice > 0 && (pantryPrice / oldPrice > 5 || pantryPrice / oldPrice < 0.2)) {
-                    sanity.push(`'${product_name}': המחיר במזווה ישתנה מ-₪${oldPrice.toFixed(2)} ל-₪${pantryPrice.toFixed(2)}`);
+                    sanity.push(`'${product_name}': המחיר במזווה ישתנה מ-${cur()}${oldPrice.toFixed(2)} ל-${cur()}${pantryPrice.toFixed(2)}`);
                 }
             }
             items.push(item);

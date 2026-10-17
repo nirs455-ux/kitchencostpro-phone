@@ -1,5 +1,5 @@
 // חלון התראות שינוי מחיר: מה השתנה, בכמה, ואילו מנות מושפעות.
-import { openModal, closeModal, escapeHtml, info } from "../ui.js";
+import { openModal, closeModal, escapeHtml, info, cur } from "../ui.js";
 import { dishesAffectedByPantryItem } from "../repo/suppliersRepo.js";
 
 const UNIT_LABEL = { weight: 'ק"ג', liter: "ליטר", unit: "יחידה" };
@@ -12,7 +12,7 @@ export async function renderPriceChangeRows(changes) {
         rows.push(`
             <div class="card" style="border-color:${up ? "#c0392b" : "#2e7d32"};">
                 <div class="card-title">${escapeHtml(c.name)}</div>
-                <div class="card-row"><span>₪${c.prev.toFixed(2)} ← ₪${c.cur.toFixed(2)} ל${UNIT_LABEL[c.unit_type] || "יחידה"}</span>
+                <div class="card-row"><span>${cur()}${c.prev.toFixed(2)} ← ${cur()}${c.cur.toFixed(2)} ל${UNIT_LABEL[c.unit_type] || "יחידה"}</span>
                     <span style="font-weight:700;color:${up ? "#c0392b" : "#2e7d32"};">${up ? "▲" : "▼"} ${Math.abs(c.pct)}%</span></div>
                 <div class="muted">${c.date}${dishes.length ? ` · משפיע על: ${dishes.map(escapeHtml).join(", ")}` : ""}</div>
             </div>`);

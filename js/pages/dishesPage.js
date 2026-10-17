@@ -3,7 +3,7 @@ import { listAllPantryItems } from "../repo/pantryRepo.js";
 import { dbGetAll } from "../db.js";
 import { NON_FOOD_CATEGORIES } from "../constants.js";
 import { pricePerGram, itemCost as calcItemCost, computeDishPricing } from "../formulas.js";
-import { h, openModal, closeModal, confirmDialog, toast, escapeHtml, money, info, busy, attemptClose } from "../ui.js";
+import { h, openModal, closeModal, confirmDialog, toast, escapeHtml, money, info, busy, attemptClose, cur, curLabel } from "../ui.js";
 
 async function allSources() {
     const pantry = (await listAllPantryItems()).filter((it) => !NON_FOOD_CATEGORIES.has(it.category));
@@ -76,12 +76,12 @@ async function openDishModal(existing, container) {
         <div class="field"><label>שם מנה</label><input type="text" id="f-name" value="${existing ? escapeHtml(existing.name) : ""}"></div>
         <div id="ingredients-box"></div>
         <button type="button" class="btn btn-secondary btn-small" id="btn-add-row">+ הוסף מרכיב</button>
-        <div class="card-row" style="font-weight:700;margin-top:10px;"><span>עלות כוללת:</span><span id="cost-display">₪0.00</span></div>
+        <div class="card-row" style="font-weight:700;margin-top:10px;"><span>עלות כוללת:</span><span id="cost-display">${cur()}0.00</span></div>
         <div class="form-row" style="margin-top:12px;">
             <div class="field"><label>מכפיל עלות (ידני, אופציונלי)</label><input type="number" step="any" id="f-multiplier" placeholder="לדוגמה: 3.5" value="${existing && existing.multiplier ? existing.multiplier : ""}"></div>
             <div class="field"><label>יעד אחוז עלות מזון % (אופציונלי) ${info("יעד 25% = מכפיל ×4. המחיר למטה מתמלא אוטומטית ברגע שמזינים מכפיל או יעד, ועדיין אפשר לערוך אותו ידנית.")}</label><input type="number" step="any" id="f-target" placeholder="לדוגמה: 25" value="${existing && existing.target_profit_pct ? existing.target_profit_pct : ""}"></div>
         </div>
-        <div class="field"><label>מחיר (₪, לפני מע"מ)</label><input type="number" step="any" id="f-price" value="${existing ? existing.price_before_vat : ""}"></div>
+        <div class="field"><label>מחיר (${curLabel()}, לפני מע"מ)</label><input type="number" step="any" id="f-price" value="${existing ? existing.price_before_vat : ""}"></div>
         <div class="field"><label>מע"מ (%)</label><input type="number" step="any" id="f-vat" value="${existing ? existing.vat_pct : 18}"></div>
         <div class="card" id="pricing-preview" style="background:#f4f5f7;"></div>
         <div class="error-msg"></div>

@@ -2,7 +2,7 @@ import { scanInvoiceImage, applyScannedInvoice } from "../repo/scanRepo.js";
 import { getSetting } from "../repo/settingsRepo.js";
 import { listSuppliers, addSupplier } from "../repo/suppliersRepo.js";
 import { CATEGORY_GROUPS, UNIT_TYPES, UNIT_TYPE_LABELS } from "../constants.js";
-import { h, openModal, closeModal, toast, escapeHtml, info, busy, attemptClose } from "../ui.js";
+import { h, openModal, closeModal, toast, escapeHtml, info, busy, attemptClose, cur } from "../ui.js";
 import { compressImage } from "../imageUtil.js";
 import { addToQueue } from "../repo/scanQueue.js";
 import { FILE_ACCEPT } from "../filePrep.js";
@@ -51,9 +51,9 @@ export async function openScanModal({ supplierAware, onDone, initialFile = null 
             <div id="scan-summary" style="margin-bottom:8px;"></div>
             <div id="scan-autosave" class="hint-warn" style="display:none;"></div>
             <div id="scan-items-box"></div>
-            <div class="card-row" style="font-weight:700;margin:8px 0 2px;"><span>סה"כ השורות</span><span id="scan-sum">₪0.00</span></div>
+            <div class="card-row" style="font-weight:700;margin:8px 0 2px;"><span>סה"כ השורות</span><span id="scan-sum">${cur()}0.00</span></div>
             <div class="hint-warn" id="scan-total-warn" style="display:none;"></div>
-            <div class="card-row" style="font-weight:700;margin:8px 0;"><span>סה"כ החשבונית (לפי השורות שמעל)</span><span id="scan-total">₪0.00</span></div>
+            <div class="card-row" style="font-weight:700;margin:8px 0;"><span>סה"כ החשבונית (לפי השורות שמעל)</span><span id="scan-total">${cur()}0.00</span></div>
             <div class="error-msg" id="scan-apply-error"></div>
             <div class="modal-actions">
                 <button class="btn btn-secondary" id="btn-cancel">ביטול</button>
@@ -231,7 +231,7 @@ export async function openScanModal({ supplierAware, onDone, initialFile = null 
 
         if (scannedItems.length === 0) {
             box.innerHTML = '<div class="muted">לא זוהו מוצרים בתמונה.</div>';
-            overlay.querySelector("#scan-total").textContent = "₪0.00";
+            overlay.querySelector("#scan-total").textContent = `${cur()}0.00`;
             return;
         }
 
@@ -243,10 +243,10 @@ export async function openScanModal({ supplierAware, onDone, initialFile = null 
                 const pr = parseFloat(overlay.querySelector(`#scan-price-${i}`)?.value) || 0;
                 t += q * pr;
             });
-            overlay.querySelector("#scan-total").textContent = `₪${t.toFixed(2)}`;
-            overlay.querySelector("#scan-sum").textContent = `₪${t.toFixed(2)}`;
+            overlay.querySelector("#scan-total").textContent = `${cur()}${t.toFixed(2)}`;
+            overlay.querySelector("#scan-sum").textContent = `${cur()}${t.toFixed(2)}`;
             if (printedTotal != null && Math.abs(printedTotal - t) >= 1) {
-                warn.textContent = `שים לב: הסכום שמודפס בקבלה ₪${Number(printedTotal).toFixed(2)} שונה מסה"כ השורות (הפרש ₪${Math.abs(printedTotal - t).toFixed(2)}). בדוק שורות חסרות, כמויות ומבצעים.`;
+                warn.textContent = `שים לב: הסכום שמודפס בקבלה ${cur()}${Number(printedTotal).toFixed(2)} שונה מסה"כ השורות (הפרש ${cur()}${Math.abs(printedTotal - t).toFixed(2)}). בדוק שורות חסרות, כמויות ומבצעים.`;
                 warn.style.display = "block";
             } else {
                 warn.style.display = "none";
@@ -288,7 +288,7 @@ export async function openScanModal({ supplierAware, onDone, initialFile = null 
                             <button type="button" class="btn btn-secondary btn-small" data-remove="${idx}">✕ הסר שורה</button>
                         </div>
                     </div>
-                    ${it.discount_applied ? `<div class="hint">כולל מבצע: הנחה ₪${it.discount_applied.toFixed(2)} שולבה במחיר (מחיר מחירון ₪${Number(it.list_unit_price).toFixed(2)} ליחידה)</div>` : ""}
+                    ${it.discount_applied ? `<div class="hint">כולל מבצע: הנחה ${cur()}${it.discount_applied.toFixed(2)} שולבה במחיר (מחיר מחירון ${cur()}${Number(it.list_unit_price).toFixed(2)} ליחידה)</div>` : ""}
                     ${flags.map((f) => `<div class="hint-warn">⚠ ${escapeHtml(f)}</div>`).join("")}
                     ${nameEmpty ? '<div class="hint-warn">חסר שם מוצר - הזן שם, או לחץ "הסר שורה" אם זו לא שורת מוצר (למשל מבצע).</div>' : ""}
                     <div class="field"><label>שם מוצר</label><input type="text" id="scan-name-${idx}" value="${escapeHtml(it.name)}"></div>
@@ -304,7 +304,7 @@ export async function openScanModal({ supplierAware, onDone, initialFile = null 
                     <div class="field">
                         <label>מחיר יחידה${priceChanged ? " - שונה מהמחיר הקיים!" : ""}</label>
                         <input type="number" step="any" id="scan-price-${idx}" value="${it.unit_price}" style="${priceChanged ? "border-color:#c0392b;color:#c0392b;font-weight:700;" : ""}">
-                        ${priceChanged ? `<div class="hint" style="color:#c0392b;">מחיר קודם: ₪${it.matched_price.toFixed(2)} → מחיר חדש: ₪${cmpPrice.toFixed(2)}${defFactor !== 1 ? " (לפי האריזה מהקנייה הקודמת)" : ""}</div>` : ""}
+                        ${priceChanged ? `<div class="hint" style="color:#c0392b;">מחיר קודם: ${cur()}${it.matched_price.toFixed(2)} → מחיר חדש: ${cur()}${cmpPrice.toFixed(2)}${defFactor !== 1 ? " (לפי האריזה מהקנייה הקודמת)" : ""}</div>` : ""}
                     </div>
                     <div class="field">
                         <label>קטגוריה${it.matched_pantry_item_id ? "" : it._catGuessed && it._cat === it.guess_category ? " (הוצעה אוטומטית - בדוק)" : " (חובה למוצר חדש)"}</label>
@@ -356,7 +356,7 @@ export async function openScanModal({ supplierAware, onDone, initialFile = null 
                 const factor = perCase * packBase;
                 const el = row.querySelector(`#scan-pantry-price-${idx}`);
                 const label = ut === "liter" ? "ליטר" : ut === "weight" ? 'ק"ג' : "יחידה";
-                el.textContent = factor !== 1 && price > 0 ? `מחיר שיישמר במזווה: ₪${(price / factor).toFixed(2)} ל${label}` : "";
+                el.textContent = factor !== 1 && price > 0 ? `מחיר שיישמר במזווה: ${cur()}${(price / factor).toFixed(2)} ל${label}` : "";
             };
             row.querySelector(`#scan-price-${idx}`).addEventListener("input", updatePreview);
             row.querySelector(`#scan-case-${idx}`).addEventListener("input", updatePreview);
