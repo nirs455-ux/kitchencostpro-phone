@@ -1,7 +1,9 @@
 // לוגיקת מתכונים - תרגום מדויק של _resolve_recipe_items / add_recipe / update_recipe / delete_recipe.
 import { dbGetAll, dbGet, dbPut, dbDelete, dbGetByIndex, dbDeleteWhere } from "../db.js";
 import { RECIPE_CATEGORIES } from "../constants.js";
-import { pricePerGram, itemCost as calcItemCost, recipeCostPerGram } from "../formulas.js";
+import { pricePerGram, itemCost as calcItemCost, recipeCostPerGram, effectivePrice } from "../formulas.js";
+import { ensureEggDefaults } from "./pantryRepo.js";
+import { isEggProduct, eggSizeOf, allocateEggCosts } from "../eggs.js";
 
 export async function listRecipesWithItems() {
     const recipes = await dbGetAll("recipes");
@@ -15,6 +17,7 @@ export async function listRecipesWithItems() {
 
 async function resolveRecipeItems(items) {
     const resolved = [];
+    const eggRows = [];
     let totalCost = 0;
     let rawWeight = 0;
     for (const it of items) {
@@ -22,15 +25,30 @@ async function resolveRecipeItems(items) {
         const qty = parseFloat(it.quantity_g);
         if (Number.isNaN(pantryId) || Number.isNaN(qty)) throw new Error("מרכיב עם נתונים לא תקינים");
         if (qty <= 0) throw new Error("כמות חייבת להיות גדולה מ-0");
-        const row = await dbGet("pantryItems", pantryId);
+        let row = await dbGet("pantryItems", pantryId);
         if (!row) throw new Error("מרכיב לא נמצא במזווה");
+        const eggPart = ["whole", "white", "yolk"].includes(it.egg_part) && isEggProduct(row) ? it.egg_part : null;
+        if (eggPart) row = await ensureEggDefaults(row); // גודל ומשקל ללא קליפה אוטומטיים אם חסרים
         if (row.unit_type === "unit" && !row.unit_amount) throw new Error(`'${row.name}' חסר משקל ליחידה - השלם אותו במזווה לפני השימוש במתכון`);
         const ppg = pricePerGram(row);
-        const free = !!it.free && !!row.egg_part; // שארית ביצה שנשמרה מהכנה קודמת - לא מחויבת
-        const cost = free ? 0 : calcItemCost(ppg, qty);
+        const cost = calcItemCost(ppg, qty);
         totalCost += cost;
         rawWeight += qty;
-        resolved.push({ pantry_item_id: pantryId, ingredient_name: row.name, quantity_g: qty, price_per_gram: ppg, item_cost: cost, ...(free ? { free: true } : {}) });
+        resolved.push({ pantry_item_id: pantryId, ingredient_name: row.name, quantity_g: qty, price_per_gram: ppg, item_cost: cost, ...(eggPart ? { egg_part: eggPart } : {}) });
+        if (eggPart) eggRows.push({ idx: resolved.length - 1, row });
+    }
+    // ביצים: משלמים על כל הביצים ששוברים (לא רק על הגרמים שבשימוש). העלות מתחלקת בין שורות הביצים של אותו מוצר
+    const byEgg = new Map();
+    for (const e of eggRows) byEgg.set(e.row.id, [...(byEgg.get(e.row.id) || []), e]);
+    for (const group of byEgg.values()) {
+        const row = group[0].row;
+        const price = effectivePrice(row.price, row.yield_pct, row.is_frozen);
+        const { costs } = allocateEggCosts(group.map((e) => ({ egg_part: resolved[e.idx].egg_part, grams: resolved[e.idx].quantity_g })), eggSizeOf(row), price);
+        group.forEach((e, i) => {
+            totalCost += costs[i] - resolved[e.idx].item_cost;
+            resolved[e.idx].item_cost = costs[i];
+            resolved[e.idx].price_per_gram = resolved[e.idx].quantity_g > 0 ? costs[i] / resolved[e.idx].quantity_g : 0;
+        });
     }
     return { resolved, totalCost, rawWeight };
 }

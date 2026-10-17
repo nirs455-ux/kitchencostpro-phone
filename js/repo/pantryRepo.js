@@ -3,7 +3,7 @@ import { suggestAllergens } from "../allergens.js";
 import { dbGetAll, dbGet, dbPut, dbDelete, dbGetByIndex } from "../db.js";
 import { CATEGORY_GROUPS, UNIT_TYPES } from "../constants.js";
 import { computeYieldPct } from "../formulas.js";
-import { partPrice } from "../eggs.js";
+import { EGG_SIZES, guessEggSize } from "../eggs.js";
 
 export async function listAllPantryItems() {
     return dbGetAll("pantryItems");
@@ -63,6 +63,7 @@ export async function addPantryItem(data) {
         name, category: data.category, subcategory, unit_type: data.unit_type, unit_amount: unitAmount,
         price, yield_pct: yieldPct, weight_before: weightBefore, weight_after: weightAfter,
         is_frozen: isFrozen ? 1 : 0, parent_id: null,
+        ...(data.unit_type === "unit" && EGG_SIZES[data.egg_size] ? { egg_size: data.egg_size } : {}),
         // אלרגנים: מהטופס אם הוגדרו, אחרת הצעה לפי שם (מסומנת כאוטומטית עד שהמשתמש מאשר)
         allergens: Array.isArray(data.allergens) ? data.allergens : suggestAllergens(name),
         allergens_auto: !Array.isArray(data.allergens),
@@ -123,9 +124,9 @@ export async function updatePantryItem(id, data) {
         name, category: data.category, subcategory: newSubcategory, unit_type: data.unit_type,
         unit_amount: unitAmount, price, is_frozen: isFrozen ? 1 : 0,
     });
+    if (data.unit_type === "unit" && EGG_SIZES[data.egg_size]) existing.egg_size = data.egg_size;
     if (Array.isArray(data.allergens)) { existing.allergens = data.allergens; existing.allergens_auto = false; }
     await dbPut("pantryItems", existing);
-    await syncEggChildren(existing);
 }
 
 // עדכון ניצולת/משקל/קפוא (עמוד 2 - עיבוד). מקביל ל-PUT /api/items/<id>/yield.
@@ -209,44 +210,26 @@ export async function deleteAllChildren(id) {
     return children.length;
 }
 
-// ---- תבנית ביצים: חלבון וחלמון כתוצרים של ביצה, העלות מחולקת לפי משקל ----
-
-// מעדכן את מחיר החלבון/חלמון לפי מחיר הביצה (נקרא בכל מקום שמחיר מוצר משתנה)
-export async function syncEggChildren(parent) {
-    if (!parent || parent.parent_id) return;
-    for (const c of await getChildren(parent.id)) {
-        if (!c.egg_part) continue;
-        const price = partPrice(parent.price, c.egg_liquid_g, c.unit_amount);
-        if (price !== c.price) await dbPut("pantryItems", { ...c, price });
-    }
+// ---- ביצים: הגודל נשמר על מוצר הביצה, והמשקל ללא קליפה נקבע ממנו (רק אם עוד אין משקל ליחידה) ----
+// מנחש גודל לפי השם ושומר, ואם אין משקל ליחידה קובע את משקל הביצה ללא קליפה. מחזיר את שורת המוצר המעודכנת.
+export async function ensureEggDefaults(row) {
+    let changed = false;
+    const size = row.egg_size && EGG_SIZES[row.egg_size] ? row.egg_size : guessEggSize(row.name);
+    if (row.egg_size !== size) { row.egg_size = size; changed = true; }
+    if (!(row.unit_amount > 0)) { row.unit_amount = EGG_SIZES[size].liquid; changed = true; }
+    if (changed) await dbPut("pantryItems", row);
+    return row;
 }
 
-export async function getEggChildren(parentId) {
-    return (await getChildren(parentId)).filter((c) => c.egg_part);
-}
-
-// יוצר/מעדכן חלבון וחלמון לביצה. משקל הביצה (ללא קליפה) = חלבון + חלמון והוא נקבע כמשקל ליחידה של הביצה.
-export async function applyEggTemplate(parentId, { white, yolk }) {
-    const parent = await dbGet("pantryItems", parentId);
-    if (!parent || parent.parent_id) throw new Error("ביצה לא נמצאה");
-    if (parent.unit_type !== "unit") throw new Error("הביצה צריכה להיות מוגדרת ביחידות במזווה");
-    white = parseFloat(white); yolk = parseFloat(yolk);
-    if (!(white > 0) || !(yolk > 0)) throw new Error("יש להזין משקל חלבון וחלמון");
-    const liquid = Math.round((white + yolk) * 100) / 100;
-    parent.unit_amount = liquid;
-    await dbPut("pantryItems", parent);
-    const existing = await getEggChildren(parentId);
-    for (const [part, label, g] of [["white", "חלבון", white], ["yolk", "חלמון", yolk]]) {
-        const row = {
-            name: `${label} - ${parent.name}`, category: parent.category, subcategory: parent.subcategory,
-            unit_type: "unit", unit_amount: g, price: partPrice(parent.price, liquid, g), yield_pct: 100,
-            weight_before: null, weight_after: null, is_frozen: parent.is_frozen ? 1 : 0, parent_id: parentId,
-            egg_part: part, egg_liquid_g: liquid,
-        };
-        const prev = existing.find((c) => c.egg_part === part);
-        if (prev) row.id = prev.id, row.name = prev.name;
-        await dbPut("pantryItems", row);
-    }
+// משנה גודל ביצה. משקל ליחידה מתעדכן אם הוא ריק, אם הוא היה ערך הטבלה של הגודל הקודם, או אם ביקשו במפורש (force)
+export async function setEggSize(id, size, { force = false } = {}) {
+    const row = await dbGet("pantryItems", id);
+    if (!row || !EGG_SIZES[size]) throw new Error("ביצה לא נמצאה");
+    const old = row.egg_size && EGG_SIZES[row.egg_size] ? EGG_SIZES[row.egg_size].liquid : null;
+    row.egg_size = size;
+    if (force || !(row.unit_amount > 0) || row.unit_amount === old) row.unit_amount = EGG_SIZES[size].liquid;
+    await dbPut("pantryItems", row);
+    return row;
 }
 
 // קובע אלרגנים למוצר (מאושר ידנית). תוצר מפורק יורש מחומר הגלם, לכן שומרים תמיד על מוצר ברמה העליונה.
