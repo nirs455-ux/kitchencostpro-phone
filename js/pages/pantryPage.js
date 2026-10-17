@@ -8,6 +8,7 @@ import { renderProcessingPage } from "./processingPage.js";
 import { renderInventoryPage } from "./inventoryPage.js";
 import { renderWastePage } from "./wastePage.js";
 import { isStaffMode } from "../staff.js";
+import { EGG_SIZES, isEggName, guessEggSize } from "../eggs.js";
 import { getFilter, applyFilter, mountFilterBar, groupBySection, groupTitleEl } from "../filters.js";
 
 // מזווה = שלוש לשוניות: מוצרים | ספירת מלאי | עיבוד וניצולת. מצב עובד רואה רק ספירת מלאי.
@@ -146,6 +147,10 @@ function openPantryModal(existing, container) {
                     ${UNIT_TYPES.map((u) => `<option value="${u}" ${existing && existing.unit_type === u ? "selected" : ""}>${UNIT_TYPE_LABELS[u]}</option>`).join("")}
                 </select>
             </div>
+            <div class="field" id="f-egg-size-wrap" style="display:none;">
+                <label>גודל הביצה ${info("קובע את משקל הביצה ללא קליפה ואת כמות החלבון והחלמון, כדי שהמתכונים יחשבו כמה ביצים לשבור ומה העלות.")}</label>
+                <select id="f-egg-size">${Object.keys(EGG_SIZES).map((k) => `<option value="${k}">${k}</option>`).join("")}</select>
+            </div>
             <div class="field" id="f-unit-amount-wrap">
                 <label>משקל/נפח ליחידה (גרם/מ"ל)</label>
                 <input type="number" step="any" id="f-unit-amount" value="${existing && existing.unit_amount != null ? existing.unit_amount : ""}">
@@ -169,13 +174,35 @@ function openPantryModal(existing, container) {
         subWrap.style.display = subs.length ? "block" : "none";
         overlay.querySelector("#f-subcategory").innerHTML = subcategoryOptions(catSelect.value, existing ? existing.subcategory : null);
     }
+    // ביצים (ביחידות): מוצג גודל, והמשקל ליחידה מתמלא אוטומטית (ללא קליפה) אם ריק או שהיה ערך מהטבלה
+    const eggWrap = overlay.querySelector("#f-egg-size-wrap");
+    const eggSizeSel = overlay.querySelector("#f-egg-size");
+    const amountInput = overlay.querySelector("#f-unit-amount");
+    const nameEl = overlay.querySelector("#f-name");
+    let lastAutoAmount = null;
+    const isEggForm = () => unitTypeSelect.value === "unit" && isEggName(nameEl.value);
+    function syncEgg(fromName = false) {
+        const egg = isEggForm();
+        eggWrap.style.display = egg ? "block" : "none";
+        if (!egg) return;
+        if (fromName && !eggSizeSel.dataset.touched && !(existing && existing.egg_size)) eggSizeSel.value = guessEggSize(nameEl.value);
+        const liquid = EGG_SIZES[eggSizeSel.value].liquid;
+        const cur = parseFloat(amountInput.value);
+        const isTable = Object.values(EGG_SIZES).some((e) => e.liquid === cur);
+        if (!(cur > 0) || isTable || cur === lastAutoAmount) { amountInput.value = liquid; lastAutoAmount = liquid; }
+    }
+    if (existing) eggSizeSel.value = existing.egg_size && EGG_SIZES[existing.egg_size] ? existing.egg_size : guessEggSize(existing.name);
+    else eggSizeSel.value = "M";
+    nameEl.addEventListener("input", () => syncEgg(true));
+    eggSizeSel.addEventListener("change", () => { eggSizeSel.dataset.touched = "1"; syncEgg(); });
     function syncUnitAmount() {
         unitAmountWrap.style.display = unitTypeSelect.value === "unit" ? "block" : "none";
     }
     catSelect.onchange = syncSubcategory;
-    unitTypeSelect.onchange = syncUnitAmount;
+    unitTypeSelect.onchange = () => { syncUnitAmount(); syncEgg(true); };
     syncSubcategory();
     syncUnitAmount();
+    syncEgg(!existing);
 
     overlay.querySelector("#btn-cancel").onclick = () => attemptClose(overlay);
     overlay.querySelector("#btn-save").onclick = busy(async () => {
@@ -188,6 +215,7 @@ function openPantryModal(existing, container) {
             price: overlay.querySelector("#f-price").value,
             is_frozen: existing ? !!existing.is_frozen : false, // קפוא נקבע בעיבוד וניצולת
         };
+        if (isEggForm()) data.egg_size = eggSizeSel.value;
         // אלרגנים לא מוצגים כאן: מוצר חדש מקבל הצעה אוטומטית לפי השם, ועריכה/אישור נעשים במתכון
         try {
             if (isEdit) {

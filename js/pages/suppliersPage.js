@@ -1,6 +1,6 @@
 import { listSuppliers, addSupplier, deleteSupplier, getSupplierDeleteInfo, listInvoicesWithItems, saveInvoice, validateInvoicePayload, deleteInvoice, monthlySummaryBySupplier,
     priceChanges, monthlyReport, invoicesToCsv, pettyCashOwed, markAllPettyCashReimbursed, setPettyReimbursed, findDuplicateInvoice } from "../repo/suppliersRepo.js";
-import { listTopLevelPantryItems, syncEggChildren } from "../repo/pantryRepo.js";
+import { listTopLevelPantryItems } from "../repo/pantryRepo.js";
 import { createPantryItemFromInvoice } from "../repo/scanRepo.js";
 import { CATEGORY_GROUPS, UNIT_TYPES, UNIT_TYPE_LABELS } from "../constants.js";
 import { computeStockFactor } from "../invoiceParse.js";
@@ -740,7 +740,7 @@ function openInvoiceModal(existing, suppliers, pantryItems, container) {
             }
             for (const u of priceUpdates) {
                 const p = await dbGet("pantryItems", u.id);
-                if (p) { p.price = u.price; await dbPut("pantryItems", p); await syncEggChildren(p); }
+                if (p) { p.price = u.price; await dbPut("pantryItems", p); }
             }
             closeModal();
             toast("נשמר");

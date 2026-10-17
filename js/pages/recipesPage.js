@@ -1,10 +1,10 @@
 // ספר מתכונים: מתכון נשמר גם כשחסרים רכיבים (טיוטה שאפשר להשלים אחר כך), המסמך המקורי נשמר איתו,
 // ויש תצוגת פרטים עם רשימת רכיבים לתווית והצהרת אלרגנים.
 import { listRecipesWithItems, saveRecipe, deleteRecipe, setRecipeBase } from "../repo/recipesRepo.js";
-import { listAllPantryItems, addPantryItem, setItemAllergens } from "../repo/pantryRepo.js";
+import { listAllPantryItems, addPantryItem, setItemAllergens, setEggSize } from "../repo/pantryRepo.js";
 import { ALLERGENS, allergenLabels } from "../allergens.js";
 import { RECIPE_CATEGORIES, NON_FOOD_CATEGORIES, CATEGORY_GROUPS, UNIT_TYPES, UNIT_TYPE_LABELS } from "../constants.js";
-import { pricePerGram, itemCost as calcItemCost } from "../formulas.js";
+import { pricePerGram, itemCost as calcItemCost, effectivePrice } from "../formulas.js";
 import { h, openModal, closeModal, confirmDialog, toast, escapeHtml, money, busy, attemptClose, info, cur, curLabel } from "../ui.js";
 import { openImagePicker } from "../imagePicker.js";
 import { scanRecipeImage, suggestRecipeBase } from "../repo/scanRepo.js";
@@ -13,7 +13,7 @@ import { dbGetAll, dbGet } from "../db.js";
 import { buildLabel } from "../recipeLabel.js";
 import { suggestBaseHeuristic, computePercentages, scaleToBase, fmtPct } from "../bakers.js";
 import { RECIPE_UNIT_GRAMS } from "../recipeParse.js";
-import { recipeEggSummary, eggSummaryText } from "../eggs.js";
+import { recipeEggSummary, eggSummaryText, allocateEggCosts, isEggProduct, eggSizeOf, partGrams, eggBreakdown, EGG_SIZES, EGG_PARTS, EGG_PART_LABEL } from "../eggs.js";
 import { showImageFullscreen } from "../imageUtil.js";
 
 let recipeFilter = "all"; // all | ready | draft
@@ -47,7 +47,7 @@ export async function renderRecipesPage(container) {
     recipes.sort((a, b) => a.category.localeCompare(b.category, "he") || a.name.localeCompare(b.name, "he"));
     const draftCount = recipes.filter((r) => r.status === "draft").length;
 
-    container.innerHTML = `<div class="btn-row"><button class="btn btn-accent" id="btn-scan-recipe">📷 סרוק מתכון (תמונה / קובץ)</button></div>
+    container.innerHTML = `<div class="btn-row"><button class="btn btn-accent" id="btn-scan-recipe">📷 סרוק מתכון (תמונה / קובץ)</button><button class="btn btn-secondary" id="btn-egg-calc">🥚 המרת ביצים</button></div>
         ${recipes.length ? `<div class="fchips">
             <button type="button" class="chip ${recipeFilter === "all" ? "active" : ""}" data-rf="all">הכול (${recipes.length})</button>
             <button type="button" class="chip ${recipeFilter === "ready" ? "active" : ""}" data-rf="ready">מוכנים (${recipes.length - draftCount})</button>
@@ -64,6 +64,7 @@ export async function renderRecipesPage(container) {
         for (const r of shown) list.appendChild(renderRecipeCard(r, container));
     }
     container.querySelector("#btn-add").onclick = () => openRecipeModal(null, container);
+    container.querySelector("#btn-egg-calc").onclick = () => openEggCalcModal();
     container.querySelector("#btn-scan-recipe").onclick = () => openImagePicker({
         title: "סריקת מתכון",
         hint: "צלם או העלה מתכון בכל פורמט: תמונה, PDF, Word, Excel, טקסט ועוד. נזהה שם, מרכיבים וכמויות, ותוכל לבדוק ולתקן לפני שמירה. המסמך המקורי נשמר עם המתכון.",
@@ -173,7 +174,7 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
         if (tab === "recipe") {
             body = `
             <table class="simple"><thead><tr><th>רכיב</th><th>גרם</th><th>עלות</th></tr></thead><tbody>
-                ${[...r.items].sort((a, b) => b.quantity_g - a.quantity_g).map((i) => `<tr><td>${escapeHtml(nameOf(i))}${i.free ? ' <span class="tag">שארית · עלות 0</span>' : ""}</td><td>${+Number(i.quantity_g).toFixed(1)}</td><td>${money(i.item_cost)}</td></tr>`).join("")}
+                ${[...r.items].sort((a, b) => b.quantity_g - a.quantity_g).map((i) => `<tr><td>${escapeHtml(nameOf(i))}${i.egg_part && i.egg_part !== "whole" ? " (" + EGG_PART_LABEL[i.egg_part] + ")" : ""}</td><td>${+Number(i.quantity_g).toFixed(1)}</td><td>${money(i.item_cost)}</td></tr>`).join("")}
                 ${missing.map((m) => `<tr style="color:#c0392b;"><td>⚠ ${escapeHtml(m.name)}</td><td colspan="2">${escapeHtml(originalText(m) || "—")} · לא במזווה</td></tr>`).join("")}
             </tbody></table>
             ${r.status === "draft" ? `<div class="hint-warn">העלות חלקית - מחושבת רק מהרכיבים שבמזווה. לחץ "השלם" כדי להוסיף את החסרים.</div>`
@@ -293,6 +294,48 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
     draw();
 }
 
+// מחשבון ביצים: "500 גרם חלבון" -> כמה ביצים לשבור, כמה נשאר, וכמה זה עולה. (בהמשך יהיה גם בלשונית המחולל)
+async function openEggCalcModal() {
+    const eggs = (await listAllPantryItems()).filter(isEggProduct);
+    const overlay = openModal(`
+        <h2>🥚 המרת ביצים</h2>
+        ${eggs.length ? "" : '<div class="hint-warn">אין עדיין ביצים במזווה. הוסף מוצר ביצים ביחידות כדי לראות עלות.</div>'}
+        <div class="field"><label>מוצר ביצים</label><select id="ec-prod">${eggs.map((e) => `<option value="${e.id}">${escapeHtml(e.name)}</option>`).join("") || '<option value="">(ללא)</option>'}</select></div>
+        <div class="form-row">
+            <div class="field"><label>גודל</label><select id="ec-size">${Object.keys(EGG_SIZES).map((k) => `<option value="${k}">${k}</option>`).join("")}</select></div>
+            <div class="field"><label>חלק</label><select id="ec-part">${EGG_PARTS.map(([k, l]) => `<option value="${k}">${l}</option>`).join("")}</select></div>
+        </div>
+        <div class="form-row">
+            <div class="field"><label>כמות</label><input type="number" step="any" id="ec-qty" inputmode="decimal"></div>
+            <div class="field"><label>ב-</label><select id="ec-unit"><option value="g">גרם</option><option value="unit">יחידות</option></select></div>
+        </div>
+        <div id="ec-out" class="card" style="display:none;"></div>
+        <div class="modal-actions"><button type="button" class="btn btn-secondary" id="ec-close">סגור</button></div>`);
+    const q = (s) => overlay.querySelector(s);
+    const prodRow = () => eggs.find((e) => String(e.id) === q("#ec-prod").value);
+    const syncSize = () => { const p = prodRow(); q("#ec-size").value = p ? eggSizeOf(p) : "M"; };
+    const calc = () => {
+        const qty = parseFloat(q("#ec-qty").value) || 0;
+        const size = q("#ec-size").value, part = q("#ec-part").value;
+        const grams = q("#ec-unit").value === "unit" ? qty * partGrams(size, part) : qty;
+        const p = prodRow();
+        const r = eggBreakdown({ size, wholeG: part === "whole" ? grams : 0, whiteG: part === "white" ? grams : 0, yolkG: part === "yolk" ? grams : 0, eggPrice: p ? Number(p.price) : 0 });
+        const out = q("#ec-out");
+        if (!r || !(qty > 0)) { out.style.display = "none"; return; }
+        out.style.display = "";
+        out.innerHTML = `<div class="card-title">לשבור ${r.eggs} ביצים</div>
+            ${q("#ec-unit").value === "unit" ? `<div>${qty} ${EGG_PART_LABEL[part]} = ${Math.round(grams * 100) / 100} גרם</div>` : ""}
+            ${p ? `<div>עלות הביצים ששוברים: ${money(r.eggsCost)}</div>` : ""}
+            ${r.leftWhiteCount > 0 ? `<div>נשארים ${r.leftWhiteCount} חלבונים (${r.leftWhiteG} גרם)</div>` : ""}
+            ${r.leftYolkCount > 0 ? `<div>נשארים ${r.leftYolkCount} חלמונים (${r.leftYolkG} גרם)</div>` : ""}`;
+    };
+    syncSize();
+    q("#ec-prod").onchange = () => { syncSize(); calc(); };
+    for (const s of ["#ec-size", "#ec-part", "#ec-unit"]) q(s).onchange = calc;
+    q("#ec-qty").oninput = calc;
+    q("#ec-close").onclick = closeModal;
+}
+
 // עריכת אלרגנים של מוצר (נפתח מתוך המתכון). onSaved מקבל את שורת המוצר המעודכנת.
 function openAllergenModal(row, onSaved) {
     let sel = new Set(Array.isArray(row.allergens) ? row.allergens : []);
@@ -372,7 +415,7 @@ async function openRecipeModal(existing, container, draft = null) {
     function addRow(prefill) {
         const id = rowCounter++;
         const um = prefill && prefill.um ? prefill.um : null;
-        rowMeta.set(id, { um });
+        rowMeta.set(id, { um, eggPart: (prefill && prefill.egg_part) || "whole", eggSize: null, eggUnit: "g" });
         const row = h(`
             <div class="item-row-inputs" id="ing-row-${id}">
                 ${um ? `<div class="hint-warn" style="margin-top:0;">מהמסמך: <b>${escapeHtml(um.name)}</b> ${escapeHtml(originalText(um))}</div>` : ""}
@@ -385,7 +428,14 @@ async function openRecipeModal(existing, container, draft = null) {
                     <button type="button" class="remove-row-btn" data-remove="${id}">✕</button>
                 </div>
                 <div class="line-total" id="ing-line-${id}"></div>
-                <label class="checkbox-field" id="ing-free-wrap-${id}" style="display:none;margin:4px 0;font-size:13px;"><input type="checkbox" id="ing-free-${id}" ${prefill && prefill.free ? "checked" : ""}> שארית שנשמרה מהכנה קודמת (עלות 0) ${info("מסמנים כשהחלבון/החלמון הזה נשאר מהכנה אחרת (למשל מאיולי), ולכן הוא לא מחויב שוב. הכמות עדיין נספרת במשקל המתכון.")}</label>
+                <div id="ing-egg-${id}" style="display:none;margin:6px 0;">
+                    <div class="seg" id="ing-part-${id}">${EGG_PARTS.map(([k, l]) => `<button type="button" data-part="${k}">${l}</button>`).join("")}</div>
+                    <div class="form-row">
+                        <div class="field"><label>גודל ${info("הגודל קובע כמה גרם חלבון וחלמון יש בביצה (ללא קליפה). נשמר במוצר הביצים.")}</label><select id="ing-size-${id}">${Object.keys(EGG_SIZES).map((k) => `<option value="${k}">${k}</option>`).join("")}</select></div>
+                        <div class="field"><label>הכמות ב-</label><select id="ing-eunit-${id}"><option value="g">גרם</option><option value="unit">יחידות</option></select></div>
+                    </div>
+                    <div class="hint" id="ing-egg-hint-${id}"></div>
+                </div>
                 ${um ? `<button type="button" class="btn btn-secondary btn-small" id="ing-qa-btn-${id}" style="margin-top:6px;">➕ הוסף "${escapeHtml(um.name)}" למזווה</button>
                 <div id="ing-qa-${id}" style="display:none;background:#eef6fb;border-radius:8px;padding:8px;margin-top:6px;">
                     <div class="form-row">
@@ -412,7 +462,16 @@ async function openRecipeModal(existing, container, draft = null) {
             }
             recalc();
         });
-        row.querySelector(`#ing-free-${id}`).addEventListener("change", recalc);
+        row.querySelectorAll(`#ing-part-${id} [data-part]`).forEach((b) => { b.onclick = () => { rowMeta.get(id).eggPart = b.dataset.part; recalc(); }; });
+        row.querySelector(`#ing-size-${id}`).addEventListener("change", (e) => {
+            const pid = overlay.querySelector(`#ing-source-${id}`).value;
+            box.querySelectorAll(".item-row-inputs").forEach((r2) => {
+                const id2 = r2.id.replace("ing-row-", "");
+                if (overlay.querySelector(`#ing-source-${id2}`).value === pid) rowMeta.get(Number(id2)).eggSize = e.target.value;
+            });
+            recalc();
+        });
+        row.querySelector(`#ing-eunit-${id}`).addEventListener("change", (e) => { rowMeta.get(id).eggUnit = e.target.value; recalc(); });
         row.querySelector(`#ing-qty-${id}`).addEventListener("input", recalc);
         row.querySelector("[data-remove]").onclick = () => { row.remove(); rowMeta.delete(id); recalc(); };
 
@@ -457,36 +516,70 @@ async function openRecipeModal(existing, container, draft = null) {
         }
     }
 
+    // שורת ביצים: מציגה בחירת חלק/גודל/יחידות, ומחזירה כמה גרם השורה (בהמרה מיחידות) ופרטי הביצה. אחרת null.
+    function eggRow(id) {
+        const sourceId = parseInt(overlay.querySelector(`#ing-source-${id}`).value, 10);
+        const s = sources.find((x) => x.id === sourceId);
+        const wrap = overlay.querySelector(`#ing-egg-${id}`);
+        const meta = rowMeta.get(Number(id));
+        if (!s || !isEggProduct(s.item) || !meta) { if (wrap) wrap.style.display = "none"; return null; }
+        const size = meta.eggSize || eggSizeOf(s.item);
+        wrap.style.display = "";
+        overlay.querySelector(`#ing-size-${id}`).value = size;
+        overlay.querySelector(`#ing-eunit-${id}`).value = meta.eggUnit;
+        overlay.querySelectorAll(`#ing-part-${id} [data-part]`).forEach((b) => b.classList.toggle("active", b.dataset.part === meta.eggPart));
+        const qty = parseFloat(overlay.querySelector(`#ing-qty-${id}`).value) || 0;
+        const pg = partGrams(size, meta.eggPart);
+        const grams = meta.eggUnit === "unit" ? Math.round(qty * pg * 100) / 100 : qty;
+        const hint = overlay.querySelector(`#ing-egg-hint-${id}`);
+        const liquid = EGG_SIZES[size].liquid;
+        let text = meta.eggUnit === "unit" && qty > 0 ? `${qty} ${EGG_PART_LABEL[meta.eggPart]} = ${grams} גרם. ` : "";
+        const mismatch = s.item.unit_amount > 0 && s.item.unit_amount !== liquid;
+        hint.innerHTML = escapeHtml(text) + (mismatch ? `משקל הביצה במזווה: ${s.item.unit_amount} גרם, ללא קליפה: ${liquid} גרם. <button type="button" class="btn btn-secondary btn-small" data-fix="${id}">עדכן במזווה ל-${liquid}</button>` : "");
+        const fix = hint.querySelector("[data-fix]");
+        if (fix) fix.onclick = async () => { await setEggSize(s.id, size, { force: true }); s.item.unit_amount = liquid; s.item.egg_size = size; recalc(); };
+        return { s, size, part: meta.eggPart, grams };
+    }
+
     function recalc() {
         let total = 0;
         let hasUnmatched = false;
+        const eggGroups = new Map(); // מזהה ביצה -> שורות. עלות ביצים = כל הביצים ששוברים, מחולקת בין השורות לפי גרמים
         box.querySelectorAll(".item-row-inputs").forEach((row) => {
             const id = row.id.replace("ing-row-", "");
             const sourceId = parseInt(overlay.querySelector(`#ing-source-${id}`).value, 10);
-            const qty = parseFloat(overlay.querySelector(`#ing-qty-${id}`).value) || 0;
             const meta = rowMeta.get(Number(id));
             const s = sources.find((x) => x.id === sourceId);
             const lineEl = overlay.querySelector(`#ing-line-${id}`);
-            const freeWrap = overlay.querySelector(`#ing-free-wrap-${id}`);
-            if (freeWrap) {
-                freeWrap.style.display = s && s.item.egg_part ? "" : "none";
-                if (!(s && s.item.egg_part)) overlay.querySelector(`#ing-free-${id}`).checked = false;
-            }
-            const isFree = !!(s && s.item.egg_part && overlay.querySelector(`#ing-free-${id}`).checked);
+            const egg = eggRow(id);
+            const qty = egg ? egg.grams : parseFloat(overlay.querySelector(`#ing-qty-${id}`).value) || 0;
             if (s && qty > 0) {
-                const cost = isFree ? 0 : calcItemCost(pricePerGram(s.item), qty);
-                lineEl.textContent = money(cost);
-                total += cost;
+                if (egg) {
+                    const g = eggGroups.get(s.id) || { s, size: egg.size, rows: [] };
+                    g.rows.push({ lineEl, egg_part: egg.part, grams: egg.grams });
+                    eggGroups.set(s.id, g);
+                    lineEl.textContent = "";
+                } else {
+                    const cost = calcItemCost(pricePerGram(s.item), qty);
+                    lineEl.textContent = money(cost);
+                    total += cost;
+                }
             } else {
                 lineEl.textContent = "";
                 if (meta && meta.um) hasUnmatched = true;
             }
         });
+        for (const g of eggGroups.values()) {
+            const price = effectivePrice(g.s.item.price, g.s.item.yield_pct, g.s.item.is_frozen);
+            const { costs } = allocateEggCosts(g.rows, g.size, price);
+            g.rows.forEach((r, i) => { r.lineEl.textContent = money(costs[i]); total += costs[i]; });
+        }
         overlay.querySelector("#total-cost-display").textContent = money(total);
         const eggLines = [];
         box.querySelectorAll(".item-row-inputs").forEach((row) => {
             const id = row.id.replace("ing-row-", "");
-            eggLines.push({ pantry_item_id: overlay.querySelector(`#ing-source-${id}`).value, quantity_g: overlay.querySelector(`#ing-qty-${id}`).value });
+            const egg = eggRow(id);
+            if (egg) eggLines.push({ pantry_item_id: egg.s.id, quantity_g: egg.grams, egg_part: egg.part, egg_size: egg.size });
         });
         overlay.querySelector("#egg-note").innerHTML = recipeEggSummary(eggLines, sources.map((x) => x.item)).map((e) => escapeHtml(eggSummaryText(e))).join("<br>");
         overlay.querySelector("#partial-note").style.display = hasUnmatched ? "block" : "none";
@@ -513,13 +606,15 @@ async function openRecipeModal(existing, container, draft = null) {
     overlay.querySelector("#btn-save").onclick = busy(async () => {
         const items = [];
         const draftIngredients = [];
+        const eggSizeChanges = new Map(); // מזהה ביצה -> גודל שנבחר בשורה
         box.querySelectorAll(".item-row-inputs").forEach((row) => {
             const id = row.id.replace("ing-row-", "");
             const pantry_item_id = overlay.querySelector(`#ing-source-${id}`).value;
-            const quantity_g = overlay.querySelector(`#ing-qty-${id}`).value;
+            const egg = eggRow(id);
+            const quantity_g = egg ? (egg.grams > 0 ? egg.grams : "") : overlay.querySelector(`#ing-qty-${id}`).value;
             const meta = rowMeta.get(Number(id));
-            const freeEl = overlay.querySelector(`#ing-free-${id}`);
-            if (pantry_item_id && quantity_g) items.push({ pantry_item_id, quantity_g, free: !!(freeEl && freeEl.checked) });
+            if (egg && meta.eggSize) eggSizeChanges.set(egg.s.id, meta.eggSize);
+            if (pantry_item_id && quantity_g) items.push({ pantry_item_id, quantity_g, ...(egg ? { egg_part: egg.part } : {}) });
             else if (meta && meta.um) draftIngredients.push({ name: meta.um.name, quantity: meta.um.quantity, unit: meta.um.unit });
         });
         const el = overlay.querySelector(".error-msg");
@@ -534,6 +629,7 @@ async function openRecipeModal(existing, container, draft = null) {
         if (!isEdit && draft && draft.source_file) data.source_file = draft.source_file;
         if (draftIngredients.length && !window.confirm(`${draftIngredients.length} רכיבים עדיין לא במזווה:\n${draftIngredients.map((d) => d.name).join(", ")}\n\nלשמור כטיוטה ולהשלים אותם אחר כך?`)) return;
         try {
+            for (const [eggId, size] of eggSizeChanges) await setEggSize(eggId, size);
             await saveRecipe(existing ? existing.id : null, data);
             closeModal();
             toast(draftIngredients.length ? "נשמר כטיוטה - אפשר להשלים בכל שלב" : "נשמר");
