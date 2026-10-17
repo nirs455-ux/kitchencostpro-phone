@@ -7,6 +7,8 @@ import { renderInventoryPage } from "./pages/inventoryPage.js";
 import { renderSettingsPage } from "./pages/settingsPage.js";
 import { renderHomePage } from "./pages/homePage.js";
 import { renderFilesPage, openFilesFolder } from "./pages/filesPage.js";
+import { openSetupWizard } from "./pages/setupWizard.js";
+import { initLocale } from "./locale.js";
 import { getSetting } from "./repo/settingsRepo.js";
 import { dbGetAll } from "./db.js";
 import { downloadExport } from "./export.js";
@@ -89,7 +91,17 @@ if (isStaffMode()) {
 }
 document.getElementById("page-title").addEventListener("click", () => navigate("home"));
 
+await initLocale(); // סמל מטבע וכו' לפני שהמסכים מצוירים
 navigate(location.hash.replace("#", "") === "share" ? "home" : (location.hash.replace("#", "") || "home"));
+
+// אשף הפעלה: רק בהתקנה ריקה לגמרי שעוד לא עברה אותו (מי שכבר יש לו נתונים לא יראה אותו אוטומטית)
+(async () => {
+    try {
+        if (isStaffMode() || (await getSetting("setup_done"))) return;
+        if ((await dbGetAll("pantryItems")).length + (await dbGetAll("invoices")).length + (await dbGetAll("recipes")).length > 0) return;
+        openSetupWizard({ onDone: () => navigate("home") });
+    } catch (e) { /* האשף אופציונלי */ }
+})();
 
 // הגענו דרך "שתף": אם נשלחה תמונה - פותחים ישר את הסריקה
 (async () => {

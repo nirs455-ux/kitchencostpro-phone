@@ -119,8 +119,15 @@ export function clearError(container) {
     if (el) el.style.display = "none";
 }
 
+// מטבע תצוגה (נקבע באשף ההפעלה / בהגדרות). כל המחירים נשמרים כמספרים, רק התצוגה משתנה.
+let currencySymbol = "₪";
+export function setCurrencySymbol(sym) { currencySymbol = sym || "₪"; }
+// cur() לשילוב לפני מספר (עם רווח אחרי סמל של כמה אותיות), curLabel() לתוך תוויות כמו "מחיר (₪)"
+export function cur() { return currencySymbol.length > 1 ? currencySymbol + " " : currencySymbol; }
+export function curLabel() { return currencySymbol; }
+
 export function money(v) {
-    return `₪${(Number(v) || 0).toFixed(2)}`;
+    return `${cur()}${(Number(v) || 0).toFixed(2)}`;
 }
 
 export function escapeHtml(s) {
