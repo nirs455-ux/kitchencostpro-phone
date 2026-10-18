@@ -333,7 +333,7 @@ function openInvoiceModal(existing, suppliers, pantryItems, container) {
                 </select>
             </div>
         </div>
-        <div class="card" style="background:#fffaf0;">
+        <div class="card" style="background:var(--brand-soft);">
             <div class="checkbox-field"><input type="checkbox" id="f-petty" ${existing && existing.petty_cash ? "checked" : ""}>
                 <label for="f-petty">קופה קטנה ${info("עובד קנה בדרך וקיבל החזר במזומן, והביא קבלה. אפשר לסמן מי רכש ואם הוחזר לו.")}</label></div>
             <div id="petty-fields" style="display:none;">
@@ -385,7 +385,7 @@ function openInvoiceModal(existing, suppliers, pantryItems, container) {
                         ${[...pantryItems].sort((a, b) => a.name.localeCompare(b.name, "he")).map((p) => `<option value="${p.id}" ${prefill && prefill.pantry_item_id === p.id ? "selected" : ""}>${escapeHtml(p.name)}</option>`).join("")}
                     </select>
                 </div>
-                <div id="inv-new-${id}" style="display:none;background:#eef6fb;border-radius:8px;padding:8px;margin-bottom:6px;">
+                <div id="inv-new-${id}" style="display:none;background:var(--accent-soft);color:var(--text);border-radius:8px;padding:8px;margin-bottom:6px;">
                     <div class="form-row">
                         <div class="field"><label>קטגוריה ${info("המוצר ייווצר במזווה עם המחיר ליחידה מהשורה הזו.")}</label>
                             <select id="inv-cat-${id}"><option value="">בחר...</option>${Object.keys(CATEGORY_GROUPS).map((c) => `<option value="${c}">${c}</option>`).join("")}</select></div>

@@ -280,7 +280,7 @@ export async function openScanModal({ supplierAware, onDone, initialFile = null 
             const needsAttention = !it.matched_pantry_item_id || nameEmpty || flags.length > 0 || relChange >= 0.05 || !!it.suggested_pantry_item_id;
             if (needsAttention) attentionCount++; else okCount++;
             const row = h(`
-                <div class="item-row-inputs" data-ok="${needsAttention ? 0 : 1}" style="${needsAttention ? "" : "display:none;"}${priceChanged ? "border-color:#c0392b;background:#fdecea;" : ""}">
+                <div class="item-row-inputs" data-ok="${needsAttention ? 0 : 1}" style="${needsAttention ? "" : "display:none;"}${priceChanged ? "border-color:var(--danger);background:#fdecea;" : ""}">
                     <div class="top-line">
                         <strong>שורה ${idx + 1}</strong>
                         <div class="btn-row">
@@ -303,8 +303,8 @@ export async function openScanModal({ supplierAware, onDone, initialFile = null 
                     </div>` : ""}
                     <div class="field">
                         <label>מחיר יחידה${priceChanged ? " - שונה מהמחיר הקיים!" : ""}</label>
-                        <input type="number" step="any" id="scan-price-${idx}" value="${it.unit_price}" style="${priceChanged ? "border-color:#c0392b;color:#c0392b;font-weight:700;" : ""}">
-                        ${priceChanged ? `<div class="hint" style="color:#c0392b;">מחיר קודם: ${cur()}${it.matched_price.toFixed(2)} → מחיר חדש: ${cur()}${cmpPrice.toFixed(2)}${defFactor !== 1 ? " (לפי האריזה מהקנייה הקודמת)" : ""}</div>` : ""}
+                        <input type="number" step="any" id="scan-price-${idx}" value="${it.unit_price}" style="${priceChanged ? "border-color:var(--danger);color:var(--danger);font-weight:700;" : ""}">
+                        ${priceChanged ? `<div class="hint" style="color:var(--danger);">מחיר קודם: ${cur()}${it.matched_price.toFixed(2)} → מחיר חדש: ${cur()}${cmpPrice.toFixed(2)}${defFactor !== 1 ? " (לפי האריזה מהקנייה הקודמת)" : ""}</div>` : ""}
                     </div>
                     <div class="field">
                         <label>קטגוריה${it.matched_pantry_item_id ? "" : it._catGuessed && it._cat === it.guess_category ? " (הוצעה אוטומטית - בדוק)" : " (חובה למוצר חדש)"}</label>
