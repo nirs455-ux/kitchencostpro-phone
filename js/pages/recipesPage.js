@@ -13,6 +13,7 @@ import { dbGetAll, dbGet } from "../db.js";
 import { buildLabel } from "../recipeLabel.js";
 import { suggestBaseHeuristic, computePercentages, scaleToBase, fmtPct } from "../bakers.js";
 import { RECIPE_UNIT_GRAMS } from "../recipeParse.js";
+import { UNITS, convertToGrams, factorFor, scaleRecipe, fmtQty } from "../generator.js";
 import { recipeEggSummary, eggSummaryText, allocateEggCosts, isEggProduct, eggSizeOf, partGrams, eggBreakdown, EGG_SIZES, EGG_PARTS, EGG_PART_LABEL } from "../eggs.js";
 import { showImageFullscreen } from "../imageUtil.js";
 
@@ -47,7 +48,7 @@ export async function renderRecipesPage(container) {
     recipes.sort((a, b) => a.category.localeCompare(b.category, "he") || a.name.localeCompare(b.name, "he"));
     const draftCount = recipes.filter((r) => r.status === "draft").length;
 
-    container.innerHTML = `<div class="btn-row"><button class="btn btn-accent" id="btn-scan-recipe">📷 סרוק מתכון (תמונה / קובץ)</button><button class="btn btn-secondary" id="btn-egg-calc">🥚 המרת ביצים</button></div>
+    container.innerHTML = `<div class="btn-row"><button class="btn btn-accent" id="btn-scan-recipe">📷 סרוק מתכון (תמונה / קובץ)</button></div>
         ${recipes.length ? `<div class="fchips">
             <button type="button" class="chip ${recipeFilter === "all" ? "active" : ""}" data-rf="all">הכול (${recipes.length})</button>
             <button type="button" class="chip ${recipeFilter === "ready" ? "active" : ""}" data-rf="ready">מוכנים (${recipes.length - draftCount})</button>
@@ -64,7 +65,6 @@ export async function renderRecipesPage(container) {
         for (const r of shown) list.appendChild(renderRecipeCard(r, container));
     }
     container.querySelector("#btn-add").onclick = () => openRecipeModal(null, container);
-    container.querySelector("#btn-egg-calc").onclick = () => openEggCalcModal();
     container.querySelector("#btn-scan-recipe").onclick = () => openImagePicker({
         title: "סריקת מתכון",
         hint: "צלם או העלה מתכון בכל פורמט: תמונה, PDF, Word, Excel, טקסט ועוד. נזהה שם, מרכיבים וכמויות, ותוכל לבדוק ולתקן לפני שמירה. המסמך המקורי נשמר עם המתכון.",
@@ -133,9 +133,12 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
     const rows = await dbGetAll("pantryItems");
     const byId = new Map(rows.map((p) => [p.id, p]));
     const missing = r.draft_ingredients || [];
-    let tab = startTab;
+    let tab = r.status === "draft" && startTab === "gen" ? "recipe" : startTab;
     let showPercent = false;
     let scaleGrams = null; // כמות בסיס מבוקשת (להגדלה)
+    let gen = { mode: "factor", value: 2, round: true }; // מחולל: הגדלה/הקטנה
+    let conv = { qty: "", unit: "cup", name: "" }; // מחולל: המרת יחידות
+    let eggc = { pid: "", part: "white", qty: "", unit: "g" }; // מחולל: המרת ביצים
     const nameOf = (i) => (byId.get(i.pantry_item_id) || {}).name || i.ingredient_name;
     const eggNotes = recipeEggSummary(r.items, rows);
     const items = () => r.items.map((i) => ({ id: i.pantry_item_id, name: nameOf(i), quantity_g: i.quantity_g }));
@@ -207,6 +210,65 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
             <div class="card-row" style="margin:8px 0;"><span>סך כל האחוזים</span><b>${fmtPct(P.totalPct)}%</b></div>
             <div class="btn-row"><button type="button" class="btn btn-secondary btn-small" id="p-copy">📋 העתק</button><button type="button" class="btn btn-secondary btn-small" id="p-print">🖨 הדפס</button></div>`
             : '<div class="hint-warn">בחר לפחות רכיב אחד כבסיס כדי לראות אחוזים.</div>'}`;
+        } else if (tab === "gen") {
+            const curWeight = r.items.reduce((n, i) => n + (Number(i.quantity_g) || 0), 0);
+            const f = factorFor({ mode: gen.mode, value: gen.value, currentWeight: curWeight });
+            const sc = f ? scaleRecipe(r.items, f, rows, { round: gen.round }) : null;
+            const cv = convertToGrams({ qty: conv.qty, unit: conv.unit, name: conv.name });
+            const names = [...new Set(r.items.map((i) => nameOf(i)))];
+            const eggProducts = rows.filter(isEggProduct);
+            const eggSel = eggProducts.find((e) => String(e.id) === String(eggc.pid)) || eggProducts.find((e) => r.items.some((i) => i.pantry_item_id === e.id)) || eggProducts[0] || null;
+            const eggSize = eggSel ? eggSizeOf(eggSel) : "M";
+            const eggQty = parseFloat(eggc.qty) || 0;
+            const eggG = eggc.unit === "unit" ? eggQty * partGrams(eggSize, eggc.part) : eggQty;
+            const eggRes = eggQty > 0 ? eggBreakdown({ size: eggSize, wholeG: eggc.part === "whole" ? eggG : 0, whiteG: eggc.part === "white" ? eggG : 0, yolkG: eggc.part === "yolk" ? eggG : 0, eggPrice: eggSel ? effectivePrice(eggSel.price, eggSel.yield_pct, eggSel.is_frozen) : 0 }) : null;
+            body = `
+            <div class="card">
+                <div class="card-title">הגדלה / הקטנה ${info("מכפילים את כל המתכון. עיגול נוח מעגל כמויות קטנות לערכים שקל לשקול (ביצים לא מעוגלות, כי הן נספרות בנפרד). העלות מחושבת מחדש, כולל מספר הביצים לשבירה.")}</div>
+                <div class="chips" id="g-quick">${[[0.25, "÷4"], [1 / 3, "÷3"], [0.5, "÷2"], [1, "×1"], [2, "×2"], [3, "×3"], [4, "×4"], [5, "×5"]].map(([v, l]) => `<button type="button" class="chip ${gen.mode === "factor" && Math.abs(Number(gen.value) - v) < 1e-6 ? "active" : ""}" data-q="${v}">${l}</button>`).join("")}</div>
+                <div class="form-row">
+                    <div class="field"><label>לפי</label><select id="g-mode"><option value="factor" ${gen.mode === "factor" ? "selected" : ""}>פי כמה</option><option value="weight" ${gen.mode === "weight" ? "selected" : ""}>משקל סופי (גרם)</option></select></div>
+                    <div class="field"><label>${gen.mode === "weight" ? `גרם (עכשיו ${Math.round(curWeight)})` : "מקדם"}</label><input type="number" step="any" id="g-val" value="${+Number(gen.value).toFixed(4)}" inputmode="decimal"></div>
+                </div>
+                <div class="checkbox-field"><input type="checkbox" id="g-round" ${gen.round ? "checked" : ""}><label for="g-round">עיגול נוח</label></div>
+            </div>
+            ${sc ? `
+            <table class="simple"><thead><tr><th>רכיב</th><th>כמות</th><th>עלות</th></tr></thead><tbody>
+                ${[...sc.rows].sort((a, b) => b.grams - a.grams).map((o) => `<tr><td>${escapeHtml(nameOf(o))}${o.egg_part && o.egg_part !== "whole" ? " (" + o.eggLabel + ")" : ""}</td><td>${fmtQty(o.grams)}${o.egg_part ? `<br><span class="muted">= ${o.eggUnits} ${o.egg_part === "white" ? "חלבונים" : o.egg_part === "yolk" ? "חלמונים" : "ביצים"}</span>` : ""}</td><td>${money(o.cost)}</td></tr>`).join("")}
+            </tbody></table>
+            <div class="card-row" style="font-weight:700;margin:8px 0;"><span>סה"כ ${fmtQty(sc.totalGrams)}</span><span>${money(sc.totalCost)}</span></div>
+            ${sc.eggs.map((e) => `<div class="hint-warn" style="background:var(--brand-soft);color:var(--text);">${escapeHtml(eggSummaryText(e))}</div>`).join("")}
+            <div class="btn-row">
+                <button type="button" class="btn btn-secondary btn-small" id="g-copy">📋 העתק</button>
+                <button type="button" class="btn btn-secondary btn-small" id="g-print">🖨 הדפס</button>
+                <button type="button" class="btn btn-primary btn-small" id="g-save">💾 שמור כמתכון חדש</button>
+            </div>` : '<div class="hint-warn">הזן מקדם או משקל גדולים מ-0.</div>'}
+            <div class="card" style="margin-top:14px;">
+                <div class="card-title">המרת ביצים ${info("כותבים כמה חלבון, חלמון או ביצה שלמה צריך, והמערכת אומרת כמה ביצים לשבור, כמה זה עולה וכמה נשאר. גודל הביצה לפי מה שהוגדר במזווה.")}</div>
+                ${eggSel ? `
+                <div class="form-row">
+                    <div class="field"><label>ביצים</label><select id="e-prod">${eggProducts.map((e) => `<option value="${e.id}" ${e.id === eggSel.id ? "selected" : ""}>${escapeHtml(e.name)} (${eggSizeOf(e)})</option>`).join("")}</select></div>
+                    <div class="field"><label>חלק</label><select id="e-part">${EGG_PARTS.map(([k, l]) => `<option value="${k}" ${k === eggc.part ? "selected" : ""}>${l}</option>`).join("")}</select></div>
+                </div>
+                <div class="form-row">
+                    <div class="field"><label>כמות</label><input type="number" step="any" id="e-qty" value="${escapeHtml(eggc.qty)}" inputmode="decimal"></div>
+                    <div class="field"><label>ב-</label><select id="e-unit"><option value="g" ${eggc.unit === "g" ? "selected" : ""}>גרם</option><option value="unit" ${eggc.unit === "unit" ? "selected" : ""}>יחידות</option></select></div>
+                </div>
+                ${eggRes ? `<div class="card-row" style="font-weight:700;"><span>לשבור ${eggRes.eggs} ביצים</span><span>${money(eggRes.eggsCost)}</span></div>
+                    ${eggc.unit === "unit" ? `<div class="hint">${eggQty} ${EGG_PART_LABEL[eggc.part]} = ${Math.round(eggG * 100) / 100} גרם</div>` : ""}
+                    ${eggRes.leftWhiteCount > 0 ? `<div class="hint">נשארים ${eggRes.leftWhiteCount} חלבונים (${eggRes.leftWhiteG} גרם)</div>` : ""}
+                    ${eggRes.leftYolkCount > 0 ? `<div class="hint">נשארים ${eggRes.leftYolkCount} חלמונים (${eggRes.leftYolkG} גרם)</div>` : ""}` : ""}`
+                : '<div class="hint">אין עדיין ביצים ביחידות במזווה.</div>'}
+            </div>
+            <div class="card" style="margin-top:14px;">
+                <div class="card-title">המרת יחידות ${info("ממיר כוסות, כפות, אונקיות וליברות לגרמים. כוס קמח שונה מכוס סוכר, לכן ההמרה היא הערכה לפי צפיפות ממוצעת. עדיף לשקול את הכמות פעם אחת ולעדכן.")}</div>
+                <div class="form-row">
+                    <div class="field"><label>כמות</label><input type="number" step="any" id="c-qty" value="${escapeHtml(conv.qty)}" inputmode="decimal"></div>
+                    <div class="field"><label>יחידה</label><select id="c-unit">${UNITS.map((u) => `<option value="${u.key}" ${u.key === conv.unit ? "selected" : ""}>${u.label}</option>`).join("")}</select></div>
+                </div>
+                <div class="field"><label>חומר</label><input type="text" id="c-name" list="c-names" value="${escapeHtml(conv.name)}" placeholder="למשל קמח, סוכר, חמאה"><datalist id="c-names">${names.map((n) => `<option value="${escapeHtml(n)}">`).join("")}</datalist></div>
+                ${cv ? `<div class="card-row" style="font-weight:700;"><span>= ${fmtQty(cv.grams)}</span></div>${cv.note ? `<div class="hint">${escapeHtml(cv.note)}</div>` : ""}` : ""}
+            </div>`;
         } else {
             body = `
             <div class="card-title" style="margin:6px 0 4px;">רשימת רכיבים לתווית ${info("רכיבים לפי משקל יורד, והצהרת אלרגנים מצטברת מהרכיבים. זו טיוטה לעזר - האחריות לתיוג ולתקנות היא של בעל העסק. רכיב שלא הוגדרו לו אלרגנים מסומן כ'לא הוגדר' ולא כ'ללא אלרגנים'.")}</div>
@@ -227,8 +289,9 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
                 ${r.status === "draft" ? `<span class="tag tag-warn">טיוטה · חסרים ${missing.length}</span>` : ""}</div>
             <div class="seg" id="d-seg">
                 <button type="button" data-t="recipe" class="${tab === "recipe" ? "active" : ""}">מתכון</button>
-                <button type="button" data-t="percent" class="${tab === "percent" ? "active" : ""}">באחוזים</button>
-                <button type="button" data-t="label" class="${tab === "label" ? "active" : ""}">רכיבים ואלרגנים</button>
+                <button type="button" data-t="percent" class="${tab === "percent" ? "active" : ""}">אחוזים</button>
+                <button type="button" data-t="label" class="${tab === "label" ? "active" : ""}">אלרגנים</button>
+                ${r.status === "draft" ? "" : `<button type="button" data-t="gen" class="${tab === "gen" ? "active" : ""}">מחולל</button>`}
             </div>
             ${body}
             <div class="modal-actions"><button type="button" class="btn btn-secondary" id="d-close">סגור</button>
@@ -276,6 +339,39 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
         const pPrint = overlay.querySelector("#p-print");
         if (pPrint) pPrint.onclick = () => printLabel(r.name + " - באחוזים", bakersText());
 
+        // ---- לשונית מחולל ----
+        const bind = (sel, ev, fn) => { const el = overlay.querySelector(sel); if (el) el[ev] = fn; };
+        overlay.querySelectorAll("#g-quick [data-q]").forEach((b) => { b.onclick = () => { gen.mode = "factor"; gen.value = Number(b.dataset.q); draw(); }; });
+        bind("#g-mode", "onchange", (e) => { gen.mode = e.target.value; gen.value = gen.mode === "weight" ? Math.round(r.items.reduce((n, i) => n + (Number(i.quantity_g) || 0), 0) * 2) : 2; draw(); });
+        bind("#g-val", "onchange", (e) => { gen.value = e.target.value; draw(); });
+        bind("#g-round", "onchange", (e) => { gen.round = e.target.checked; draw(); });
+        bind("#e-prod", "onchange", (e) => { eggc.pid = e.target.value; draw(); });
+        bind("#e-part", "onchange", (e) => { eggc.part = e.target.value; draw(); });
+        bind("#e-qty", "onchange", (e) => { eggc.qty = e.target.value; draw(); });
+        bind("#e-unit", "onchange", (e) => { eggc.unit = e.target.value; draw(); });
+        bind("#c-qty", "onchange", (e) => { conv.qty = e.target.value; draw(); });
+        bind("#c-unit", "onchange", (e) => { conv.unit = e.target.value; draw(); });
+        bind("#c-name", "onchange", (e) => { conv.name = e.target.value; draw(); });
+        if (tab === "gen") {
+            const f = factorFor({ mode: gen.mode, value: gen.value, currentWeight: r.items.reduce((n, i) => n + (Number(i.quantity_g) || 0), 0) });
+            const sc = f ? scaleRecipe(r.items, f, rows, { round: gen.round }) : null;
+            const genText = () => [`${r.name} (פי ${+f.toFixed(3)})`, ...[...sc.rows].sort((a, b) => b.grams - a.grams).map((o) => `${nameOf(o)}${o.egg_part && o.egg_part !== "whole" ? " (" + o.eggLabel + ")" : ""}: ${fmtQty(o.grams)}`), `סה"כ: ${fmtQty(sc.totalGrams)}`, ...sc.eggs.map(eggSummaryText)].join("\n");
+            bind("#g-copy", "onclick", async () => { try { await navigator.clipboard.writeText(genText()); toast("הועתק"); } catch (e) { toast("לא הצלחתי להעתיק"); } });
+            bind("#g-print", "onclick", () => printLabel(r.name + " - מוגדל", genText()));
+            bind("#g-save", "onclick", busy(async () => {
+                const name = window.prompt("שם המתכון החדש:", `${r.name} (פי ${+f.toFixed(2)})`);
+                if (!name || !name.trim()) return;
+                await saveRecipe(null, {
+                    name: name.trim(), category: r.category,
+                    items: sc.rows.map((o) => ({ pantry_item_id: o.pantry_item_id, quantity_g: o.grams, ...(o.egg_part ? { egg_part: o.egg_part } : {}) })),
+                    draft_ingredients: r.draft_ingredients || [], method: r.method || "",
+                });
+                closeModal();
+                toast("נשמר כמתכון חדש");
+                renderRecipesPage(container);
+            }));
+        }
+
         // ---- לשונית רכיבים ואלרגנים ----
         overlay.querySelectorAll("[data-al-edit]").forEach((b) => {
             b.onclick = () => openAllergenModal(byId.get(Number(b.dataset.alEdit)), (updated) => { byId.set(updated.id, updated); draw(); });
@@ -292,48 +388,6 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
         if (dPrint) dPrint.onclick = () => printLabel(r.name, labelText);
     };
     draw();
-}
-
-// מחשבון ביצים: "500 גרם חלבון" -> כמה ביצים לשבור, כמה נשאר, וכמה זה עולה. (בהמשך יהיה גם בלשונית המחולל)
-async function openEggCalcModal() {
-    const eggs = (await listAllPantryItems()).filter(isEggProduct);
-    const overlay = openModal(`
-        <h2>🥚 המרת ביצים</h2>
-        ${eggs.length ? "" : '<div class="hint-warn">אין עדיין ביצים במזווה. הוסף מוצר ביצים ביחידות כדי לראות עלות.</div>'}
-        <div class="field"><label>מוצר ביצים</label><select id="ec-prod">${eggs.map((e) => `<option value="${e.id}">${escapeHtml(e.name)}</option>`).join("") || '<option value="">(ללא)</option>'}</select></div>
-        <div class="form-row">
-            <div class="field"><label>גודל</label><select id="ec-size">${Object.keys(EGG_SIZES).map((k) => `<option value="${k}">${k}</option>`).join("")}</select></div>
-            <div class="field"><label>חלק</label><select id="ec-part">${EGG_PARTS.map(([k, l]) => `<option value="${k}">${l}</option>`).join("")}</select></div>
-        </div>
-        <div class="form-row">
-            <div class="field"><label>כמות</label><input type="number" step="any" id="ec-qty" inputmode="decimal"></div>
-            <div class="field"><label>ב-</label><select id="ec-unit"><option value="g">גרם</option><option value="unit">יחידות</option></select></div>
-        </div>
-        <div id="ec-out" class="card" style="display:none;"></div>
-        <div class="modal-actions"><button type="button" class="btn btn-secondary" id="ec-close">סגור</button></div>`);
-    const q = (s) => overlay.querySelector(s);
-    const prodRow = () => eggs.find((e) => String(e.id) === q("#ec-prod").value);
-    const syncSize = () => { const p = prodRow(); q("#ec-size").value = p ? eggSizeOf(p) : "M"; };
-    const calc = () => {
-        const qty = parseFloat(q("#ec-qty").value) || 0;
-        const size = q("#ec-size").value, part = q("#ec-part").value;
-        const grams = q("#ec-unit").value === "unit" ? qty * partGrams(size, part) : qty;
-        const p = prodRow();
-        const r = eggBreakdown({ size, wholeG: part === "whole" ? grams : 0, whiteG: part === "white" ? grams : 0, yolkG: part === "yolk" ? grams : 0, eggPrice: p ? Number(p.price) : 0 });
-        const out = q("#ec-out");
-        if (!r || !(qty > 0)) { out.style.display = "none"; return; }
-        out.style.display = "";
-        out.innerHTML = `<div class="card-title">לשבור ${r.eggs} ביצים</div>
-            ${q("#ec-unit").value === "unit" ? `<div>${qty} ${EGG_PART_LABEL[part]} = ${Math.round(grams * 100) / 100} גרם</div>` : ""}
-            ${p ? `<div>עלות הביצים ששוברים: ${money(r.eggsCost)}</div>` : ""}
-            ${r.leftWhiteCount > 0 ? `<div>נשארים ${r.leftWhiteCount} חלבונים (${r.leftWhiteG} גרם)</div>` : ""}
-            ${r.leftYolkCount > 0 ? `<div>נשארים ${r.leftYolkCount} חלמונים (${r.leftYolkG} גרם)</div>` : ""}`;
-    };
-    syncSize();
-    q("#ec-prod").onchange = () => { syncSize(); calc(); };
-    for (const s of ["#ec-size", "#ec-part", "#ec-unit"]) q(s).onchange = calc;
-    q("#ec-qty").oninput = calc;
-    q("#ec-close").onclick = closeModal;
 }
 
 // עריכת אלרגנים של מוצר (נפתח מתוך המתכון). onSaved מקבל את שורת המוצר המעודכנת.
