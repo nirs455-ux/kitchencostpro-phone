@@ -10,6 +10,8 @@ import { setSuppliersView } from "./suppliersPage.js";
 import { listQueue, addToQueue } from "../repo/scanQueue.js";
 import { isStaffMode } from "../staff.js";
 import { compressImage } from "../imageUtil.js";
+import { getCloudStatus } from "../cloud/cloudGlue.js";
+import { resolveCloudIssue } from "../cloud/cloudUi.js";
 
 const go = (page) => { location.hash = page; };
 
@@ -85,8 +87,15 @@ export async function renderHomePage(container) {
     if (alerts.length) items.push({ cls: "danger", icon: "⚠", text: `${alerts.length} שינויי מחיר ב-30 הימים האחרונים`, btn: "הצג", fn: () => showPriceChangesDialog(alerts, "שינויי מחיר (30 יום אחרונים)") });
     if (owed.count) items.push({ cls: "warn", icon: "💶", text: `🔴 ${owed.count === 1 ? "קבלת קופה קטנה אחת ממתינה" : owed.count + " קבלות קופה קטנה ממתינות"} להחזר · ${money(owed.total)}`, btn: "פתח", fn: () => { setSuppliersView("invoices", { mode: "owed" }); go("suppliers"); } });
     if (noWeight.length) items.push({ cls: "warn", icon: "⚖", text: `${noWeight.length} מוצרים ביחידות בלי משקל ליחידה (לא ניתן להשתמש בהם במתכון)`, btn: "למזווה", fn: () => go("pantry") });
-    if (pantry.length + invoices.length > 0 && daysSince(lastExport) >= 7) items.push({ cls: "warn", icon: "💾", text: lastExport ? `לא יוצא גיבוי ${daysSince(lastExport)} ימים` : "עדיין לא יוצא גיבוי", btn: "ייצא", fn: async () => { await downloadExport(); rerender(); } });
+    const cloudNow = getCloudStatus();
+    const cloudFresh = cloudNow.enabled && cloudNow.lastBackup && daysSince(cloudNow.lastBackup) < 3; // גיבוי טרי בענן מחליף תזכורת לגיבוי ידני
+    if (pantry.length + invoices.length > 0 && !cloudFresh && daysSince(lastExport) >= 7) items.push({ cls: "warn", icon: "💾", text: lastExport ? `לא יוצא גיבוי ${daysSince(lastExport)} ימים` : "עדיין לא יוצא גיבוי", btn: "ייצא", fn: async () => { await downloadExport(); rerender(); } });
     if (counts.length && daysSince(lastCount) >= 14) items.push({ cls: "warn", icon: "📋", text: `ספירת המלאי האחרונה לפני ${daysSince(lastCount)} ימים`, btn: "לספירה", fn: () => go("inventory") });
+    const cst = getCloudStatus();
+    if (cst.enabled && (cst.state === "conflict" || cst.state === "needs-auth" || cst.state === "error")) {
+        const text = cst.state === "conflict" ? "הענן שונה ממכשיר אחר" : cst.state === "needs-auth" ? "הגיבוי לענן מחכה לאישור שלך" : "הגיבוי לענן נכשל";
+        items.unshift({ cls: "warn", icon: "☁️", text, btn: "טפל", fn: async () => { await resolveCloudIssue(); rerender(); } });
+    }
     if (items.length) {
         attn.innerHTML = `<div class="card-title" style="margin:14px 4px 6px;">דורש תשומת לב</div>`;
         for (const it of items) {

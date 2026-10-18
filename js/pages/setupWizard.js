@@ -3,6 +3,8 @@
 import { getSetting, setSetting } from "../repo/settingsRepo.js";
 import { COUNTRIES, CURRENCIES, LANGUAGES, countryByKey, saveLocale } from "../locale.js";
 import { escapeHtml, toast } from "../ui.js";
+import { isCloudAvailable, getCloudStatus } from "../cloud/cloudGlue.js";
+import { runConnectFlow, fmtWhen } from "../cloud/cloudUi.js";
 
 const KEY_URL = "https://aistudio.google.com/apikey";
 
@@ -35,7 +37,7 @@ function css() {
     if (document.getElementById("wiz-css")) return;
     const st = document.createElement("style");
     st.id = "wiz-css";
-    st.textContent = `.wiz{position:fixed;inset:0;z-index:2000;background:var(--bg);color:var(--text);display:flex;flex-direction:column;overflow:auto}
+    st.textContent = `.wiz{position:fixed;inset:0;z-index:40;background:var(--bg);color:var(--text);display:flex;flex-direction:column;overflow:auto}
     .wiz-top{padding:14px 16px 6px;display:flex;justify-content:space-between;align-items:center;font-size:13px;color:var(--text-2)}
     .wiz-dots{display:flex;gap:6px}.wiz-dots i{width:8px;height:8px;border-radius:50%;background:var(--border)}.wiz-dots i.on{background:var(--brand)}
     .wiz-body{flex:1;padding:8px 18px 20px;max-width:520px;width:100%;margin:0 auto}
@@ -80,6 +82,7 @@ export async function openSetupWizard({ onDone } = {}) {
     root.className = "wiz";
     document.body.appendChild(root);
     const STEPS = ["ברוך הבא", "מפתח Gemini", "חשבון ענן", "מדינה ושפה", "סוג העסק", "סיום"];
+    state.cloudAvailable = await isCloudAvailable();
 
     const finish = async () => {
         await setSetting("setup_done", true);
@@ -116,8 +119,18 @@ export async function openSetupWizard({ onDone } = {}) {
             }
             back = true;
         } else if (s === 2) {
-            body = `<h1>חשבון ענן ☁️</h1><p>בקרוב: חיבור לחשבון Google שלך ושמירה אוטומטית של הנתונים והתמונות בתיקייה בשם KitchenCostPro בדרייב, וסנכרון בין כמה מכשירים.</p>
-                <div class="hint-warn">את השלב הזה עוד לא הפעלנו. בינתיים אפשר לייצא גיבוי ידני מההגדרות. נחבר אותך לענן ברגע שהוא יהיה מוכן.</div>`;
+            const cs = getCloudStatus();
+            if (state.cloudAvailable === false) {
+                body = `<h1>חשבון ענן ☁️</h1><p>החיבור לדרייב עדיין לא הוגדר באפליקציה הזאת (נדרש מזהה לקוח של Google, שמי שמפעיל את האפליקציה מגדיר פעם אחת). אפשר לדלג, ולחבר מאוחר יותר בהגדרות.</p>
+                    <div class="hint-warn">בינתיים אפשר לייצא גיבוי ידני מההגדרות.</div>`;
+            } else if (cs.enabled) {
+                body = `<h1>חשבון ענן ☁️</h1><p class="wiz-ok">מחובר ✓</p><p>הנתונים והתמונות נשמרים אוטומטית בתיקייה KitchenCostPro בדרייב שלך. גיבוי אחרון: ${escapeHtml(fmtWhen(cs.lastBackup))}.</p>`;
+            } else {
+                body = `<h1>חשבון ענן ☁️</h1><p>חבר את חשבון Google שלך, והנתונים והתמונות יישמרו אוטומטית בתיקייה בשם KitchenCostPro בדרייב. אם תחליף טלפון, הכול יחזור.</p>
+                    <p class="muted">האפליקציה רואה רק קבצים שהיא עצמה יצרה, ולא את שאר הדרייב.</p>
+                    <button type="button" class="btn btn-primary btn-big btn-block" id="w-cloud">התחבר עם Google</button>`;
+                skip = true;
+            }
             next = "המשך";
         } else if (s === 3) {
             const c = countryByKey(state.country);
@@ -163,6 +176,12 @@ export async function openSetupWizard({ onDone } = {}) {
         };
         const sk = q("#w-skip");
         if (sk) sk.onclick = () => { if (s === 1) state.keyStep = 0; state.step = s + 1; draw(); };
+        const cloudBtn = q("#w-cloud");
+        if (cloudBtn) cloudBtn.onclick = async () => {
+            const res = await runConnectFlow();
+            if (res === "restored") { await setSetting("setup_done", true); root.remove(); if (onDone) onDone(state); return; } // הנתונים והגדרות חזרו מהענן: אין מה להמשיך
+            draw();
+        };
         if (s === 1 && state.keyStep >= KEY_STEPS.length) {
             const inp = q("#w-key");
             inp.oninput = () => { state.key = inp.value; state.keyResult = null; q("#w-result").textContent = ""; };
