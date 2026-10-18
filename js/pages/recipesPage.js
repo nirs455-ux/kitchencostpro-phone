@@ -136,6 +136,7 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
     const missing = r.draft_ingredients || [];
     let tab = r.status === "draft" && startTab === "gen" ? "recipe" : startTab;
     let showPercent = false;
+    let lastDrawnTab = null; // כדי לשמור את מיקום הגלילה כשמציירים מחדש באותה לשונית
     let scaleGrams = null; // כמות בסיס מבוקשת (להגדלה)
     let gen = { mode: "factor", value: 2, round: true }; // מחולל: הגדלה/הקטנה
     let conv = { qty: "", unit: "cup", name: "" }; // מחולל: המרת יחידות
@@ -171,6 +172,10 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
         return out;
     };
     const draw = () => {
+        // ציור מחדש לא מקפיץ למעלה: שומרים את מיקום הגלילה כשנשארים באותה לשונית
+        const prevModal = document.querySelector("#modal-root .modal");
+        const keepTop = prevModal && lastDrawnTab === tab ? prevModal.scrollTop : 0;
+        lastDrawnTab = tab;
         const label = buildLabel({ items: r.items, pantryById: byId, showPercent });
         const labelText = label.text + (missing.length ? `\n(הרשימה כוללת רק רכיבים שכבר במזווה. חסרים ${missing.length} רכיבים: ${missing.map((m) => m.name).join(", ")})` : "");
 
@@ -299,6 +304,7 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
             <div class="modal-actions"><button type="button" class="btn btn-secondary" id="d-close">סגור</button>
                 <button type="button" class="btn btn-primary" id="d-edit">${r.status === "draft" ? "השלם" : "עריכה"}</button></div>
         `);
+        if (keepTop) overlay.querySelector(".modal").scrollTop = keepTop;
         overlay.querySelector("#d-close").onclick = closeModal;
         overlay.querySelector("#d-edit").onclick = () => { closeModal(); openRecipeModal(r, container); };
         overlay.querySelectorAll("#d-seg [data-t]").forEach((b) => { b.onclick = () => { tab = b.dataset.t; draw(); }; });

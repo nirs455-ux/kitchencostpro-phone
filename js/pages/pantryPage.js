@@ -18,6 +18,8 @@ const STAFF_TABS = ["inventory", "waste"]; // מצב עובד: ספירת מלא
 let currentTab = "products";
 export function setPantryTab(t) { currentTab = TABS.some((x) => x[0] === t) ? t : "products"; }
 
+const UNIT_FORM_LABELS = { weight: 'לפי משקל (מחיר לק"ג)', liter: "לפי נפח (מחיר לליטר)", unit: "לפי יחידה (בקבוק, ביצה, חבילה)" };
+
 export async function renderPantryPage(container) {
     if (isStaffMode() && !STAFF_TABS.includes(currentTab)) currentTab = "inventory";
     const tabs = isStaffMode() ? TABS.filter(([k]) => STAFF_TABS.includes(k)) : TABS;
@@ -143,9 +145,9 @@ function openPantryModal(existing, container) {
         </div>
         <div class="form-row">
             <div class="field">
-                <label>יחידת מידה</label>
+                <label>איך המוצר נקנה ומתומחר? ${info('בוחרים לפי איך קונים ומתמחרים: לפי משקל (ירקות, קמח, בשר: מחיר לק"ג), לפי נפח (נוזלים בכמות: שמן, חלב במיכל: מחיר לליטר), או לפי יחידה (כל מה שנספר בחתיכות: ביצה, בקבוק, קופסה, חבילה: מחיר ליחידה). בכל המקרים במתכון כותבים כמה ק"ג או ליטר, והמערכת מחשבת עלות. מוצר ביחידות צריך גם משקל ליחידה אחת, כדי שאפשר יהיה להשתמש בו במתכון.')}</label>
                 <select id="f-unit-type">
-                    ${UNIT_TYPES.map((u) => `<option value="${u}" ${existing && existing.unit_type === u ? "selected" : ""}>${UNIT_TYPE_LABELS[u]}</option>`).join("")}
+                    ${UNIT_TYPES.map((u) => `<option value="${u}" ${existing && existing.unit_type === u ? "selected" : ""}>${UNIT_FORM_LABELS[u]}</option>`).join("")}
                 </select>
             </div>
             <div class="field" id="f-egg-size-wrap" style="display:none;">
