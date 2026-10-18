@@ -137,7 +137,7 @@ async function maybeShowBackupBanner() {
         const days = last ? (Date.now() - new Date(last).getTime()) / 86400000 : Infinity;
         if (days < 7) return;
         const bar = document.createElement("div");
-        bar.style.cssText = "background:#fff4d6;border-bottom:1px solid #e6c86a;padding:8px 12px;font-size:13px;display:flex;gap:8px;align-items:center;justify-content:space-between;";
+        bar.style.cssText = "background:var(--warn-soft);color:var(--text);border-bottom:1px solid var(--warn-border);padding:8px 12px;font-size:13px;display:flex;gap:8px;align-items:center;justify-content:space-between;";
         bar.innerHTML = `<span>${last ? `לא יוצא גיבוי ${Math.floor(days)} ימים` : "עדיין לא יוצא גיבוי"} - הנתונים והתמונות נשמרים רק בטלפון.</span>
             <span><button class="btn btn-primary btn-small" id="bk-now">ייצא עכשיו</button> <button class="btn btn-secondary btn-small" id="bk-later">אחר כך</button></span>`;
         document.body.insertBefore(bar, document.body.firstChild);
