@@ -9,6 +9,7 @@ import { renderInventoryPage } from "./inventoryPage.js";
 import { renderWastePage } from "./wastePage.js";
 import { isStaffMode } from "../staff.js";
 import { EGG_SIZES, isEggName, guessEggSize } from "../eggs.js";
+import { textToGrams, gramsToKgText, describeQty, qtyWarning } from "../qty.js";
 import { getFilter, applyFilter, mountFilterBar, groupBySection, groupTitleEl } from "../filters.js";
 
 // מזווה = שלוש לשוניות: מוצרים | ספירת מלאי | עיבוד וניצולת. מצב עובד רואה רק ספירת מלאי.
@@ -152,11 +153,16 @@ function openPantryModal(existing, container) {
                 <select id="f-egg-size">${Object.keys(EGG_SIZES).map((k) => `<option value="${k}">${k}</option>`).join("")}</select>
             </div>
             <div class="field" id="f-unit-amount-wrap">
-                <label>משקל/נפח ליחידה (גרם/מ"ל)</label>
-                <input type="number" step="any" id="f-unit-amount" value="${existing && existing.unit_amount != null ? existing.unit_amount : ""}">
+                <label>משקל ליחידה (ק"ג) ${info('כמה שוקלת יחידה אחת, בק"ג עם נקודה עשרונית: ביצה 0.061, לימון 0.100, בקבוק שמן ליטר 1. נדרש כדי שמתכון יוכל להשתמש במוצר בגרמים.')}</label>
+                <input type="text" inputmode="decimal" id="f-unit-amount" value="${existing && existing.unit_amount != null ? gramsToKgText(existing.unit_amount) : ""}">
+                <div class="hint" id="f-unit-echo"></div>
             </div>
         </div>
-        <div class="field"><label>מחיר קנייה (${curLabel()})</label><input type="number" step="any" id="f-price" value="${existing ? existing.price : ""}"></div>
+        <div class="field" id="f-pack-wrap" style="display:none;">
+            <label>כמה יחידות באריזה / מגש ${info("אם קונים באריזה (מגש ביצים של 30, חבילה של 10), הזן כאן את הכמות ובשדה המחיר את מחיר האריזה. המערכת תחשב מחיר ליחידה אחת. אם קונים ביחידה בודדת, השאר ריק או 1.")}</label>
+            <input type="text" inputmode="numeric" id="f-pack" value="">
+        </div>
+        <div class="field"><label id="f-price-label">מחיר קנייה (${curLabel()})</label><input type="number" step="any" id="f-price" value="${existing ? existing.price : ""}"><div class="hint" id="f-price-echo"></div></div>
         <div class="error-msg"></div>
         <div class="modal-actions">
             <button class="btn btn-secondary" id="btn-cancel">ביטול</button>
@@ -187,22 +193,50 @@ function openPantryModal(existing, container) {
         if (!egg) return;
         if (fromName && !eggSizeSel.dataset.touched && !(existing && existing.egg_size)) eggSizeSel.value = guessEggSize(nameEl.value);
         const liquid = EGG_SIZES[eggSizeSel.value].liquid;
-        const cur = parseFloat(amountInput.value);
+        const cur = textToGrams(amountInput.value);
         const isTable = Object.values(EGG_SIZES).some((e) => e.liquid === cur);
-        if (!(cur > 0) || isTable || cur === lastAutoAmount) { amountInput.value = liquid; lastAutoAmount = liquid; }
+        if (!(cur > 0) || isTable || cur === lastAutoAmount) { amountInput.value = gramsToKgText(liquid); lastAutoAmount = liquid; }
+        // ביצים נקנות במגש: מציעים 30 ביצים באריזה למוצר חדש
+        if (!existing && !packInput.dataset.touched && !packInput.value) packInput.value = "30";
+        syncPrice();
     }
     if (existing) eggSizeSel.value = existing.egg_size && EGG_SIZES[existing.egg_size] ? existing.egg_size : guessEggSize(existing.name);
     else eggSizeSel.value = "M";
     nameEl.addEventListener("input", () => syncEgg(true));
     eggSizeSel.addEventListener("change", () => { eggSizeSel.dataset.touched = "1"; syncEgg(); });
+    // אריזה/מגש (ליחידות): תווית המחיר, חישוב מחיר ליחידה אחת, ושורת אישור למשקל
+    const packWrap = overlay.querySelector("#f-pack-wrap");
+    const packInput = overlay.querySelector("#f-pack");
+    const priceInput = overlay.querySelector("#f-price");
+    const priceLabel = overlay.querySelector("#f-price-label");
+    const priceEcho = overlay.querySelector("#f-price-echo");
+    const unitEcho = overlay.querySelector("#f-unit-echo");
+    const packCount = () => { const n = parseInt(String(packInput.value).trim(), 10); return n > 1 ? n : 1; };
+    function syncPrice() {
+        const ut = unitTypeSelect.value;
+        packWrap.style.display = ut === "unit" ? "block" : "none";
+        const pack = ut === "unit" ? packCount() : 1;
+        priceLabel.textContent = ut === "unit" ? (pack > 1 ? `מחיר לאריזה של ${pack} (${curLabel()})` : `מחיר ליחידה אחת (${curLabel()})`) : ut === "liter" ? `מחיר לליטר (${curLabel()})` : `מחיר לק"ג (${curLabel()})`;
+        const price = parseFloat(priceInput.value);
+        priceEcho.textContent = ut === "unit" && pack > 1 && price > 0 ? `= ${(price / pack).toFixed(2)} ${curLabel()} ליחידה אחת` : "";
+        const w = unitAmountInput.value;
+        const warn = unitTypeSelect.value === "unit" && w ? qtyWarning(w) : null;
+        unitEcho.innerHTML = warn ? `<span style="color:var(--danger);">${warn}</span>` : unitTypeSelect.value === "unit" ? describeQty(w) : "";
+    }
+    const unitAmountInput = overlay.querySelector("#f-unit-amount");
+    packInput.addEventListener("input", syncPrice);
+    priceInput.addEventListener("input", syncPrice);
+    unitAmountInput.addEventListener("input", syncPrice);
     function syncUnitAmount() {
         unitAmountWrap.style.display = unitTypeSelect.value === "unit" ? "block" : "none";
     }
     catSelect.onchange = syncSubcategory;
-    unitTypeSelect.onchange = () => { syncUnitAmount(); syncEgg(true); };
+    packInput.addEventListener("input", () => { packInput.dataset.touched = "1"; });
+    unitTypeSelect.onchange = () => { syncUnitAmount(); syncEgg(true); syncPrice(); };
     syncSubcategory();
     syncUnitAmount();
     syncEgg(!existing);
+    syncPrice();
 
     overlay.querySelector("#btn-cancel").onclick = () => attemptClose(overlay);
     overlay.querySelector("#btn-save").onclick = busy(async () => {
@@ -211,8 +245,9 @@ function openPantryModal(existing, container) {
             category: catSelect.value,
             subcategory: overlay.querySelector("#f-subcategory").value,
             unit_type: unitTypeSelect.value,
-            unit_amount: overlay.querySelector("#f-unit-amount").value,
-            price: overlay.querySelector("#f-price").value,
+            unit_amount: String(textToGrams(overlay.querySelector("#f-unit-amount").value) ?? ""),
+            price: unitTypeSelect.value === "unit" && packCount() > 1 && parseFloat(overlay.querySelector("#f-price").value) > 0
+                ? String(Math.round((parseFloat(overlay.querySelector("#f-price").value) / packCount()) * 10000) / 10000) : overlay.querySelector("#f-price").value,
             is_frozen: existing ? !!existing.is_frozen : false, // קפוא נקבע בעיבוד וניצולת
         };
         if (isEggForm()) data.egg_size = eggSizeSel.value;
