@@ -1,4 +1,4 @@
-const CACHE_NAME = "kcp-v32";
+const CACHE_NAME = "kcp-v35";
 const ASSETS = [
     "./",
     "./index.html",
@@ -31,6 +31,12 @@ const ASSETS = [
     "./js/bakers.js",
     "./js/eggs.js",
     "./js/qty.js",
+    "./js/cloud/config.js",
+    "./js/cloud/pack.js",
+    "./js/cloud/driveApi.js",
+    "./js/cloud/cloudCore.js",
+    "./js/cloud/cloudGlue.js",
+    "./js/cloud/cloudUi.js",
     "./js/generator.js",
     "./js/recipeLabel.js",
     "./js/fileText.js",
@@ -91,7 +97,8 @@ self.addEventListener("fetch", (event) => {
     if (event.request.method !== "GET") return;
     const url = new URL(event.request.url);
     // בקשות ל-Gemini API תמיד ישירות לרשת - לא לשמור במטמון תוצאות סריקה
-    if (url.hostname.includes("generativelanguage.googleapis.com")) return;
+    // ובקשות ל-Google (Drive, התחברות) תמיד ישירות לרשת
+    if (/(^|\.)(googleapis|google|gstatic)\.com$/.test(url.hostname)) return;
 
     // קודם רשת (כדי שעדכונים יגיעו מיד), ואם אין אינטרנט - מהמטמון
     event.respondWith(
