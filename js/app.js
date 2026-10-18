@@ -9,6 +9,7 @@ import { renderHomePage } from "./pages/homePage.js";
 import { renderFilesPage, openFilesFolder } from "./pages/filesPage.js";
 import { openSetupWizard } from "./pages/setupWizard.js";
 import { initLocale } from "./locale.js";
+import { initCloud, getCloudStatus } from "./cloud/cloudGlue.js";
 import { getSetting } from "./repo/settingsRepo.js";
 import { dbGetAll } from "./db.js";
 import { downloadExport } from "./export.js";
@@ -93,6 +94,7 @@ if (isStaffMode()) {
 document.getElementById("page-title").addEventListener("click", () => navigate("home"));
 
 await initLocale(); // סמל מטבע וכו' לפני שהמסכים מצוירים
+await initCloud().catch(() => {}); // גיבוי אוטומטי לענן (אם מחובר)
 navigate(location.hash.replace("#", "") === "share" ? "home" : (location.hash.replace("#", "") || "home"));
 
 // אשף הפעלה: רק בהתקנה ריקה לגמרי שעוד לא עברה אותו (מי שכבר יש לו נתונים לא יראה אותו אוטומטית)
@@ -133,6 +135,9 @@ async function maybeShowBackupBanner() {
         const items = await dbGetAll("pantryItems");
         const invoices = await dbGetAll("invoices");
         if (items.length + invoices.length === 0) return;
+        // גיבוי טרי בענן מחליף את התזכורת לגיבוי ידני
+        const cs = getCloudStatus();
+        if (cs.enabled && cs.lastBackup && (Date.now() - new Date(cs.lastBackup).getTime()) / 86400000 < 3) return;
         const last = await getSetting("last_export");
         const days = last ? (Date.now() - new Date(last).getTime()) / 86400000 : Infinity;
         if (days < 7) return;

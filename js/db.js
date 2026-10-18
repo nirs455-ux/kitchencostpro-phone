@@ -63,6 +63,14 @@ export function openDB() {
     return dbPromise;
 }
 
+// מאזינים לשינויים בנתונים (לגיבוי אוטומטי לענן). לא מדווח על הגדרות ועל תור הסריקות (זמניים).
+const changeListeners = new Set();
+export function onDbChange(fn) { changeListeners.add(fn); return () => changeListeners.delete(fn); }
+function notify(storeName) {
+    if (storeName === "settings" || storeName === "scanQueue") return;
+    for (const fn of changeListeners) { try { fn(storeName); } catch (e) { /* מאזין שנכשל לא מפיל כתיבה */ } }
+}
+
 function tx(db, storeName, mode) {
     return db.transaction(storeName, mode).objectStore(storeName);
 }
@@ -98,7 +106,7 @@ export async function dbPut(storeName, value) {
     const db = await openDB();
     return new Promise((resolve, reject) => {
         const req = tx(db, storeName, "readwrite").put(value);
-        req.onsuccess = () => resolve(req.result);
+        req.onsuccess = () => { notify(storeName); resolve(req.result); };
         req.onerror = () => reject(req.error);
     });
 }
@@ -107,7 +115,7 @@ export async function dbDelete(storeName, key) {
     const db = await openDB();
     return new Promise((resolve, reject) => {
         const req = tx(db, storeName, "readwrite").delete(key);
-        req.onsuccess = () => resolve();
+        req.onsuccess = () => { notify(storeName); resolve(); };
         req.onerror = () => reject(req.error);
     });
 }

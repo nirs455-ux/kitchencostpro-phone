@@ -3,6 +3,9 @@ import { STORES, dbGetAll, dbClearAll, dbPut } from "./db.js";
 import { blobToDataUrl, dataUrlToBlob } from "./imageUtil.js";
 import { setSetting } from "./repo/settingsRepo.js";
 
+// הגדרות של חיבור הענן שייכות למכשיר ולא עוברות בגיבוי ידני (ולא נדרסות בייבוא)
+const DEVICE_ONLY = (k) => String(k).startsWith("cloud_") || k === "google_client_id";
+
 export async function exportAllData() {
     const data = { exported_at: new Date().toISOString(), version: 1, stores: {} };
     for (const name of Object.keys(STORES)) {
@@ -18,7 +21,7 @@ export async function exportAllData() {
                 if (r.source_file instanceof Blob) r.source_file = { __image: await blobToDataUrl(r.source_file) };
             }
         }
-        data.stores[name] = rows;
+        data.stores[name] = name === "settings" ? rows.filter((r) => !DEVICE_ONLY(r.key)) : rows;
     }
     return data;
 }
@@ -50,11 +53,14 @@ export async function importAndReplace(fileText) {
         if (!STORES[name]) continue;
         if (!Array.isArray(rows)) throw new Error(`קובץ גיבוי פגום (${name})`);
         for (const row of rows) {
+            if (name === "settings" && DEVICE_ONLY(row.key)) continue;
             if (name === "invoices" && row.image && row.image.__image) row.image = dataUrlToBlob(row.image.__image);
             if (name === "recipes" && row.source_file && row.source_file.__image) row.source_file = dataUrlToBlob(row.source_file.__image);
             prepared.push([name, row]);
         }
     }
+    const keep = (await dbGetAll("settings")).filter((r) => DEVICE_ONLY(r.key));
     await dbClearAll();
     for (const [name, row] of prepared) await dbPut(name, row);
+    for (const r of keep) await dbPut("settings", r);
 }
