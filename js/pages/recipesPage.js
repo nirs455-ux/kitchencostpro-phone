@@ -14,6 +14,7 @@ import { buildLabel } from "../recipeLabel.js";
 import { suggestBaseHeuristic, computePercentages, scaleToBase, fmtPct } from "../bakers.js";
 import { RECIPE_UNIT_GRAMS } from "../recipeParse.js";
 import { textToGrams, gramsToKgText, describeQty, qtyWarning } from "../qty.js";
+import { bindPickerButton, refreshPickerButton } from "./ingredientPicker.js";
 import { UNITS, convertToGrams, factorFor, scaleRecipe, fmtQty } from "../generator.js";
 import { recipeEggSummary, eggSummaryText, allocateEggCosts, isEggProduct, eggSizeOf, partGrams, eggBreakdown, EGG_SIZES, EGG_PARTS, EGG_PART_LABEL } from "../eggs.js";
 import { showImageFullscreen } from "../imageUtil.js";
@@ -482,7 +483,8 @@ async function openRecipeModal(existing, container, draft = null) {
             <div class="item-row-inputs" id="ing-row-${id}">
                 ${um ? `<div class="hint-warn" style="margin-top:0;">מהמסמך: <b>${escapeHtml(um.name)}</b> ${escapeHtml(originalText(um))}</div>` : ""}
                 <div class="top-line">
-                    <select id="ing-source-${id}" style="flex:2;">
+                    <button type="button" class="pick-btn" id="ing-pick-${id}" style="flex:2;">בחר מרכיב...</button>
+                    <select id="ing-source-${id}" style="display:none;">
                         <option value="">${um ? "בחר מוצר מהמזווה..." : "בחר מרכיב..."}</option>
                         ${selectOptions(prefill ? prefill.pantry_item_id : null)}
                     </select>
@@ -515,6 +517,14 @@ async function openRecipeModal(existing, container, draft = null) {
             </div>
         `);
         box.appendChild(row);
+        bindPickerButton({
+            button: row.querySelector(`#ing-pick-${id}`), select: row.querySelector(`#ing-source-${id}`), title: "בחר מרכיב", keyOf: (it) => String(it.id),
+            getItems: () => sources.map((x) => {
+                const parent = x.item.parent_id ? sources.find((p) => p.id === x.item.parent_id) : null;
+                const base = parent ? parent.item : x.item;
+                return { key: `p${x.id}`, id: x.id, name: x.name, indent: x.indent, category: base.category, subcategory: base.subcategory || "", hint: `${money(x.item.price)} / ${x.item.unit_type === "unit" ? "יחידה" : x.item.unit_type === "liter" ? "ליטר" : 'ק"ג'}` };
+            }),
+        });
         row.querySelector(`#ing-source-${id}`).addEventListener("change", () => {
             // שורה מהמסמך שנבחר לה מוצר: אם אין כמות בגרם - מחשבים מהכמות שכתובה במסמך
             const qtyEl = row.querySelector(`#ing-qty-${id}`);
@@ -615,6 +625,7 @@ async function openRecipeModal(existing, container, draft = null) {
             const meta = rowMeta.get(Number(id));
             const s = sources.find((x) => x.id === sourceId);
             const lineEl = overlay.querySelector(`#ing-line-${id}`);
+            refreshPickerButton(overlay.querySelector(`#ing-pick-${id}`), overlay.querySelector(`#ing-source-${id}`));
             const egg = eggRow(id);
             const rawText = overlay.querySelector(`#ing-qty-${id}`).value;
             const qty = egg ? egg.grams : textToGrams(rawText) || 0;

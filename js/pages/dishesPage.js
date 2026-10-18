@@ -3,6 +3,8 @@ import { listAllPantryItems } from "../repo/pantryRepo.js";
 import { dbGetAll } from "../db.js";
 import { NON_FOOD_CATEGORIES } from "../constants.js";
 import { pricePerGram, itemCost as calcItemCost, computeDishPricing } from "../formulas.js";
+import { textToGrams, gramsToKgText, describeQty, qtyWarning } from "../qty.js";
+import { bindPickerButton, refreshPickerButton } from "./ingredientPicker.js";
 import { h, openModal, closeModal, confirmDialog, toast, escapeHtml, money, info, busy, attemptClose, cur, curLabel } from "../ui.js";
 
 async function allSources() {
@@ -10,14 +12,14 @@ async function allSources() {
     const topLevel = pantry.filter((it) => !it.parent_id).sort((a, b) => a.category.localeCompare(b.category, "he") || a.name.localeCompare(b.name, "he"));
     const out = [];
     for (const p of topLevel) {
-        out.push({ source_type: "pantry", source_id: p.id, name: p.name, indent: false, ppgSource: p });
+        out.push({ source_type: "pantry", source_id: p.id, name: p.name, indent: false, ppgSource: p, category: p.category, subcategory: p.subcategory || "" });
         for (const c of pantry.filter((it) => it.parent_id === p.id)) {
-            out.push({ source_type: "pantry", source_id: c.id, name: c.name, indent: true, ppgSource: c });
+            out.push({ source_type: "pantry", source_id: c.id, name: c.name, indent: true, ppgSource: c, category: p.category, subcategory: p.subcategory || "" });
         }
     }
     const recipes = await dbGetAll("recipes");
     for (const r of recipes.filter((x) => x.status !== "draft").sort((a, b) => a.name.localeCompare(b.name, "he"))) {
-        out.push({ source_type: "recipe", source_id: r.id, name: `📖 ${r.name}`, indent: false, ppgSource: null, recipeCostPerGram: r.cost_per_gram });
+        out.push({ source_type: "recipe", source_id: r.id, name: `📖 ${r.name}`, plainName: r.name, indent: false, ppgSource: null, recipeCostPerGram: r.cost_per_gram, category: r.category || "מתכונים", subcategory: "" });
     }
     return out;
 }
@@ -83,7 +85,7 @@ async function openDishModal(existing, container) {
         </div>
         <div class="field"><label>מחיר (${curLabel()}, לפני מע"מ)</label><input type="number" step="any" id="f-price" value="${existing ? existing.price_before_vat : ""}"></div>
         <div class="field"><label>מע"מ (%)</label><input type="number" step="any" id="f-vat" value="${existing ? existing.vat_pct : 18}"></div>
-        <div class="card" id="pricing-preview" style="background:#f4f5f7;"></div>
+        <div class="card" id="pricing-preview" style="background:var(--surface-2);"></div>
         <div class="error-msg"></div>
         <div class="modal-actions">
             <button class="btn btn-secondary" id="btn-cancel">ביטול</button>
@@ -99,17 +101,27 @@ async function openDishModal(existing, container) {
         const row = h(`
             <div class="item-row-inputs" id="dish-row-${id}">
                 <div class="top-line">
-                    <select id="dish-source-${id}" style="flex:2;">
+                    <button type="button" class="pick-btn" id="dish-pick-${id}" style="flex:2;">בחר מרכיב...</button>
+                    <select id="dish-source-${id}" style="display:none;">
                         <option value="">בחר מרכיב/מתכון...</option>
                         ${sources.map((s, i) => `<option value="${i}" ${selected && sources[i] === selected ? "selected" : ""}>${s.indent ? "↳ " : ""}${escapeHtml(s.name)}</option>`).join("")}
                     </select>
-                    <input type="number" step="any" id="dish-qty-${id}" placeholder="גרם" style="width:80px;" value="${prefill ? prefill.quantity_g : ""}">
+                    <input type="text" inputmode="decimal" id="dish-qty-${id}" placeholder='ק"ג' style="width:80px;" value="${prefill ? gramsToKgText(prefill.quantity_g) : ""}">
                     <button type="button" class="remove-row-btn" data-remove="${id}">✕</button>
                 </div>
                 <div class="line-total" id="dish-line-${id}"></div>
+                <div class="hint" id="dish-echo-${id}" style="margin:2px 0;"></div>
             </div>
         `);
         box.appendChild(row);
+        bindPickerButton({
+            button: row.querySelector(`#dish-pick-${id}`), select: row.querySelector(`#dish-source-${id}`), title: "בחר מרכיב או מתכון", keyOf: (it) => String(it.id),
+            tabs: [{ key: "pantry", label: "מוצרים" }, { key: "recipe", label: "מתכונים" }],
+            getItems: () => sources.map((s, i) => ({
+                key: `d${i}`, id: i, tab: s.source_type, name: s.plainName || s.name, indent: s.indent, category: s.category, subcategory: s.subcategory,
+                hint: s.source_type === "recipe" ? `${money(s.recipeCostPerGram * 1000)} / ק"ג` : `${money(s.ppgSource.price)} / ${s.ppgSource.unit_type === "unit" ? "יחידה" : s.ppgSource.unit_type === "liter" ? "ליטר" : 'ק"ג'}`,
+            })),
+        });
         row.querySelector(`#dish-source-${id}`).addEventListener("change", recalc);
         row.querySelector(`#dish-qty-${id}`).addEventListener("input", recalc);
         row.querySelector("[data-remove]").onclick = () => { row.remove(); recalc(); };
@@ -120,8 +132,13 @@ async function openDishModal(existing, container) {
         box.querySelectorAll(".item-row-inputs").forEach((row) => {
             const id = row.id.replace("dish-row-", "");
             const idx = overlay.querySelector(`#dish-source-${id}`).value;
-            const qty = parseFloat(overlay.querySelector(`#dish-qty-${id}`).value) || 0;
+            const rawText = overlay.querySelector(`#dish-qty-${id}`).value;
+            const qty = textToGrams(rawText) || 0;
             const lineEl = overlay.querySelector(`#dish-line-${id}`);
+            refreshPickerButton(overlay.querySelector(`#dish-pick-${id}`), overlay.querySelector(`#dish-source-${id}`));
+            const echoEl = overlay.querySelector(`#dish-echo-${id}`);
+            const warn = qtyWarning(rawText);
+            echoEl.innerHTML = warn ? `<span style="color:var(--danger);">${escapeHtml(warn)}</span>` : escapeHtml(describeQty(rawText));
             if (idx !== "" && qty > 0) {
                 const src = sources[idx];
                 const cost = calcItemCost(ppgFor(src), qty);
@@ -177,7 +194,7 @@ async function openDishModal(existing, container) {
         box.querySelectorAll(".item-row-inputs").forEach((row) => {
             const id = row.id.replace("dish-row-", "");
             const idx = overlay.querySelector(`#dish-source-${id}`).value;
-            const qty = overlay.querySelector(`#dish-qty-${id}`).value;
+            const qty = textToGrams(overlay.querySelector(`#dish-qty-${id}`).value) || "";
             if (idx !== "" && qty) {
                 const src = sources[idx];
                 items.push({ source_type: src.source_type, source_id: src.source_id, quantity_g: qty });

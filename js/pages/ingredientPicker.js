@@ -1,0 +1,144 @@
+// בורר מרכיבים: חיפוש + קטגוריות + תתי-קטגוריות + "אחרונים". משמש לבניית מתכון ולבניית מנה (ועובד גם עם מאות מוצרים).
+// נפתח כשכבה נפרדת מעל החלון הפתוח (בלי לסגור אותו). מחזיר את הבחירה דרך onPick.
+import { CATEGORY_GROUPS } from "../constants.js";
+import { escapeHtml } from "../ui.js";
+import { getSetting, setSetting } from "../repo/settingsRepo.js";
+
+const RECENT_KEY = "picker_recent";
+const RECENT_MAX = 12;
+
+// מנרמל טקסט לחיפוש: אותיות קטנות, בלי גרשיים/מקפים/סימנים
+export function normalize(s) {
+    return String(s || "").toLowerCase().replace(/["'`׳״]/g, "").replace(/[\-–_.,()־]/g, " ").replace(/\s+/g, " ").trim();
+}
+
+// האם הפריט תואם את החיפוש: כל מילה בחיפוש חייבת להופיע בשם או בקטגוריה
+export function matches(item, query) {
+    const q = normalize(query);
+    if (!q) return true;
+    const hay = normalize(`${item.name} ${item.category || ""} ${item.subcategory || ""}`);
+    return q.split(" ").every((t) => hay.includes(t));
+}
+
+// סדר: מי ששמו מתחיל במילה הראשונה קודם, אחר כך לפי א-ב
+export function rankResults(items, query) {
+    const first = normalize(query).split(" ")[0] || "";
+    return [...items].sort((a, b) => {
+        const sa = normalize(a.name).startsWith(first) ? 0 : 1;
+        const sb = normalize(b.name).startsWith(first) ? 0 : 1;
+        return sa - sb || a.name.localeCompare(b.name, "he");
+    });
+}
+
+// סדר קטגוריות: קודם לפי הרשימה הקבועה של המזווה, אחר כך לפי א-ב
+export function orderCategories(cats) {
+    const fixed = Object.keys(CATEGORY_GROUPS);
+    return [...new Set(cats)].sort((a, b) => {
+        const ia = fixed.indexOf(a), ib = fixed.indexOf(b);
+        if (ia !== -1 || ib !== -1) return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
+        return a.localeCompare(b, "he");
+    });
+}
+
+async function loadRecents() {
+    const v = await getSetting(RECENT_KEY);
+    return Array.isArray(v) ? v : [];
+}
+async function pushRecent(key) {
+    const list = (await loadRecents()).filter((k) => k !== key);
+    list.unshift(key);
+    await setSetting(RECENT_KEY, list.slice(0, RECENT_MAX));
+}
+
+// items: [{ key, type, id, name, category, subcategory, indent, hint, tab }]. tabs: [{ key, label }] (אם יש יותר מאחד מוצגת בחירה)
+export async function openIngredientPicker({ title = "בחר מרכיב", items, tabs = null, onPick }) {
+    const recentKeys = await loadRecents();
+    const layer = document.createElement("div");
+    layer.className = "picker";
+    document.body.appendChild(layer);
+    const tabList = tabs && tabs.length > 1 ? tabs : null;
+    const st = { tab: tabList ? tabList[0].key : null, q: "", cat: "", sub: "" };
+
+    const close = () => layer.remove();
+    const visibleItems = () => items.filter((i) => !st.tab || i.tab === st.tab);
+
+    function draw(keepSearchFocus = false) {
+        const base = visibleItems();
+        const cats = orderCategories(base.map((i) => i.category).filter(Boolean));
+        const subs = st.cat ? [...new Set(base.filter((i) => i.category === st.cat).map((i) => i.subcategory).filter(Boolean))] : [];
+        layer.innerHTML = `
+            <div class="pk-top"><button type="button" class="pk-close" id="pk-close" aria-label="סגור">✕</button><div class="pk-title">${escapeHtml(title)}</div></div>
+            ${tabList ? `<div class="seg" id="pk-tabs" style="margin:0 12px 8px;">${tabList.map((t) => `<button type="button" data-tab="${t.key}" class="${t.key === st.tab ? "active" : ""}">${escapeHtml(t.label)}</button>`).join("")}</div>` : ""}
+            <div class="pk-search"><input type="search" id="pk-q" placeholder="חיפוש לפי שם..." value="${escapeHtml(st.q)}" autocomplete="off"></div>
+            <div class="pk-chips" id="pk-cats"><button type="button" class="chip ${st.cat ? "" : "active"}" data-cat="">הכול</button>${cats.map((c) => `<button type="button" class="chip ${st.cat === c ? "active" : ""}" data-cat="${escapeHtml(c)}">${escapeHtml(c)}</button>`).join("")}</div>
+            ${subs.length ? `<div class="pk-chips" id="pk-subs"><button type="button" class="chip ${st.sub ? "" : "active"}" data-sub="">כל ${escapeHtml(st.cat)}</button>${subs.map((c) => `<button type="button" class="chip ${st.sub === c ? "active" : ""}" data-sub="${escapeHtml(c)}">${escapeHtml(c)}</button>`).join("")}</div>` : ""}
+            <div class="pk-list" id="pk-list"></div>`;
+        const list = layer.querySelector("#pk-list");
+
+        let shown = base.filter((i) => matches(i, st.q) && (!st.cat || i.category === st.cat) && (!st.sub || i.subcategory === st.sub));
+        const mk = (i) => `<div class="pk-row ${i.indent ? "pk-indent" : ""}" data-key="${escapeHtml(i.key)}"><div class="pk-name">${i.indent ? "↳ " : ""}${escapeHtml(i.name)}</div><div class="pk-hint">${escapeHtml(i.hint || "")}</div></div>`;
+
+        if (!shown.length) {
+            list.innerHTML = `<div class="empty-state">${st.q ? `לא נמצא "${escapeHtml(st.q)}"` : "אין פריטים בקטגוריה הזאת"}</div>`;
+        } else if (normalize(st.q)) {
+            list.innerHTML = rankResults(shown, st.q).map((i) => mk({ ...i, hint: [i.category, i.hint].filter(Boolean).join(" · ") })).join("");
+        } else {
+            let html = "";
+            if (!st.cat) {
+                const rec = recentKeys.map((k) => base.find((i) => i.key === k)).filter(Boolean);
+                if (rec.length) html += `<div class="pk-head">אחרונים</div>${rec.map(mk).join("")}`;
+            }
+            // קבוצות לפי קטגוריה (ואם נבחרה קטגוריה עם תתי-קטגוריות: לפי תת-קטגוריה)
+            const groupBy = st.cat ? (i) => i.subcategory || "" : (i) => i.category || "אחר";
+            const groups = new Map();
+            for (const i of shown) { const g = groupBy(i); if (!groups.has(g)) groups.set(g, []); groups.get(g).push(i); }
+            const order = st.cat ? [...groups.keys()].sort((a, b) => a.localeCompare(b, "he")) : orderCategories([...groups.keys()]);
+            for (const g of order) {
+                if (g) html += `<div class="pk-head">${escapeHtml(g)} <span class="pk-n">${groups.get(g).length}</span></div>`;
+                html += groups.get(g).map(mk).join("");
+            }
+            list.innerHTML = html;
+        }
+
+        layer.querySelector("#pk-close").onclick = close;
+        layer.querySelectorAll("#pk-tabs [data-tab]").forEach((b) => { b.onclick = () => { st.tab = b.dataset.tab; st.cat = ""; st.sub = ""; draw(); }; });
+        layer.querySelectorAll("#pk-cats [data-cat]").forEach((b) => { b.onclick = () => { st.cat = b.dataset.cat; st.sub = ""; draw(); }; });
+        layer.querySelectorAll("#pk-subs [data-sub]").forEach((b) => { b.onclick = () => { st.sub = b.dataset.sub; draw(); }; });
+        const qEl = layer.querySelector("#pk-q");
+        qEl.oninput = () => {
+            st.q = qEl.value;
+            const pos = qEl.selectionStart;
+            draw(true);
+            const again = layer.querySelector("#pk-q");
+            again.focus();
+            try { again.setSelectionRange(pos, pos); } catch (e) { /* לא קריטי */ }
+        };
+        list.querySelectorAll(".pk-row").forEach((r) => {
+            r.onclick = async () => {
+                const item = items.find((i) => i.key === r.dataset.key);
+                if (!item) return;
+                await pushRecent(item.key).catch(() => {});
+                close();
+                onPick(item);
+            };
+        });
+    }
+    draw();
+    return { close };
+}
+
+// הופך שורת <select> נסתרת (שהקוד הקיים קורא ממנה) לכפתור בחירה: לחיצה פותחת את הבורר, ובחירה מעדכנת את ה-select ומפעילה change
+export function bindPickerButton({ button, select, getItems, tabs, title, keyOf }) {
+    button.onclick = () => openIngredientPicker({
+        title, items: getItems(), tabs,
+        onPick: (item) => { select.value = keyOf(item); select.dispatchEvent(new Event("change", { bubbles: true })); refreshPickerButton(button, select); },
+    });
+    refreshPickerButton(button, select);
+}
+
+export function refreshPickerButton(button, select) {
+    const opt = select.selectedOptions && select.selectedOptions[0];
+    const has = opt && opt.value !== "";
+    button.textContent = has ? opt.textContent.replace(/^↳\s*/, "") : "בחר מרכיב...";
+    button.classList.toggle("pk-empty", !has);
+}
