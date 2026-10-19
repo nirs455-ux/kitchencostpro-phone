@@ -519,11 +519,13 @@ async function openRecipeModal(existing, container, draft = null) {
         box.appendChild(row);
         bindPickerButton({
             button: row.querySelector(`#ing-pick-${id}`), select: row.querySelector(`#ing-source-${id}`), title: "בחר מרכיב", keyOf: (it) => String(it.id),
-            getItems: () => sources.map((x) => {
-                const parent = x.item.parent_id ? sources.find((p) => p.id === x.item.parent_id) : null;
-                const base = parent ? parent.item : x.item;
-                return { key: `p${x.id}`, id: x.id, name: x.name, indent: x.indent, category: base.category, subcategory: base.subcategory || "", hint: `${money(x.item.price)} / ${x.item.unit_type === "unit" ? "יחידה" : x.item.unit_type === "liter" ? "ליטר" : 'ק"ג'}` };
-            }),
+            getItems: () => {
+                const unitWord = (it) => (it.unit_type === "unit" ? "יחידה" : it.unit_type === "liter" ? "ליטר" : 'ק"ג');
+                return sources.filter((x) => !x.item.parent_id).map((x) => ({
+                    key: `p${x.id}`, id: x.id, name: x.name, category: x.item.category, subcategory: x.item.subcategory || "", hint: `${money(x.item.price)} / ${unitWord(x.item)}`,
+                    children: sources.filter((c) => c.item.parent_id === x.id).map((c) => ({ key: `p${c.id}`, id: c.id, name: c.name, category: x.item.category, subcategory: x.item.subcategory || "", hint: `${money(c.item.price)} / ${unitWord(c.item)}` })),
+                }));
+            },
         });
         row.querySelector(`#ing-source-${id}`).addEventListener("change", () => {
             // שורה מהמסמך שנבחר לה מוצר: אם אין כמות בגרם - מחשבים מהכמות שכתובה במסמך

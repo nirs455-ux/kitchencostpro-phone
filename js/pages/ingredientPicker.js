@@ -20,6 +20,11 @@ export function matches(item, query) {
     return q.split(" ").every((t) => hay.includes(t));
 }
 
+// פריט תואם אם הוא עצמו או אחד מהתוצרים המפורקים שלו תואם (חיפוש "נקי" מוצא את "בצל לבן" שיש לו תוצר "נקי")
+export function matchesDeep(item, query) {
+    return matches(item, query) || (item.children || []).some((c) => matches({ ...c, category: item.category, subcategory: item.subcategory }, query));
+}
+
 // סדר: מי ששמו מתחיל במילה הראשונה קודם, אחר כך לפי א-ב
 export function rankResults(items, query) {
     const first = normalize(query).split(" ")[0] || "";
@@ -52,17 +57,38 @@ async function pushRecent(key) {
 
 // items: [{ key, type, id, name, category, subcategory, indent, hint, tab }]. tabs: [{ key, label }] (אם יש יותר מאחד מוצגת בחירה)
 export async function openIngredientPicker({ title = "בחר מרכיב", items, tabs = null, onPick }) {
-    const recentKeys = await loadRecents();
+    const recentKeys = (await loadRecents());
     const layer = document.createElement("div");
     layer.className = "picker";
     document.body.appendChild(layer);
     const tabList = tabs && tabs.length > 1 ? tabs : null;
-    const st = { tab: tabList ? tabList[0].key : null, q: "", cat: "", sub: "" };
+    const st = { tab: tabList ? tabList[0].key : null, q: "", cat: "", sub: "", open: null };
+    const flat = items.flatMap((i) => [i, ...(i.children || [])]);
 
     const close = () => layer.remove();
     const visibleItems = () => items.filter((i) => !st.tab || i.tab === st.tab);
 
+    // שלב שני: למוצר שיש לו תוצרים מפורקים (בצל לבן -> נקי...) מציגים את האפשרויות. כל השאר נבחר ישר.
+    function drawOptions(parent) {
+        const opts = [{ ...parent, indent: false, hint: [parent.hint, "כמו שקנית"].filter(Boolean).join(" · "), name: parent.name }, ...(parent.children || [])];
+        layer.innerHTML = `
+            <div class="pk-top"><button type="button" class="pk-close" id="pk-back" aria-label="חזרה">→</button><div class="pk-title">${escapeHtml(parent.name)}</div></div>
+            <div class="pk-sub">איזו צורה של המוצר?</div>
+            <div class="pk-list" id="pk-list">${opts.map((o) => `<div class="pk-row" data-key="${escapeHtml(o.key)}"><div class="pk-name">${escapeHtml(o === opts[0] ? `${parent.name} (כמו שקנית)` : o.name)}</div><div class="pk-hint">${escapeHtml(o.hint || "")}</div></div>`).join("")}</div>`;
+        layer.querySelector("#pk-back").onclick = () => { st.open = null; draw(); };
+        layer.querySelectorAll(".pk-row").forEach((r) => {
+            r.onclick = async () => {
+                const item = flat.find((i) => i.key === r.dataset.key);
+                if (!item) return;
+                await pushRecent(item.key).catch(() => {});
+                close();
+                onPick(item);
+            };
+        });
+    }
+
     function draw(keepSearchFocus = false) {
+        if (st.open) { const parent = flat.find((i) => i.key === st.open); if (parent) { drawOptions(parent); return; } st.open = null; }
         const base = visibleItems();
         const cats = orderCategories(base.map((i) => i.category).filter(Boolean));
         const subs = st.cat ? [...new Set(base.filter((i) => i.category === st.cat).map((i) => i.subcategory).filter(Boolean))] : [];
@@ -75,8 +101,11 @@ export async function openIngredientPicker({ title = "בחר מרכיב", items,
             <div class="pk-list" id="pk-list"></div>`;
         const list = layer.querySelector("#pk-list");
 
-        let shown = base.filter((i) => matches(i, st.q) && (!st.cat || i.category === st.cat) && (!st.sub || i.subcategory === st.sub));
-        const mk = (i) => `<div class="pk-row ${i.indent ? "pk-indent" : ""}" data-key="${escapeHtml(i.key)}"><div class="pk-name">${i.indent ? "↳ " : ""}${escapeHtml(i.name)}</div><div class="pk-hint">${escapeHtml(i.hint || "")}</div></div>`;
+        let shown = base.filter((i) => matchesDeep(i, st.q) && (!st.cat || i.category === st.cat) && (!st.sub || i.subcategory === st.sub));
+        const mk = (i) => {
+            const n = (i.children || []).length;
+            return `<div class="pk-row" data-key="${escapeHtml(i.key)}"><div class="pk-name">${escapeHtml(i.name)}</div><div class="pk-hint">${escapeHtml(i.hint || "")}${n ? ` · ${n + 1} אפשרויות ›` : ""}</div></div>`;
+        };
 
         if (!shown.length) {
             list.innerHTML = `<div class="empty-state">${st.q ? `לא נמצא "${escapeHtml(st.q)}"` : "אין פריטים בקטגוריה הזאת"}</div>`;
@@ -115,8 +144,9 @@ export async function openIngredientPicker({ title = "בחר מרכיב", items,
         };
         list.querySelectorAll(".pk-row").forEach((r) => {
             r.onclick = async () => {
-                const item = items.find((i) => i.key === r.dataset.key);
+                const item = flat.find((i) => i.key === r.dataset.key);
                 if (!item) return;
+                if ((item.children || []).length) { st.open = item.key; draw(); return; }
                 await pushRecent(item.key).catch(() => {});
                 close();
                 onPick(item);

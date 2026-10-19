@@ -117,10 +117,15 @@ async function openDishModal(existing, container) {
         bindPickerButton({
             button: row.querySelector(`#dish-pick-${id}`), select: row.querySelector(`#dish-source-${id}`), title: "בחר מרכיב או מתכון", keyOf: (it) => String(it.id),
             tabs: [{ key: "pantry", label: "מוצרים" }, { key: "recipe", label: "מתכונים" }],
-            getItems: () => sources.map((s, i) => ({
-                key: `d${i}`, id: i, tab: s.source_type, name: s.plainName || s.name, indent: s.indent, category: s.category, subcategory: s.subcategory,
-                hint: s.source_type === "recipe" ? `${money(s.recipeCostPerGram * 1000)} / ק"ג` : `${money(s.ppgSource.price)} / ${s.ppgSource.unit_type === "unit" ? "יחידה" : s.ppgSource.unit_type === "liter" ? "ליטר" : 'ק"ג'}`,
-            })),
+            getItems: () => {
+                const hintOf = (s) => (s.source_type === "recipe" ? `${money(s.recipeCostPerGram * 1000)} / ק"ג` : `${money(s.ppgSource.price)} / ${s.ppgSource.unit_type === "unit" ? "יחידה" : s.ppgSource.unit_type === "liter" ? "ליטר" : 'ק"ג'}`);
+                const out = [];
+                sources.forEach((s, i) => {
+                    const node = { key: `d${i}`, id: i, tab: s.source_type, name: s.plainName || s.name, category: s.category, subcategory: s.subcategory, hint: hintOf(s) };
+                    if (s.indent && out.length) { (out[out.length - 1].children = out[out.length - 1].children || []).push(node); } else out.push(node);
+                });
+                return out;
+            },
         });
         row.querySelector(`#dish-source-${id}`).addEventListener("change", recalc);
         row.querySelector(`#dish-qty-${id}`).addEventListener("input", recalc);

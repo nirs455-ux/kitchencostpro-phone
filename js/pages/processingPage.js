@@ -4,6 +4,10 @@ import { effectivePrice } from "../formulas.js";
 import { h, openModal, closeModal, confirmDialog, toast, escapeHtml, info, busy, attemptClose, cur } from "../ui.js";
 import { getFilter, applyFilter, mountFilterBar, groupBySection, groupTitleEl } from "../filters.js";
 
+// אילו מוצרים פתוחים כרגע (תוצרים מפורקים מוצגים רק אחרי לחיצה). מתאפס בכל כניסה ללשונית.
+const expanded = new Set();
+export function collapseAll() { expanded.clear(); }
+
 export async function renderProcessingPage(container) {
     const all = await listAllPantryItems();
     const topLevel = all.filter((it) => !it.parent_id).sort((a, b) => a.category.localeCompare(b.category, "he") || a.name.localeCompare(b.name, "he"));
@@ -25,10 +29,9 @@ export async function renderProcessingPage(container) {
         for (const g of groupBySection(applyFilter(topLevel, filter))) {
             list.appendChild(groupTitleEl(g.title, g.items.length));
             for (const p of g.items) {
-                list.appendChild(renderParentCard(p, container));
-                for (const c of p.children) {
-                    list.appendChild(renderChildCard(c, p, container));
-                }
+                const open = expanded.has(p.id);
+                list.appendChild(renderParentCard(p, container, open, () => { if (open) expanded.delete(p.id); else expanded.add(p.id); renderList(); }));
+                if (open) for (const c of p.children) list.appendChild(renderChildCard(c, p, container));
             }
         }
     }
@@ -41,11 +44,12 @@ function priceLine(it) {
     return `<span class="price-raw">${cur()}${Number(it.price).toFixed(2)}</span> ← <span class="price-real">${cur()}${eff.toFixed(2)}</span> (${Number(it.yield_pct).toFixed(1)}%)`;
 }
 
-function renderParentCard(it, container) {
+function renderParentCard(it, container, open = false, onToggle = () => {}) {
     const card = h(`
         <div class="card">
             <div class="card-title">${escapeHtml(it.name)} ${it.is_frozen ? '<span class="tag tag-frozen">❄</span>' : ""}</div>
             <div class="card-row"><span class="tag">${escapeHtml(it.category)}</span> ${priceLine(it)}</div>
+            ${it.children && it.children.length ? `<button type="button" class="tree-toggle" data-toggle>${open ? "▾" : "◂"} ${it.children.length} תוצרים מפורקים</button>` : ""}
             <div class="card-actions">
                 <button class="btn btn-secondary btn-small" data-process>עיבוד</button>
                 <button class="btn btn-primary btn-small" data-breakdown>+ תוצר</button>
@@ -55,6 +59,8 @@ function renderParentCard(it, container) {
             </div>
         </div>
     `);
+    const tg = card.querySelector("[data-toggle]");
+    if (tg) tg.onclick = onToggle;
     card.querySelector("[data-process]").onclick = () => openYieldModal(it, container);
     wireReset(card, it, container);
     card.querySelector("[data-breakdown]").onclick = () => openBreakdownModal(it, container);

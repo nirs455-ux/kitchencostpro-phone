@@ -4,7 +4,7 @@ import { h, openModal, closeModal, confirmDialog, toast, escapeHtml, busy, attem
 import { openScanModal } from "./scanModal.js";
 import { dbGetAll } from "../db.js";
 import { getSetting, setSetting } from "../repo/settingsRepo.js";
-import { renderProcessingPage } from "./processingPage.js";
+import { renderProcessingPage, collapseAll } from "./processingPage.js";
 import { renderInventoryPage } from "./inventoryPage.js";
 import { renderWastePage } from "./wastePage.js";
 import { isStaffMode } from "../staff.js";
@@ -16,7 +16,7 @@ import { getFilter, applyFilter, mountFilterBar, groupBySection, groupTitleEl } 
 const TABS = [["products", "מוצרים"], ["inventory", "ספירה"], ["processing", "עיבוד"], ["waste", "פחת"]];
 const STAFF_TABS = ["inventory", "waste"]; // מצב עובד: ספירת מלאי ורישום פחת בלבד
 let currentTab = "products";
-export function setPantryTab(t) { currentTab = TABS.some((x) => x[0] === t) ? t : "products"; }
+export function setPantryTab(t) { collapseAll(); currentTab = TABS.some((x) => x[0] === t) ? t : "products"; }
 
 const UNIT_FORM_LABELS = { weight: 'לפי משקל (מחיר לק"ג)', liter: "לפי נפח (מחיר לליטר)", unit: "לפי יחידה (בקבוק, ביצה, חבילה)" };
 
@@ -26,7 +26,7 @@ export async function renderPantryPage(container) {
     const seg = `<div class="seg" id="pantry-seg">${tabs.map(([k, l]) => `<button type="button" data-tab="${k}" class="${k === currentTab ? "active" : ""}">${l}</button>`).join("")}</div>`;
     container.innerHTML = `${seg}<div id="pantry-tab"></div>`;
     const sub = container.querySelector("#pantry-tab");
-    container.querySelectorAll("#pantry-seg [data-tab]").forEach((b) => { b.onclick = () => { currentTab = b.dataset.tab; renderPantryPage(container); }; });
+    container.querySelectorAll("#pantry-seg [data-tab]").forEach((b) => { b.onclick = () => { collapseAll(); currentTab = b.dataset.tab; renderPantryPage(container); }; });
     if (currentTab === "waste") await renderWastePage(sub);
     else if (currentTab === "inventory") await renderInventoryPage(sub);
     else if (currentTab === "processing") await renderProcessingPage(sub);
