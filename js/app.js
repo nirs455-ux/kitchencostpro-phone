@@ -1,6 +1,6 @@
 import { renderPantryPage, setPantryTab } from "./pages/pantryPage.js";
 import { renderProcessingPage } from "./pages/processingPage.js";
-import { renderRecipesPage } from "./pages/recipesPage.js";
+import { renderRecipesPage, collapseRecipes } from "./pages/recipesPage.js";
 import { renderDishesPage } from "./pages/dishesPage.js";
 import { renderSuppliersPage } from "./pages/suppliersPage.js";
 import { renderInventoryPage } from "./pages/inventoryPage.js";
@@ -66,6 +66,7 @@ async function navigate(pageKey) {
     location.hash = pageKey;
     // ספירת מלאי ועיבוד הם לשוניות של המזווה (הכתובות #inventory ו-#processing ממשיכות לעבוד)
     const inPantry = pageKey === "inventory" || pageKey === "processing" || pageKey === "waste";
+    if (pageKey === "recipes") collapseRecipes();
     if (inPantry) setPantryTab(pageKey);
     else if (pageKey === "pantry") setPantryTab("products");
     const shown = inPantry ? PAGES.pantry : PAGES[pageKey];
