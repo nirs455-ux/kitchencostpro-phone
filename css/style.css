@@ -331,3 +331,23 @@ body[data-cook="1"] .cost-only, body[data-cook="1"] .mgr-only { display: none !i
 .st-icon.st-bad i { background: #ef4444; }
 .st-icon.st-bad { opacity: 0.9; }
 .wiz-x { background: none; border: none; color: var(--text-2); font-size: 20px; cursor: pointer; padding: 2px 8px; margin-inline-end: 6px; }
+
+/* שפה עיצובית משותפת: כותרת קטע, שורות בצבע (דורש תשומת לב), אריחי פעולה, שורות פעילות */
+.sec-title { font-size: 15px; font-weight: 700; margin: 16px 4px 8px; color: var(--text); }
+.tint-row { display: flex; align-items: center; gap: 10px; border-radius: 12px; padding: 10px 12px; margin-bottom: 7px; font-size: 14px; }
+.tint-row .tr-ic { font-size: 20px; flex: 0 0 auto; }
+.tint-row .tr-text { flex: 1; min-width: 0; line-height: 1.4; }
+.tint-row .tr-btn { flex: 0 0 auto; border: none; border-radius: 8px; padding: 6px 12px; font-family: inherit; font-size: 13px; font-weight: 700; cursor: pointer; background: rgba(255,255,255,0.55); color: inherit; }
+.tint-row.danger { background: var(--danger-soft); color: var(--danger); }
+.tint-row.warn { background: var(--warn-soft); color: var(--text); border: 1px solid var(--warn-border); }
+.tint-row.ok { background: var(--ok-soft); color: var(--ok); font-weight: 600; }
+.qa-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.qa-tile { display: flex; flex-direction: column; align-items: center; gap: 4px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px 6px; font-family: inherit; font-size: 14px; font-weight: 600; color: var(--text); cursor: pointer; }
+.qa-tile:active { background: var(--brand-soft); }
+.qa-ic { font-size: 26px; line-height: 1; }
+.act-row { display: flex; align-items: center; gap: 10px; background: var(--surface); border-radius: 12px; padding: 10px 12px; margin-bottom: 6px; cursor: pointer; box-shadow: var(--shadow); }
+.act-ic { font-size: 20px; }
+.act-main { flex: 1; min-width: 0; }
+.act-title { font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.act-sub { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.act-amt { font-weight: 700; font-size: 14px; }
