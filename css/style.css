@@ -321,3 +321,13 @@ table.simple th { background: var(--brand); color: var(--on-brand); }
 
 /* מצב טבח: בלי כסף ובלי עריכה */
 body[data-cook="1"] .cost-only, body[data-cook="1"] .mgr-only { display: none !important; }
+
+/* אייקוני מצב (סוכן וענן) בסרגל העליון */
+.status-icons { display: inline-flex; gap: 2px; align-items: center; }
+.st-icon { position: relative; background: none; border: none; font-size: 20px; cursor: pointer; padding: 2px 5px; line-height: 1; }
+.st-icon i { position: absolute; top: -1px; inset-inline-end: -1px; width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--topbar-bg); }
+.st-icon.st-ok i { background: #22c55e; }
+.st-icon.st-warn i { background: #f59e0b; }
+.st-icon.st-bad i { background: #ef4444; }
+.st-icon.st-bad { opacity: 0.9; }
+.wiz-x { background: none; border: none; color: var(--text-2); font-size: 20px; cursor: pointer; padding: 2px 8px; margin-inline-end: 6px; }
