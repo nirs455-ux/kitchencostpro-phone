@@ -2,7 +2,7 @@
 import { dbGetAll } from "../db.js";
 import { addWaste, listWaste, deleteWaste, restoreWaste, purchasesSince, todayIso } from "../repo/wasteRepo.js";
 import { WASTE_REASONS, REASON_LABEL, WASTE_UNITS, pantryWasteCost, recipeWasteCost, periodStart, summarizeWaste } from "../waste.js";
-import { h, openModal, closeModal, toast, toastAction, escapeHtml, money, busy, attemptClose, info } from "../ui.js";
+import { h, openModal, closeModal, toast, toastAction, escapeHtml, money, busy, attemptClose, info, takeFlag } from "../ui.js";
 import { isStaffMode } from "../staff.js";
 
 let period = "week";
@@ -41,6 +41,7 @@ export async function renderWastePage(container) {
         <div id="w-list"></div>`;
 
     container.querySelector("#w-add").onclick = () => openWasteModal(rerender);
+    if (takeFlag("waste-new")) openWasteModal(rerender); // נלחץ "רישום זריקה" בבית
     container.querySelectorAll("#w-period [data-p]").forEach((b) => { b.onclick = () => { period = b.dataset.p; rerender(); }; });
 
     const list = container.querySelector("#w-list");

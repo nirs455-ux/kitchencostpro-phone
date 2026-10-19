@@ -5,7 +5,7 @@ import { listAllPantryItems, addPantryItem, setItemAllergens, setEggSize } from 
 import { ALLERGENS, allergenLabels } from "../allergens.js";
 import { RECIPE_CATEGORIES, NON_FOOD_CATEGORIES, CATEGORY_GROUPS, UNIT_TYPES, UNIT_TYPE_LABELS } from "../constants.js";
 import { pricePerGram, itemCost as calcItemCost, effectivePrice } from "../formulas.js";
-import { h, openModal, closeModal, confirmDialog, toast, escapeHtml, money, busy, attemptClose, info, cur, curLabel } from "../ui.js";
+import { h, openModal, closeModal, confirmDialog, toast, escapeHtml, money, busy, attemptClose, info, cur, curLabel, takeFlag } from "../ui.js";
 import { openImagePicker } from "../imagePicker.js";
 import { scanRecipeImage, suggestRecipeBase } from "../repo/scanRepo.js";
 import { getSetting } from "../repo/settingsRepo.js";
@@ -68,6 +68,7 @@ export async function renderRecipesPage(container) {
         for (const r of shown) list.appendChild(renderRecipeCard(r, container));
     }
     container.querySelector("#btn-add").onclick = () => openRecipeModal(null, container);
+    if (takeFlag("recipe-new") && !isStaffMode()) openRecipeModal(null, container); // נלחץ "מתכון חדש" בבית
     container.querySelector("#btn-scan-recipe").onclick = () => openImagePicker({
         title: "סריקת מתכון",
         hint: "צלם או העלה מתכון בכל פורמט: תמונה, PDF, Word, Excel, טקסט ועוד. נזהה שם, מרכיבים וכמויות, ותוכל לבדוק ולתקן לפני שמירה. המסמך המקורי נשמר עם המתכון.",

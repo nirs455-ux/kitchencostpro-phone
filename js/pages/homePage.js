@@ -1,5 +1,5 @@
 // מסך בית: פעולה ראשית אחת (סריקה), ומה שדורש תשומת לב עכשיו. מי שפותח בפעם הראשונה רואה צעדים ברורים.
-import { h, toast, escapeHtml, money } from "../ui.js";
+import { h, toast, escapeHtml, money, setFlag } from "../ui.js";
 import { getSetting } from "../repo/settingsRepo.js";
 import { dbGetAll } from "../db.js";
 import { listInvoicesWithItems, priceChanges, pettyCashOwed } from "../repo/suppliersRepo.js";
@@ -56,28 +56,26 @@ export async function renderHomePage(container) {
     const lastCount = counts.map((c) => c.count_date).sort().pop();
     const daysSince = (d) => (d ? Math.floor((Date.now() - new Date(d).getTime()) / 86400000) : Infinity);
 
-    // ---- צעדי פתיחה (נעלמים כשהכול הושלם) ----
-    const steps = [
-        { done: !!apiKey, text: "הזן את מפתח Gemini (לסריקת חשבוניות)", action: () => go("settings"), label: "להגדרות" },
-        { done: invoices.length > 0, text: "סרוק את החשבונית הראשונה שלך", action: () => scan(), label: "סרוק" },
-        { done: !!lastExport, text: "ייצא גיבוי ראשון (כדי לא לאבד נתונים)", action: async () => { await downloadExport(); rerender(); }, label: "ייצא" },
-    ];
-    const showSteps = steps.some((s) => !s.done);
+    const scan = () => openScanModal({ supplierAware: true, onDone: rerender });
+    const wasteLogs = await dbGetAll("wasteLogs");
 
     container.innerHTML = `
-        <button class="btn btn-primary btn-big btn-block" id="home-scan" style="margin:8px 0 4px;">📷 סרוק חשבונית</button>
-        <div class="hint" style="text-align:center;margin-bottom:12px;">צלם קבלה או חשבונית - הכול מתעדכן מהתמונה</div>
+        <div class="sec-title">מה דורש תשומת לב</div>
         <div id="home-attn"></div>
-        <div class="card-title" style="margin:14px 4px 6px;">חשבוניות אחרונות</div>
+        <div class="sec-title">פעולה מהירה</div>
+        <div class="qa-grid">
+            <button type="button" class="qa-tile" id="qa-waste"><span class="qa-ic">🗑</span>רישום זריקה</button>
+            <button type="button" class="qa-tile" id="qa-recipe"><span class="qa-ic">📖</span>מתכון חדש</button>
+            <button type="button" class="qa-tile" id="qa-count"><span class="qa-ic">📋</span>ספירת מלאי</button>
+            <button type="button" class="qa-tile" id="qa-files"><span class="qa-ic">📁</span>קבצים</button>
+        </div>
+        <div class="sec-title">פעילות אחרונה</div>
         <div id="home-recent"></div>
-        <button class="btn btn-secondary btn-block" id="home-waste" style="margin:12px 0 0;">🗑 רישום זריקה</button>
-        <button class="btn btn-secondary btn-block" id="home-files" style="margin:8px 0 12px;">📁 קבצים</button>
     `;
-    container.querySelector("#home-files").onclick = () => go("files");
-    container.querySelector("#home-waste").onclick = () => go("waste");
-
-    const scan = () => openScanModal({ supplierAware: true, onDone: rerender });
-    container.querySelector("#home-scan").onclick = scan;
+    container.querySelector("#qa-waste").onclick = () => { setFlag("waste-new"); go("waste"); };
+    container.querySelector("#qa-recipe").onclick = () => { setFlag("recipe-new"); go("recipes"); };
+    container.querySelector("#qa-count").onclick = () => go("inventory");
+    container.querySelector("#qa-files").onclick = () => go("files");
 
     // ---- מה דורש תשומת לב ----
     const attn = container.querySelector("#home-attn");
@@ -97,25 +95,28 @@ export async function renderHomePage(container) {
         const text = cst.state === "conflict" ? "הענן שונה ממכשיר אחר" : cst.state === "needs-auth" ? "הגיבוי לענן מחכה לאישור שלך" : "הגיבוי לענן נכשל";
         items.unshift({ cls: "warn", icon: "☁️", text, btn: "טפל", fn: async () => { await resolveCloudIssue(); rerender(); } });
     }
+    const order = { danger: 0, warn: 1, ok: 2 };
+    items.sort((x, y) => (order[x.cls] ?? 1) - (order[y.cls] ?? 1));
     if (items.length) {
-        attn.innerHTML = `<div class="card-title" style="margin:14px 4px 6px;">דורש תשומת לב</div>`;
         for (const it of items) {
-            const row = h(`<div class="attn-row ${it.cls}"><span>${it.icon} ${escapeHtml(it.text)}</span><button type="button" class="btn btn-secondary btn-small">${it.btn}</button></div>`);
+            const row = h(`<div class="tint-row ${it.cls}"><span class="tr-ic">${it.icon}</span><span class="tr-text">${escapeHtml(it.text)}</span><button type="button" class="tr-btn">${it.btn}</button></div>`);
             row.querySelector("button").onclick = it.fn;
             attn.appendChild(row);
         }
     } else {
-        attn.innerHTML = `<div class="attn-row ok"><span>✓ הכול בסדר - אין משהו שדורש תשומת לב</span></div>`;
+        attn.innerHTML = `<div class="tint-row ok"><span class="tr-ic">✓</span><span class="tr-text">הכול בסדר, אין משהו שדורש תשומת לב</span></div>`;
     }
 
-    // ---- אחרונות ----
+    // ---- פעילות אחרונה: חשבוניות וזריקות, מהחדש לישן ----
     const recent = container.querySelector("#home-recent");
-    if (!invoices.length) recent.innerHTML = '<div class="empty-state" style="padding:16px;">עדיין אין חשבוניות.</div>';
-    for (const inv of invoices.slice(0, 3)) {
-        const row = h(`<div class="inv-row"><div class="inv-main"><div class="inv-sup">${escapeHtml(inv.supplier_name)}</div>
-            <div class="inv-sub">${inv.invoice_date} · ${inv.items.slice(0, 2).map((i) => escapeHtml(i.product_name)).join(", ")}</div></div>
-            <div class="inv-amt">${money(inv.total_amount)}</div></div>`);
-        row.onclick = () => { setSuppliersView("invoices", {}); go("suppliers"); };
+    const acts = [
+        ...invoices.map((i) => ({ date: i.invoice_date || "", ic: "🧾", title: i.supplier_name, sub: i.items.slice(0, 2).map((x) => x.product_name).join(", "), amt: money(i.total_amount), go: () => { setSuppliersView("invoices", {}); go("suppliers"); } })),
+        ...wasteLogs.map((l) => ({ date: l.date || "", ic: "🗑", title: `זריקה: ${l.name}`, sub: l.note || "", amt: money(l.cost), go: () => go("waste") })),
+    ].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 4);
+    if (!acts.length) recent.innerHTML = '<div class="empty-state" style="padding:14px;">עדיין אין פעילות.</div>';
+    for (const a of acts) {
+        const row = h(`<div class="act-row"><span class="act-ic">${a.ic}</span><div class="act-main"><div class="act-title">${escapeHtml(a.title)}</div><div class="act-sub">${a.date.split("-").reverse().join("/")}${a.sub ? " · " + escapeHtml(a.sub) : ""}</div></div><div class="act-amt">${a.amt}</div></div>`);
+        row.onclick = a.go;
         recent.appendChild(row);
     }
 }
