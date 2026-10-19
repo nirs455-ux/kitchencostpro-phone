@@ -7,6 +7,7 @@ import { getFilter, applyFilter, mountFilterBar, groupBySection, groupTitleEl } 
 // אילו מוצרים פתוחים כרגע (תוצרים מפורקים מוצגים רק אחרי לחיצה). מתאפס בכל כניסה ללשונית.
 const expanded = new Set();
 export function collapseAll() { expanded.clear(); }
+export function expandProduct(id) { expanded.add(id); }
 
 export async function renderProcessingPage(container) {
     const all = await listAllPantryItems();

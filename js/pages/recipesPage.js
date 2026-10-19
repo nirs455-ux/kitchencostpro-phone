@@ -16,6 +16,7 @@ import { RECIPE_UNIT_GRAMS } from "../recipeParse.js";
 import { textToGrams, gramsToKgText, describeQty, qtyWarning } from "../qty.js";
 import { bindPickerButton, refreshPickerButton } from "./ingredientPicker.js";
 import { isStaffMode } from "../staff.js";
+import { listRow, groupsEl, orderCategories, matchesDeep, normalize } from "./listKit.js";
 import { UNITS, convertToGrams, factorFor, scaleRecipe, fmtQty } from "../generator.js";
 import { recipeEggSummary, eggSummaryText, allocateEggCosts, isEggProduct, eggSizeOf, partGrams, eggBreakdown, EGG_SIZES, EGG_PARTS, EGG_PART_LABEL } from "../eggs.js";
 import { showImageFullscreen } from "../imageUtil.js";
@@ -46,12 +47,18 @@ function gramsFromOriginal(um, item) {
 
 const originalText = (d) => `${d.quantity != null ? d.quantity + " " : ""}${d.unit ? UNIT_HE[d.unit] || d.unit : ""}`.trim();
 
+const rcOpen = new Set(); // קטגוריות מתכונים פתוחות כרגע (מתאפס בכל כניסה לדף)
+export function collapseRecipes() { rcOpen.clear(); }
+
 export async function renderRecipesPage(container) {
     const recipes = await listRecipesWithItems();
     recipes.sort((a, b) => a.category.localeCompare(b.category, "he") || a.name.localeCompare(b.name, "he"));
     const draftCount = recipes.filter((r) => r.status === "draft").length;
+    let q = "";
 
-    container.innerHTML = `<div class="btn-row mgr-only"><button class="btn btn-accent" id="btn-scan-recipe">📷 סרוק מתכון (תמונה / קובץ)</button></div>
+    container.innerHTML = `
+        <div class="btn-row mgr-only"><button class="btn btn-accent" id="btn-scan-recipe">📷 סרוק מתכון (תמונה / קובץ)</button></div>
+        ${recipes.length ? `<div class="px-top"><input type="search" id="rc-q" placeholder="חיפוש מתכון..." autocomplete="off"></div>` : ""}
         ${recipes.length ? `<div class="fchips mgr-only">
             <button type="button" class="chip ${recipeFilter === "all" ? "active" : ""}" data-rf="all">הכול (${recipes.length})</button>
             <button type="button" class="chip ${recipeFilter === "ready" ? "active" : ""}" data-rf="ready">מוכנים (${recipes.length - draftCount})</button>
@@ -59,14 +66,23 @@ export async function renderRecipesPage(container) {
         <div id="recipes-list"></div><button class="fab-add mgr-only" id="btn-add">+</button>`;
     container.querySelectorAll("[data-rf]").forEach((b) => { b.onclick = () => { recipeFilter = b.dataset.rf; renderRecipesPage(container); }; });
     const list = container.querySelector("#recipes-list");
-    const shown = recipes.filter((r) => (isStaffMode() ? r.status !== "draft" : recipeFilter === "all" || (recipeFilter === "draft" ? r.status === "draft" : r.status !== "draft")));
-    if (recipes.length === 0) {
-        list.innerHTML = '<div class="empty-state">אין עדיין מתכונים - לחץ על + או סרוק מתכון מקובץ.</div>';
-    } else if (shown.length === 0) {
-        list.innerHTML = '<div class="empty-state">אין מתכונים בקטגוריה הזו.</div>';
-    } else {
-        for (const r of shown) list.appendChild(renderRecipeCard(r, container));
-    }
+
+    const draw = () => {
+        list.innerHTML = "";
+        const base = recipes.filter((r) => (isStaffMode() ? r.status !== "draft" : recipeFilter === "all" || (recipeFilter === "draft" ? r.status === "draft" : r.status !== "draft")));
+        const shown = base.filter((r) => matchesDeep({ name: r.name, category: r.category }, q));
+        if (recipes.length === 0) { list.innerHTML = '<div class="empty-state">אין עדיין מתכונים - לחץ על + או סרוק מתכון מקובץ.</div>'; return; }
+        if (!shown.length) { list.innerHTML = `<div class="empty-state">${q ? "לא נמצא מתכון תואם." : "אין מתכונים בקטגוריה הזו."}</div>`; return; }
+        const searching = !!normalize(q);
+        const groups = orderCategories(shown.map((r) => r.category)).map((cat) => ({
+            key: "rc:" + cat, title: cat, ic: "📖", tint: "var(--brand-soft)",
+            rows: shown.filter((r) => r.category === cat).map((r) => renderRecipeRow(r, container)),
+        }));
+        list.appendChild(groupsEl(groups, rcOpen, searching, (k) => { if (rcOpen.has(k)) rcOpen.delete(k); else rcOpen.add(k); draw(); }));
+    };
+    const qEl = container.querySelector("#rc-q");
+    if (qEl) qEl.oninput = () => { q = qEl.value; draw(); };
+    draw();
     container.querySelector("#btn-add").onclick = () => openRecipeModal(null, container);
     if (takeFlag("recipe-new") && !isStaffMode()) openRecipeModal(null, container); // נלחץ "מתכון חדש" בבית
     container.querySelector("#btn-scan-recipe").onclick = () => openImagePicker({
@@ -90,35 +106,12 @@ export async function scanRecipeFile(file, container) {
     }
 }
 
-function renderRecipeCard(r, container) {
+function renderRecipeRow(r, container) {
     const missing = (r.draft_ingredients || []).length;
     const isDraft = r.status === "draft";
-    const card = h(`
-        <div class="card">
-            <div class="card-title" data-details style="cursor:pointer;">${escapeHtml(r.name)}
-                ${isDraft ? `<span class="tag tag-warn">טיוטה · חסרים ${missing}</span>` : ""}${r.source_file ? ' <span title="המסמך המקורי נשמר">📎</span>' : ""}</div>
-            <div class="card-row">
-                <span class="tag">${escapeHtml(r.category)}</span>
-                <span>${r.final_weight > 0 ? r.final_weight.toFixed(0) + " גרם " + (r.is_auto_weight ? "(אוטומטי)" : "(ידני)") : "משקל טרם נקבע"}</span>
-            </div>
-            <div class="card-row"><span class="muted">${r.items.length} מרכיבים${missing ? " + " + missing + " חסרים" : ""}</span>
-                <span class="price-real cost-only">${isDraft ? "עלות חלקית " + money(r.total_cost) : money(r.cost_per_gram) + " / גרם"}</span></div>
-            <div class="card-actions">
-                <button class="btn btn-accent btn-small" data-details>פרטים</button>
-                <button class="btn ${isDraft ? "btn-primary" : "btn-secondary"} btn-small mgr-only" data-edit>${isDraft ? "השלם" : "עריכה"}</button>
-                <button class="btn btn-danger btn-small mgr-only" data-delete>מחיקה</button>
-            </div>
-        </div>
-    `);
-    card.querySelectorAll("[data-details]").forEach((el) => { el.onclick = () => openRecipeDetails(r, container); });
-    card.querySelector("[data-edit]").onclick = () => openRecipeModal(r, container);
-    card.querySelector("[data-delete]").onclick = async () => {
-        if (!(await confirmDialog("למחוק את המתכון?"))) return;
-        await deleteRecipe(r.id);
-        toast("נמחק");
-        renderRecipesPage(container);
-    };
-    return card;
+    const meta = `${r.items.length} מרכיבים${missing ? ` · <span class="tag tag-warn">טיוטה, חסרים ${missing}</span>` : ""}${r.source_file ? " · 📎" : ""}${r.final_weight > 0 ? " · " + r.final_weight.toFixed(0) + " גרם" : ""}`;
+    const end = `<span class="cost-only">${isDraft ? "חלקי " + money(r.total_cost) : money(r.cost_per_gram * 1000)}${isDraft ? "" : "<small>/ ק\"ג</small>"}</span>`;
+    return listRow({ ic: isDraft ? "📝" : "📖", tint: isDraft ? "var(--warn-soft)" : "var(--brand-soft)", name: r.name, meta, end, onClick: () => openRecipeDetails(r, container) });
 }
 
 // ---------- פרטי מתכון: רכיבים, עלות, הוראות, מסמך מקורי, ורשימת רכיבים לתווית ----------
@@ -306,11 +299,19 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
             </div>
             ${body}
             <div class="modal-actions"><button type="button" class="btn btn-secondary" id="d-close">סגור</button>
+                <button type="button" class="btn btn-danger mgr-only" id="d-del">מחיקה</button>
                 <button type="button" class="btn btn-primary mgr-only" id="d-edit">${r.status === "draft" ? "השלם" : "עריכה"}</button></div>
         `);
         if (keepTop) overlay.querySelector(".modal").scrollTop = keepTop;
         overlay.querySelector("#d-close").onclick = closeModal;
         overlay.querySelector("#d-edit").onclick = () => { closeModal(); openRecipeModal(r, container); };
+        overlay.querySelector("#d-del").onclick = async () => {
+            closeModal();
+            if (!(await confirmDialog("למחוק את המתכון?"))) return;
+            await deleteRecipe(r.id);
+            toast("נמחק");
+            renderRecipesPage(container);
+        };
         overlay.querySelectorAll("#d-seg [data-t]").forEach((b) => { b.onclick = () => { tab = b.dataset.t; draw(); }; });
         const src = overlay.querySelector("#d-source");
         if (src) src.onclick = () => showImageFullscreen(r.source_file, r.name);

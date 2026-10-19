@@ -4,19 +4,22 @@ import { h, openModal, closeModal, confirmDialog, toast, escapeHtml, busy, attem
 import { openScanModal } from "./scanModal.js";
 import { dbGetAll } from "../db.js";
 import { getSetting, setSetting } from "../repo/settingsRepo.js";
-import { renderProcessingPage, collapseAll } from "./processingPage.js";
+import { renderProcessingPage, collapseAll, expandProduct } from "./processingPage.js";
 import { renderInventoryPage } from "./inventoryPage.js";
 import { renderWastePage } from "./wastePage.js";
 import { isStaffMode } from "../staff.js";
 import { EGG_SIZES, isEggName, guessEggSize } from "../eggs.js";
 import { textToGrams, gramsToKgText, describeQty, qtyWarning } from "../qty.js";
-import { getFilter, applyFilter, mountFilterBar, groupBySection, groupTitleEl } from "../filters.js";
+import { matchesDeep, normalize, orderCategories } from "./ingredientPicker.js";
+import { getFilter } from "../filters.js";
+import { effectivePrice } from "../formulas.js";
+import { buildInventoryView } from "../repo/inventoryRepo.js";
 
 // מזווה = שלוש לשוניות: מוצרים | ספירת מלאי | עיבוד וניצולת. מצב עובד רואה רק ספירת מלאי.
 const TABS = [["products", "מוצרים"], ["inventory", "ספירה"], ["processing", "עיבוד"], ["waste", "פחת"]];
 const STAFF_TABS = ["inventory", "waste"]; // מצב עובד: ספירת מלאי ורישום פחת בלבד
 let currentTab = "products";
-export function setPantryTab(t) { collapseAll(); currentTab = TABS.some((x) => x[0] === t) ? t : "products"; }
+export function setPantryTab(t) { collapseAll(); collapsePantryList(); currentTab = TABS.some((x) => x[0] === t) ? t : "products"; }
 
 const UNIT_FORM_LABELS = { weight: 'לפי משקל (מחיר לק"ג)', liter: "לפי נפח (מחיר לליטר)", unit: "לפי יחידה (בקבוק, ביצה, חבילה)" };
 
@@ -26,99 +29,154 @@ export async function renderPantryPage(container) {
     const seg = `<div class="seg" id="pantry-seg">${tabs.map(([k, l]) => `<button type="button" data-tab="${k}" class="${k === currentTab ? "active" : ""}">${l}</button>`).join("")}</div>`;
     container.innerHTML = `${seg}<div id="pantry-tab"></div>`;
     const sub = container.querySelector("#pantry-tab");
-    container.querySelectorAll("#pantry-seg [data-tab]").forEach((b) => { b.onclick = () => { collapseAll(); currentTab = b.dataset.tab; renderPantryPage(container); }; });
+    container.querySelectorAll("#pantry-seg [data-tab]").forEach((b) => { b.onclick = () => { collapseAll(); collapsePantryList(); currentTab = b.dataset.tab; renderPantryPage(container); }; });
     if (currentTab === "waste") await renderWastePage(sub);
     else if (currentTab === "inventory") await renderInventoryPage(sub);
     else if (currentTab === "processing") await renderProcessingPage(sub);
     else await renderPantryProducts(sub);
 }
 
+// ---- דף המוצרים: קטגוריות סגורות (ברירת מחדל) או רשימה עם חיפוש וסינון. לחיצה על מוצר פותחת כרטיס עם פרטים ופעולות ----
+const pxOpen = new Set(); // קטגוריות/תתי-קטגוריות פתוחות כרגע (מתאפס בכל כניסה ללשונית)
+export function collapsePantryList() { pxOpen.clear(); }
+
+const CAT_STYLE = {
+    "מהים": ["🐟", "var(--accent-soft)"], "קצביה": ["🥩", "var(--danger-soft)"], "ירקניה": ["🥬", "var(--ok-soft)"],
+    "יבשים": ["📦", "var(--warn-soft)"], "מחלבה": ["🥛", "var(--brand-soft)"], "בר": ["🍷", "var(--brand-soft)"], "מחסן": ["🧰", "var(--surface-2)"],
+};
+const catStyle = (c) => CAT_STYLE[c] || ["📦", "var(--surface-2)"];
+const unitWord = (it) => (it.unit_type === "unit" ? "יחידה" : it.unit_type === "liter" ? "ליטר" : 'ק"ג');
+
+function pxRow(it, childCount) {
+    const [ic, tint] = catStyle(it.category);
+    const noWeight = it.unit_type === "unit" && !it.unit_amount;
+    const tags = [it.is_frozen ? '<span class="tag tag-frozen">❄ קפוא</span>' : "", noWeight ? '<span class="tag tag-danger">חסר משקל</span>' : "",
+        childCount ? `<span class="muted">${childCount + 1} אפשרויות</span>` : ""].filter(Boolean).join(" ");
+    return h(`<div class="px-row" data-id="${it.id}"><span class="px-ic" style="background:${tint};">${ic}</span>
+        <div class="px-main"><div class="px-name">${escapeHtml(it.name)}</div><div class="px-meta">${escapeHtml(it.subcategory || it.category)}${tags ? " · " : ""}${tags}</div></div>
+        <div class="px-price">${cur()}${Number(it.price).toFixed(2)}<small>/ ${unitWord(it)}</small></div></div>`);
+}
+
 export async function renderPantryProducts(container) {
+    const root = container.parentElement; // כל עמוד המזווה (לשוניות + תוכן), לרענון אחרי מעבר ללשונית אחרת
     const items = await listTopLevelPantryItems();
-    // תאריך קנייה אחרונה לכל מוצר (לפי חשבוניות; זיכויים לא נספרים) - לאפשרות המיון "קנייה אחרונה"
+    const all = await dbGetAll("pantryItems");
+    const kids = new Map();
+    for (const c of all) if (c.parent_id) kids.set(c.parent_id, [...(kids.get(c.parent_id) || []), c]);
     const lastBought = new Map();
     const invoiceDate = Object.fromEntries((await dbGetAll("invoices")).filter((i) => i.document_type !== "credit" && !i.deleted_at).map((i) => [i.id, i.invoice_date || ""]));
     for (const it of await dbGetAll("invoiceItems")) {
         const d = invoiceDate[it.invoice_id];
         if (it.pantry_item_id && d && d > (lastBought.get(it.pantry_item_id) || "")) lastBought.set(it.pantry_item_id, d);
     }
-    const sortMode = (await getSetting("pantry_sort")) || "name";
-    const sortItems = (mode) => items.sort((a, b) => a.category.localeCompare(b.category, "he") ||
-        (mode === "recent" ? (lastBought.get(b.id) || "").localeCompare(lastBought.get(a.id) || "") : 0) ||
-        a.name.localeCompare(b.name, "he"));
-    sortItems(sortMode);
+    let view = (await getSetting("pantry_view")) || "cats"; // cats | list
+    let sortMode = (await getSetting("pantry_sort")) || "name";
+    let q = "";
+    let chip = ""; // קטגוריה נבחרת בתצוגת הרשימה
+    const sorted = () => [...items].sort((a, b) => a.category.localeCompare(b.category, "he") || (sortMode === "recent" ? (lastBought.get(b.id) || "").localeCompare(lastBought.get(a.id) || "") : 0) || a.name.localeCompare(b.name, "he"));
+    const visible = (it) => matchesDeep({ name: it.name, category: it.category, subcategory: it.subcategory || "", children: (kids.get(it.id) || []).map((c) => ({ name: c.name })) }, q);
+    const noWeight = items.filter((it) => it.unit_type === "unit" && !it.unit_amount);
 
     container.innerHTML = `
-        <div class="btn-row">
-            <button class="btn btn-accent" id="btn-scan">📷 סרוק חשבונית</button>
-        </div>
-        <div class="field"><select id="pantry-sort">
-            <option value="name">מיון: לפי שם</option><option value="recent">מיון: נקנה לאחרונה קודם</option>
-        </select></div>
-        <div id="pantry-filter"></div>
+        ${noWeight.length ? `<div class="tint-row warn"><span class="tr-ic">⚖</span><span class="tr-text">${noWeight.length} מוצרים ביחידות בלי משקל ליחידה (אי אפשר להשתמש בהם במתכון)</span><button type="button" class="tr-btn" id="px-fix">תקן</button></div>` : ""}
+        <div class="px-top"><input type="search" id="px-q" placeholder="חיפוש מוצר..." autocomplete="off">
+            <div class="seg px-view"><button type="button" data-v="cats" class="${view === "cats" ? "active" : ""}">קטגוריות</button><button type="button" data-v="list" class="${view === "list" ? "active" : ""}">רשימה</button></div></div>
+        <div id="px-chips"></div>
         <div id="pantry-list"></div>
-        <button class="fab-add" id="btn-add">+</button>
-    `;
-
+        <button class="fab-add" id="btn-add">+</button>`;
     const list = container.querySelector("#pantry-list");
-    const filter = getFilter("pantry");
+    const chipsEl = container.querySelector("#px-chips");
 
-    function renderList() {
+    const openItem = (id) => openProductSheet(items.find((i) => i.id === id), kids.get(id) || [], container, root);
+    const wireRows = () => list.querySelectorAll(".px-row").forEach((r) => { r.onclick = () => openItem(Number(r.dataset.id)); });
+
+    function draw() {
         list.innerHTML = "";
-        if (items.length === 0) {
-            list.innerHTML = '<div class="empty-state">אין עדיין מוצרים במזווה - לחץ על + כדי להוסיף.</div>';
-            return;
-        }
-        for (const g of groupBySection(applyFilter(items, filter))) {
-            list.appendChild(groupTitleEl(g.title, g.items.length));
-            for (const it of g.items) list.appendChild(renderPantryCard(it));
-        }
-        list.querySelectorAll("[data-edit]").forEach((btn) => {
-            btn.onclick = () => openPantryModal(items.find((i) => i.id === Number(btn.dataset.edit)), container);
-        });
-        list.querySelectorAll("[data-delete]").forEach((btn) => {
-            btn.onclick = async () => {
-                try {
-                    const id = Number(btn.dataset.delete);
-                    if (!(await confirmDialog(deleteConfirmText(await getDeleteInfo(id))))) return;
-                    await deletePantryItem(id);
-                    toast("נמחק");
-                    renderPantryProducts(container);
-                } catch (e) {
-                    toast(e.message);
+        chipsEl.innerHTML = "";
+        if (!items.length) { list.innerHTML = '<div class="empty-state">אין עדיין מוצרים במזווה - לחץ על + כדי להוסיף.</div>'; return; }
+        const rows = sorted().filter(visible);
+        if (view === "list") {
+            const cats = orderCategories(items.map((i) => i.category));
+            chipsEl.innerHTML = `<div class="pk-chips"><button type="button" class="chip ${chip ? "" : "active"}" data-c="">הכול ${items.length}</button>${cats.map((c) => `<button type="button" class="chip ${chip === c ? "active" : ""}" data-c="${escapeHtml(c)}">${escapeHtml(c)} ${items.filter((i) => i.category === c).length}</button>`).join("")}
+                <select id="px-sort" class="chip-select"><option value="name">לפי שם</option><option value="recent">נקנה לאחרונה</option></select></div>`;
+            chipsEl.querySelectorAll("[data-c]").forEach((b) => { b.onclick = () => { chip = b.dataset.c; draw(); }; });
+            const ss = chipsEl.querySelector("#px-sort"); ss.value = sortMode;
+            ss.onchange = async () => { sortMode = ss.value; await setSetting("pantry_sort", sortMode); draw(); };
+            const shown = rows.filter((it) => !chip || it.category === chip);
+            if (!shown.length) list.innerHTML = `<div class="empty-state">${q ? "לא נמצא מוצר תואם." : "אין מוצרים בקטגוריה הזו."}</div>`;
+            for (const it of shown) list.appendChild(pxRow(it, (kids.get(it.id) || []).length));
+        } else {
+            const searching = !!normalize(q);
+            if (!rows.length) { list.innerHTML = '<div class="empty-state">לא נמצא מוצר תואם.</div>'; return; }
+            for (const cat of orderCategories(rows.map((r) => r.category))) {
+                const inCat = rows.filter((r) => r.category === cat);
+                const open = searching || pxOpen.has("c:" + cat);
+                const [ic] = catStyle(cat);
+                const sec = h(`<div class="px-sec"><div class="px-sh" data-k="c:${escapeHtml(cat)}"><span class="px-ic" style="background:${catStyle(cat)[1]};">${ic}</span><b>${escapeHtml(cat)}</b><span class="px-cnt">${inCat.length}</span><span class="px-chev">${open ? "▾" : "◂"}</span></div></div>`);
+                if (open) {
+                    const subs = [...new Set(inCat.map((r) => r.subcategory || ""))];
+                    const hasSubs = subs.some(Boolean);
+                    for (const sub of subs.sort((a, b) => a.localeCompare(b, "he"))) {
+                        const rowsSub = inCat.filter((r) => (r.subcategory || "") === sub);
+                        let body = rowsSub;
+                        if (hasSubs && sub) {
+                            const subOpen = searching || pxOpen.has(`s:${cat}:${sub}`);
+                            const sh = h(`<div class="px-sh px-sh2" data-k="s:${escapeHtml(cat)}:${escapeHtml(sub)}"><b>${escapeHtml(sub)}</b><span class="px-cnt">${rowsSub.length}</span><span class="px-chev">${subOpen ? "▾" : "◂"}</span></div>`);
+                            sec.appendChild(sh);
+                            if (!subOpen) continue;
+                        }
+                        for (const it of body) sec.appendChild(pxRow(it, (kids.get(it.id) || []).length));
+                    }
                 }
-            };
-        });
+                list.appendChild(sec);
+            }
+            list.querySelectorAll(".px-sh").forEach((hd) => { hd.onclick = () => { const k = hd.dataset.k; if (pxOpen.has(k)) pxOpen.delete(k); else pxOpen.add(k); draw(); }; });
+        }
+        wireRows();
     }
 
-    const sortSel = container.querySelector("#pantry-sort");
-    sortSel.value = sortMode;
-    sortSel.addEventListener("change", async () => {
-        await setSetting("pantry_sort", sortSel.value);
-        sortItems(sortSel.value);
-        renderList();
-    });
-    mountFilterBar(container.querySelector("#pantry-filter"), items, filter, renderList);
-    renderList();
-
+    const qEl = container.querySelector("#px-q");
+    qEl.oninput = () => { q = qEl.value; draw(); };
+    container.querySelectorAll(".px-view [data-v]").forEach((b) => { b.onclick = async () => { view = b.dataset.v; await setSetting("pantry_view", view); renderPantryProducts(container); }; });
+    const fix = container.querySelector("#px-fix");
+    if (fix) fix.onclick = () => openPantryModal(noWeight[0], container);
     container.querySelector("#btn-add").onclick = () => openPantryModal(null, container);
-    container.querySelector("#btn-scan").onclick = () => openScanModal({ supplierAware: false, onDone: () => renderPantryProducts(container) });
+    draw();
 }
 
-function renderPantryCard(it) {
-    return h(`
-        <div class="card">
-            <div class="card-title">${escapeHtml(it.name)} ${it.is_frozen ? '<span class="tag tag-frozen">❄ קפוא</span>' : ""}${it.unit_type === "unit" && !it.unit_amount ? '<span class="tag tag-danger">חסר משקל ליחידה</span>' : ""}</div>
-            <div class="card-row">
-                <span class="tag">${escapeHtml(it.category)}${it.subcategory ? " / " + escapeHtml(it.subcategory) : ""}</span>
-                <span class="price-raw">${cur()}${Number(it.price).toFixed(2)} / ${UNIT_TYPE_LABELS[it.unit_type]}</span>
-            </div>
-            <div class="card-actions">
-                <button class="btn btn-secondary btn-small" data-edit="${it.id}">עריכה</button>
-                <button class="btn btn-danger btn-small" data-delete="${it.id}">מחיקה</button>
-            </div>
+// כרטיס מוצר: פרטים ופעולות (עריכה, עיבוד, מחיקה) - במקום כפתורים בכל שורה
+async function openProductSheet(it, children, container, root) {
+    if (!it) return;
+    const [ic, tint] = catStyle(it.category);
+    const eff = effectivePrice(it.price, it.yield_pct, it.is_frozen);
+    let stock = null;
+    try { stock = (await buildInventoryView()).find((x) => x.id === it.id); } catch (e) { /* לא קריטי */ }
+    const row = (k, v) => `<div class="sh-row"><span class="muted">${k}</span><span>${v}</span></div>`;
+    const overlay = openModal(`
+        <div class="sh-head"><span class="px-ic" style="background:${tint};">${ic}</span><div><div class="sh-name">${escapeHtml(it.name)}</div><div class="muted">${escapeHtml(it.category)}${it.subcategory ? " / " + escapeHtml(it.subcategory) : ""}${it.is_frozen ? " · ❄ קפוא" : ""}</div></div></div>
+        ${row("מחיר קנייה", `${cur()}${Number(it.price).toFixed(2)} / ${unitWord(it)}`)}
+        ${Math.abs(eff - Number(it.price)) > 0.004 ? row("מחיר אמיתי (אחרי ניצולת)", `${cur()}${eff.toFixed(2)} (${Number(it.yield_pct).toFixed(0)}%)`) : ""}
+        ${it.unit_type === "unit" ? row("משקל ליחידה", it.unit_amount ? `${gramsToKgText(it.unit_amount)} ק"ג` : '<span style="color:var(--danger);">חסר</span>') : ""}
+        ${stock ? row("מלאי תיאורטי", `${+Number(stock.theoretical_quantity).toFixed(3)} ${unitWord(it)}`) : ""}
+        ${children.length ? row("תוצרים מפורקים", `${children.length}`) : ""}
+        <div class="sh-actions">
+            <button type="button" class="btn btn-secondary" id="sh-edit">עריכה</button>
+            <button type="button" class="btn btn-secondary" id="sh-proc">עיבוד</button>
+            <button type="button" class="btn btn-danger" id="sh-del">מחיקה</button>
         </div>
-    `);
+        <button type="button" class="btn btn-secondary btn-block" id="sh-close" style="margin-top:8px;">סגור</button>`);
+    overlay.querySelector("#sh-close").onclick = closeModal;
+    overlay.querySelector("#sh-edit").onclick = () => { closeModal(); openPantryModal(it, container); };
+    overlay.querySelector("#sh-proc").onclick = () => { closeModal(); collapseAll(); expandProduct(it.id); const f = getFilter("processing"); f.category = it.category; f.subcategory = ""; currentTab = "processing"; renderPantryPage(root); };
+    overlay.querySelector("#sh-del").onclick = async () => {
+        try {
+            closeModal();
+            if (!(await confirmDialog(deleteConfirmText(await getDeleteInfo(it.id))))) return;
+            await deletePantryItem(it.id);
+            toast("נמחק");
+            renderPantryProducts(container);
+        } catch (e) { toast(e.message); }
+    };
 }
 
 function subcategoryOptions(category, current) {

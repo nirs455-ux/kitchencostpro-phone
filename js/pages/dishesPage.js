@@ -5,6 +5,7 @@ import { NON_FOOD_CATEGORIES } from "../constants.js";
 import { pricePerGram, itemCost as calcItemCost, computeDishPricing } from "../formulas.js";
 import { textToGrams, gramsToKgText, describeQty, qtyWarning } from "../qty.js";
 import { bindPickerButton, refreshPickerButton } from "./ingredientPicker.js";
+import { listRow, matchesDeep } from "./listKit.js";
 import { h, openModal, closeModal, confirmDialog, toast, escapeHtml, money, info, busy, attemptClose, cur, curLabel } from "../ui.js";
 
 async function allSources() {
@@ -31,42 +32,30 @@ function ppgFor(src) {
 export async function renderDishesPage(container) {
     const dishes = await listDishesWithItems();
     dishes.sort((a, b) => a.name.localeCompare(b.name, "he"));
-
-    container.innerHTML = `<div id="dishes-list"></div><button class="fab-add" id="btn-add">+</button>`;
+    let q = "";
+    container.innerHTML = `${dishes.length ? `<div class="px-top"><input type="search" id="ds-q" placeholder="חיפוש מנה..." autocomplete="off"></div>` : ""}<div id="dishes-list"></div><button class="fab-add" id="btn-add">+</button>`;
     const list = container.querySelector("#dishes-list");
-    if (dishes.length === 0) {
-        list.innerHTML = '<div class="empty-state">אין עדיין מנות - לחץ על + כדי להוסיף.</div>';
-    } else {
-        for (const d of dishes) list.appendChild(renderDishCard(d, container));
-    }
-    container.querySelector("#btn-add").onclick = () => openDishModal(null, container);
-}
-
-function renderDishCard(d, container) {
-    const fcHigh = d.food_cost_pct > 33;
-    const card = h(`
-        <div class="card">
-            <div class="card-title">${escapeHtml(d.name)}</div>
-            <div class="card-row"><span class="muted">מחיר מכירה</span><span>${money(d.selling_price)}</span></div>
-            <div class="card-row"><span class="muted">עלות</span><span>${money(d.total_cost)}</span></div>
-            <div class="card-row">
-                <span class="tag ${fcHigh ? "tag-danger" : ""}">Food Cost: ${d.food_cost_pct.toFixed(1)}%</span>
-                <span class="price-real">רווח: ${d.profit_pct.toFixed(1)}%</span>
-            </div>
-            <div class="card-actions">
-                <button class="btn btn-secondary btn-small" data-edit>עריכה</button>
-                <button class="btn btn-danger btn-small" data-delete>מחיקה</button>
-            </div>
-        </div>
-    `);
-    card.querySelector("[data-edit]").onclick = () => openDishModal(d, container);
-    card.querySelector("[data-delete]").onclick = async () => {
-        if (!(await confirmDialog("למחוק את המנה?"))) return;
-        await deleteDish(d.id);
-        toast("נמחק");
-        renderDishesPage(container);
+    const draw = () => {
+        list.innerHTML = "";
+        if (!dishes.length) { list.innerHTML = '<div class="empty-state">אין עדיין מנות - לחץ על + כדי להוסיף.</div>'; return; }
+        const shown = dishes.filter((d) => matchesDeep({ name: d.name }, q));
+        if (!shown.length) { list.innerHTML = '<div class="empty-state">לא נמצאה מנה תואמת.</div>'; return; }
+        for (const d of shown) {
+            const fc = Number(d.food_cost_pct) || 0;
+            const tone = fc > 33 ? "danger" : fc > 30 ? "warn" : "ok";
+            const tint = tone === "danger" ? "var(--danger-soft)" : tone === "warn" ? "var(--warn-soft)" : "var(--ok-soft)";
+            list.appendChild(listRow({
+                ic: "🍽️", tint, name: d.name,
+                meta: `מחיר ${money(d.selling_price)} · עלות ${money(d.total_cost)} · רווח ${Number(d.profit_pct).toFixed(0)}%`,
+                end: `<span class="tag ${tone === "danger" ? "tag-danger" : tone === "warn" ? "tag-warn" : ""}">${fc.toFixed(1)}%</span><small>עלות מזון</small>`,
+                onClick: () => openDishModal(d, container),
+            }));
+        }
     };
-    return card;
+    const qEl = container.querySelector("#ds-q");
+    if (qEl) qEl.oninput = () => { q = qEl.value; draw(); };
+    draw();
+    container.querySelector("#btn-add").onclick = () => openDishModal(null, container);
 }
 
 async function openDishModal(existing, container) {
@@ -88,10 +77,19 @@ async function openDishModal(existing, container) {
         <div class="card" id="pricing-preview" style="background:var(--surface-2);"></div>
         <div class="error-msg"></div>
         <div class="modal-actions">
+            ${existing ? '<button class="btn btn-danger" id="btn-del-dish">מחיקה</button>' : ""}
             <button class="btn btn-secondary" id="btn-cancel">ביטול</button>
             <button class="btn btn-primary" id="btn-save">שמירה</button>
         </div>
     `);
+    const delBtn = overlay.querySelector("#btn-del-dish");
+    if (delBtn) delBtn.onclick = async () => {
+        closeModal();
+        if (!(await confirmDialog("למחוק את המנה?"))) return;
+        await deleteDish(existing.id);
+        toast("נמחק");
+        renderDishesPage(container);
+    };
 
     const box = overlay.querySelector("#ingredients-box");
 
