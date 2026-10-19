@@ -175,3 +175,9 @@ if (typeof document !== "undefined") {
     }, true);
     window.addEventListener("scroll", closeInfoPop, true);
 }
+
+// דגל חד-פעמי בין מסכים: הבית מדליק, והמסך הבא קורא ומנקה (למשל לפתוח ישר חלון "מתכון חדש")
+export function setFlag(key) { try { sessionStorage.setItem("kcp_flag_" + key, "1"); } catch (e) { /* לא קריטי */ } }
+export function takeFlag(key) {
+    try { const k = "kcp_flag_" + key; const v = sessionStorage.getItem(k); sessionStorage.removeItem(k); return v === "1"; } catch (e) { return false; }
+}
