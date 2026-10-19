@@ -451,30 +451,31 @@ async function openRecipeModal(existing, container, draft = null) {
     const rowMeta = new Map(); // id -> { um: {name, quantity, unit} | null }
 
     const overlay = openModal(`
-        <h2>${isEdit ? (existing.status === "draft" ? "השלמת מתכון (טיוטה)" : "עריכת מתכון") : draft ? "מתכון חדש (מסריקה - בדוק לפני שמירה)" : "מתכון חדש"}</h2>
-        ${draft ? scanNoticeHtml(draft) : ""}
-        <div class="field"><label>שם מתכון</label><input type="text" id="f-name" value="${src ? escapeHtml(src.name) : ""}"></div>
-        <div class="field">
-            <label>קטגוריה</label>
-            <select id="f-category">
-                <option value="">בחר...</option>
-                ${RECIPE_CATEGORIES.map((c) => `<option value="${c}" ${src && src.category === c ? "selected" : ""}>${c}</option>`).join("")}
-            </select>
+        <div class="pg-top"><button type="button" class="pg-back" id="btn-cancel" aria-label="חזרה">→</button>
+            <div class="pg-title">${isEdit ? (existing.status === "draft" ? "השלמת מתכון (טיוטה)" : "עריכת מתכון") : draft ? "מתכון חדש (מסריקה, בדוק לפני שמירה)" : "מתכון חדש"}</div></div>
+        <div class="pg-body">
+            ${draft ? scanNoticeHtml(draft) : ""}
+            <div class="field"><label>שם המתכון</label><input type="text" id="f-name" value="${src ? escapeHtml(src.name) : ""}"></div>
+            <div class="field">
+                <label>קטגוריה</label>
+                <select id="f-category">
+                    <option value="">בחר...</option>
+                    ${RECIPE_CATEGORIES.map((c) => `<option value="${c}" ${src && src.category === c ? "selected" : ""}>${c}</option>`).join("")}
+                </select>
+            </div>
+            <div class="pg-sec">מרכיבים</div>
+            <div id="ingredients-box"></div>
+            <button type="button" class="pg-add" id="btn-add-row">＋ הוסף מרכיב</button>
+            <details class="pg-more"><summary>הוראות הכנה</summary><textarea id="f-method" rows="5" style="width:100%;">${src && src.method ? escapeHtml(src.method) : ""}</textarea></details>
+            <details class="pg-more"><summary>משקל סופי ידני</summary><div class="hint">בק"ג. ריק = סכום המרכיבים.</div><input type="text" inputmode="decimal" id="f-manual-weight" value="${existing && !existing.is_auto_weight ? gramsToKgText(existing.final_weight) : ""}"></details>
+            ${(existing && existing.source_file) || (draft && draft.source_file) ? '<div class="hint">📎 המסמך המקורי יישמר עם המתכון.</div>' : ""}
+            <div class="hint" id="egg-note"></div>
+            <div class="hint" id="partial-note" style="display:none;color:var(--danger);">העלות חלקית - יש רכיבים שעדיין לא במזווה.</div>
+            <div class="error-msg"></div>
         </div>
-        <div id="ingredients-box"></div>
-        <button type="button" class="btn btn-secondary btn-small" id="btn-add-row">+ הוסף מרכיב</button>
-        <div class="field" style="margin-top:12px;"><label>הוראות הכנה (אופציונלי)</label><textarea id="f-method" rows="4" style="width:100%;">${src && src.method ? escapeHtml(src.method) : ""}</textarea></div>
-        <div class="field" style="margin-top:12px;"><label>משקל סופי ידני (ק"ג, אופציונלי - ריק = סכום המרכיבים)</label><input type="text" inputmode="decimal" id="f-manual-weight" value="${existing && !existing.is_auto_weight ? gramsToKgText(existing.final_weight) : ""}"></div>
-        ${(existing && existing.source_file) || (draft && draft.source_file) ? '<div class="hint">📎 המסמך המקורי יישמר עם המתכון.</div>' : ""}
-        <div class="card-row" style="font-weight:700;"><span>עלות כוללת:</span><span id="total-cost-display">${cur()}0.00</span></div>
-        <div class="hint" id="egg-note"></div>
-        <div class="hint" id="partial-note" style="display:none;color:var(--danger);">העלות חלקית - יש רכיבים שעדיין לא במזווה.</div>
-        <div class="error-msg"></div>
-        <div class="modal-actions">
-            <button class="btn btn-secondary" id="btn-cancel">ביטול</button>
-            <button class="btn btn-primary" id="btn-save">שמירה</button>
-        </div>
-    `);
+        <div class="pg-foot"><div class="pg-sum"><span>עלות כוללת</span><b id="total-cost-display">${cur()}0.00</b></div>
+            <button type="button" class="btn btn-primary btn-block" id="btn-save">שמירת מתכון</button></div>
+    `, { page: true });
 
     const box = overlay.querySelector("#ingredients-box");
     const selectOptions = (selectedId) => sources.map((s) => `<option value="${s.id}" ${selectedId === s.id ? "selected" : ""}>${s.indent ? "↳ " : ""}${escapeHtml(s.name)}</option>`).join("");

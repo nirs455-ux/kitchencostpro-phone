@@ -63,25 +63,31 @@ async function openDishModal(existing, container) {
     let rowCounter = 0;
 
     const overlay = openModal(`
-        <h2>${existing ? "עריכת מנה" : "מנה חדשה"}</h2>
-        <div class="field"><label>שם מנה</label><input type="text" id="f-name" value="${existing ? escapeHtml(existing.name) : ""}"></div>
-        <div id="ingredients-box"></div>
-        <button type="button" class="btn btn-secondary btn-small" id="btn-add-row">+ הוסף מרכיב</button>
-        <div class="card-row" style="font-weight:700;margin-top:10px;"><span>עלות כוללת:</span><span id="cost-display">${cur()}0.00</span></div>
-        <div class="form-row" style="margin-top:12px;">
-            <div class="field"><label>מכפיל עלות (ידני, אופציונלי)</label><input type="number" step="any" id="f-multiplier" placeholder="לדוגמה: 3.5" value="${existing && existing.multiplier ? existing.multiplier : ""}"></div>
-            <div class="field"><label>יעד אחוז עלות מזון % (אופציונלי) ${info("יעד 25% = מכפיל ×4. המחיר למטה מתמלא אוטומטית ברגע שמזינים מכפיל או יעד, ועדיין אפשר לערוך אותו ידנית.")}</label><input type="number" step="any" id="f-target" placeholder="לדוגמה: 25" value="${existing && existing.target_profit_pct ? existing.target_profit_pct : ""}"></div>
+        <div class="pg-top"><button type="button" class="pg-back" id="btn-cancel" aria-label="חזרה">→</button>
+            <div class="pg-title">${existing ? "עריכת מנה" : "מנה חדשה"}</div>
+            ${existing ? '<button type="button" class="pg-del" id="btn-del-dish">מחיקה</button>' : ""}</div>
+        <div class="pg-body">
+            <div class="field"><label>שם המנה</label><input type="text" id="f-name" value="${existing ? escapeHtml(existing.name) : ""}"></div>
+            <div class="pg-sec">מרכיבים</div>
+            <div id="ingredients-box"></div>
+            <button type="button" class="pg-add" id="btn-add-row">＋ הוסף מרכיב או מתכון</button>
+            <div class="pg-sec">מחיר ורווחיות</div>
+            <div class="card-pg">
+                <div class="field"><label>מחיר מכירה (${curLabel()}, לפני מע"מ)</label><input type="number" step="any" id="f-price" value="${existing ? existing.price_before_vat : ""}"></div>
+                <div id="pricing-preview"></div>
+                <details class="pg-more"><summary>מכפיל, יעד עלות מזון ומע"מ</summary>
+                    <div class="form-row">
+                        <div class="field"><label>מכפיל עלות</label><input type="number" step="any" id="f-multiplier" placeholder="לדוגמה: 3.5" value="${existing && existing.multiplier ? existing.multiplier : ""}"></div>
+                        <div class="field"><label>יעד עלות מזון % ${info("יעד 25% = מכפיל ×4. המחיר למעלה מתמלא אוטומטית ברגע שמזינים מכפיל או יעד, ועדיין אפשר לערוך אותו ידנית.")}</label><input type="number" step="any" id="f-target" placeholder="לדוגמה: 25" value="${existing && existing.target_profit_pct ? existing.target_profit_pct : ""}"></div>
+                    </div>
+                    <div class="field"><label>מע"מ (%)</label><input type="number" step="any" id="f-vat" value="${existing ? existing.vat_pct : 18}"></div>
+                </details>
+            </div>
+            <div class="error-msg"></div>
         </div>
-        <div class="field"><label>מחיר (${curLabel()}, לפני מע"מ)</label><input type="number" step="any" id="f-price" value="${existing ? existing.price_before_vat : ""}"></div>
-        <div class="field"><label>מע"מ (%)</label><input type="number" step="any" id="f-vat" value="${existing ? existing.vat_pct : 18}"></div>
-        <div class="card" id="pricing-preview" style="background:var(--surface-2);"></div>
-        <div class="error-msg"></div>
-        <div class="modal-actions">
-            ${existing ? '<button class="btn btn-danger" id="btn-del-dish">מחיקה</button>' : ""}
-            <button class="btn btn-secondary" id="btn-cancel">ביטול</button>
-            <button class="btn btn-primary" id="btn-save">שמירה</button>
-        </div>
-    `);
+        <div class="pg-foot"><div class="pg-sum"><span>עלות המנה</span><b id="cost-display">${cur()}0.00</b></div>
+            <button type="button" class="btn btn-primary btn-block" id="btn-save">שמירת מנה</button></div>
+    `, { page: true });
     const delBtn = overlay.querySelector("#btn-del-dish");
     if (delBtn) delBtn.onclick = async () => {
         closeModal();
@@ -168,10 +174,12 @@ async function openDishModal(existing, container) {
         const preview = overlay.querySelector("#pricing-preview");
         if (priceBeforeVat > 0) {
             const r = computeDishPricing(total, sellingPrice, vatPct);
+            const tone = r.food_cost_pct > 33 ? "var(--danger)" : r.food_cost_pct > 30 ? "var(--warn-border)" : "var(--ok)";
             preview.innerHTML = `
-                <div class="card-row"><span>מחיר מכירה (כולל מע"מ)</span><span>${money(sellingPrice)}</span></div>
+                <div class="gauge"><i style="width:${Math.min(100, Math.max(2, r.food_cost_pct)).toFixed(0)}%;background:${tone};"></i></div>
+                <div class="card-row"><span>עלות מזון</span><b style="color:${tone};">${r.food_cost_pct.toFixed(1)}%</b></div>
                 <div class="card-row"><span>רווח</span><span>${money(r.profit_amount)} (${r.profit_pct.toFixed(1)}%)</span></div>
-                <div class="card-row"><span>Food Cost %</span><span>${r.food_cost_pct.toFixed(1)}%</span></div>
+                <div class="card-row"><span class="muted">מחיר מכירה כולל מע"מ</span><span class="muted">${money(sellingPrice)}</span></div>
             `;
         } else {
             preview.innerHTML = `<div class="card-row"><span class="muted">הזן מחיר (ידנית או דרך מכפיל/יעד למעלה) כדי לראות רווחיות</span></div>`;
