@@ -6,6 +6,9 @@ export default {
     "common.cancel": "Abbrechen",
     "common.save": "Speichern",
 
+    "w.exit.text": "Einrichtung verlassen? Du kannst sie jederzeit in den Einstellungen erneut starten.",
+    "w.exit.label": "Beenden",
+
     "w.s.lang": "Sprache",
     "w.s.agent": "Agent",
     "w.s.google": "Google",

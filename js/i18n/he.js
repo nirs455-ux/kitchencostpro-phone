@@ -6,6 +6,9 @@ export default {
     "common.cancel": "ביטול",
     "common.save": "שמירה",
 
+    "w.exit.text": "לצאת מהאשף? אפשר להפעיל אותו שוב בכל זמן מההגדרות.",
+    "w.exit.label": "יציאה",
+
     "w.s.lang": "שפה",
     "w.s.agent": "סוכן",
     "w.s.google": "Google",

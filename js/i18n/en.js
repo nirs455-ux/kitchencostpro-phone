@@ -6,6 +6,9 @@ export default {
     "common.cancel": "Cancel",
     "common.save": "Save",
 
+    "w.exit.text": "Leave the setup? You can run it again any time from Settings.",
+    "w.exit.label": "Exit",
+
     "w.s.lang": "Language",
     "w.s.agent": "Agent",
     "w.s.google": "Google",
