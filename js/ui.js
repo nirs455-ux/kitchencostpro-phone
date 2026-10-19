@@ -16,10 +16,11 @@ export function toast(msg) {
 
 let currentModalCleanup = null;
 
-export function openModal(innerHtml, { onClose } = {}) {
+// page: true = דף מלא (בניית מתכון/מנה): כותרת עליונה, גוף נגלל, וסיכום קבוע בתחתית
+export function openModal(innerHtml, { onClose, page = false } = {}) {
     closeModal();
     const root = document.getElementById("modal-root");
-    const overlay = h(`<div class="modal-overlay open"><div class="modal">${innerHtml}</div></div>`);
+    const overlay = h(`<div class="modal-overlay open ${page ? "page" : ""}"><div class="modal ${page ? "page-modal" : ""}">${innerHtml}</div></div>`);
     // כל הקלדה/שינוי בחלון מסמנים אותו כ"מלוכלך" - סגירה בלחיצה בחוץ או ב"ביטול" תשאל קודם
     overlay.__dirty = false;
     overlay.addEventListener("input", () => { overlay.__dirty = true; });
