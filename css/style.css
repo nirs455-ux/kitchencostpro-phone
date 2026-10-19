@@ -315,3 +315,6 @@ table.simple th { background: var(--brand); color: var(--on-brand); }
 .pk-indent { margin-right: 18px; }
 .pk-name { font-size: 15px; }
 .pk-hint { color: var(--muted); font-size: 12px; white-space: nowrap; }
+
+.tree-toggle { display: block; width: 100%; text-align: right; background: var(--brand-soft); color: var(--brand); border: none; border-radius: var(--radius-btn); padding: 7px 10px; margin: 6px 0; font-family: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+.pk-sub { padding: 0 14px 8px; color: var(--text-2); font-size: 13px; }
