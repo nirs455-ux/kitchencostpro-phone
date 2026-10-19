@@ -11,6 +11,7 @@ import { listQueue, addToQueue } from "../repo/scanQueue.js";
 import { isStaffMode } from "../staff.js";
 import { compressImage } from "../imageUtil.js";
 import { getCloudStatus } from "../cloud/cloudGlue.js";
+import { computeStatus, openWizardAt } from "../statusIcons.js";
 import { resolveCloudIssue } from "../cloud/cloudUi.js";
 
 const go = (page) => { location.hash = page; };
@@ -66,9 +67,6 @@ export async function renderHomePage(container) {
     container.innerHTML = `
         <button class="btn btn-primary btn-big btn-block" id="home-scan" style="margin:8px 0 4px;">📷 סרוק חשבונית</button>
         <div class="hint" style="text-align:center;margin-bottom:12px;">צלם קבלה או חשבונית - הכול מתעדכן מהתמונה</div>
-        ${showSteps ? `<div class="card" id="home-steps"><div class="card-title">להתחלה</div>
-            ${steps.map((s, i) => `<div class="card-row" style="align-items:center;margin:8px 0;"><span>${s.done ? "✅" : "⬜"} ${s.text}</span>
-                ${s.done ? "" : `<button type="button" class="btn btn-secondary btn-small" data-step="${i}">${s.label}</button>`}</div>`).join("")}</div>` : ""}
         <div id="home-attn"></div>
         <div class="card-title" style="margin:14px 4px 6px;">חשבוניות אחרונות</div>
         <div id="home-recent"></div>
@@ -80,7 +78,6 @@ export async function renderHomePage(container) {
 
     const scan = () => openScanModal({ supplierAware: true, onDone: rerender });
     container.querySelector("#home-scan").onclick = scan;
-    container.querySelectorAll("[data-step]").forEach((b) => { b.onclick = () => steps[Number(b.dataset.step)].action(); });
 
     // ---- מה דורש תשומת לב ----
     const attn = container.querySelector("#home-attn");
@@ -92,6 +89,9 @@ export async function renderHomePage(container) {
     const cloudFresh = cloudNow.enabled && cloudNow.lastBackup && daysSince(cloudNow.lastBackup) < 3; // גיבוי טרי בענן מחליף תזכורת לגיבוי ידני
     if (pantry.length + invoices.length > 0 && !cloudFresh && daysSince(lastExport) >= 7) items.push({ cls: "warn", icon: "💾", text: lastExport ? `לא יוצא גיבוי ${daysSince(lastExport)} ימים` : "עדיין לא יוצא גיבוי", btn: "ייצא", fn: async () => { await downloadExport(); rerender(); } });
     if (counts.length && daysSince(lastCount) >= 14) items.push({ cls: "warn", icon: "📋", text: `ספירת המלאי האחרונה לפני ${daysSince(lastCount)} ימים`, btn: "לספירה", fn: () => go("inventory") });
+    const sts = await computeStatus();
+    if (sts.agent === "bad") items.unshift({ cls: "danger", icon: "🤖", text: "אין סוכן מחובר - אי אפשר לסרוק חשבוניות ומתכונים מתמונה", btn: "חבר", fn: () => openWizardAt(1) });
+    if (sts.cloud === "bad") items.push({ cls: "warn", icon: "☁️", text: sts.cloudAvailable ? "אין גיבוי בענן - הנתונים שמורים רק בטלפון הזה" : "אין גיבוי בענן (החיבור עדיין לא הוגדר) - ייצא גיבוי ידני", btn: sts.cloudAvailable ? "חבר" : "ייצא", fn: sts.cloudAvailable ? () => openWizardAt(2) : async () => { await downloadExport(); rerender(); } });
     const cst = getCloudStatus();
     if (cst.enabled && (cst.state === "conflict" || cst.state === "needs-auth" || cst.state === "error")) {
         const text = cst.state === "conflict" ? "הענן שונה ממכשיר אחר" : cst.state === "needs-auth" ? "הגיבוי לענן מחכה לאישור שלך" : "הגיבוי לענן נכשל";
@@ -104,7 +104,7 @@ export async function renderHomePage(container) {
             row.querySelector("button").onclick = it.fn;
             attn.appendChild(row);
         }
-    } else if (!showSteps) {
+    } else {
         attn.innerHTML = `<div class="attn-row ok"><span>✓ הכול בסדר - אין משהו שדורש תשומת לב</span></div>`;
     }
 

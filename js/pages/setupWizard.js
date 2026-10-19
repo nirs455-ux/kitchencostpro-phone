@@ -2,7 +2,7 @@
 // כל הטקסטים נשלפים מ-i18n (עברית, אנגלית, גרמנית). כל שלב ניתן לדילוג ואפשר לשנות הכול אחר כך בהגדרות.
 import { getSetting, setSetting } from "../repo/settingsRepo.js";
 import { COUNTRIES, CURRENCIES, countryByKey, saveLocale } from "../locale.js";
-import { escapeHtml } from "../ui.js";
+import { escapeHtml, confirmDialog } from "../ui.js";
 import { isCloudAvailable, getCloudStatus } from "../cloud/cloudGlue.js";
 import { runConnectFlow, fmtWhen } from "../cloud/cloudUi.js";
 import { t, setLang, langDir, LANGS } from "../i18n.js";
@@ -67,10 +67,10 @@ export async function testGeminiKey(key) {
 }
 
 // opts.onDone נקרא בסיום. האשף לא נסגר בלחיצה בחוץ, ואפשר לדלג על כל שלב.
-export async function openSetupWizard({ onDone } = {}) {
+export async function openSetupWizard({ onDone, startStep = 0 } = {}) {
     css();
     const state = {
-        step: 0, keyStep: 0, sub: "choose",
+        step: startStep, keyStep: 0, sub: "choose",
         lang: (await getSetting("language")) || "he",
         key: (await getSetting("gemini_api_key")) || "",
         role: (await getSetting("role")) || "",
@@ -171,11 +171,19 @@ export async function openSetupWizard({ onDone } = {}) {
         }
 
         const skipLabel = s === 5 ? t("f.skip") : t("common.skip");
-        root.innerHTML = `<div class="wiz-top"><span>${t(STEP_KEYS[s])}</span><span class="wiz-dots">${STEP_KEYS.map((_, i) => `<i class="${i <= s ? "on" : ""}"></i>`).join("")}</span></div>
+        root.innerHTML = `<div class="wiz-top"><span style="display:flex;align-items:center;"><button type="button" class="wiz-x" id="w-exit" aria-label="${t("w.exit.label")}">✕</button>${t(STEP_KEYS[s])}</span><span class="wiz-dots">${STEP_KEYS.map((_, i) => `<i class="${i <= s ? "on" : ""}"></i>`).join("")}</span></div>
             <div class="wiz-body">${body}</div>
             <div class="wiz-foot">${back ? `<button type="button" class="btn btn-secondary" id="w-back">${t("common.back")}</button>` : ""}${skip ? `<button type="button" class="btn btn-secondary" id="w-skip">${skipLabel}</button>` : ""}${showNext ? `<button type="button" class="btn btn-primary" id="w-next">${nextLabel}</button>` : ""}</div>`;
 
         const q = (sel) => root.querySelector(sel);
+        // יציאה בכל שלב: האשף נסגר ולא נפתח שוב לבד (אפשר להפעיל מההגדרות)
+        q("#w-exit").onclick = async () => {
+            if (!(await confirmDialog(escapeHtml(t("w.exit.text"))))) return;
+            await setSetting("setup_done", true);
+            root.remove();
+            window.dispatchEvent(new CustomEvent("kcp-status-refresh"));
+            if (onDone) onDone(state);
+        };
         const go = (n) => { state.step = n; state.sub = "choose"; draw(); };
 
         const goNext = async () => {

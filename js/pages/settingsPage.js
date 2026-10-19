@@ -87,6 +87,7 @@ export async function renderSettingsPage(container) {
 
     container.querySelector("#btn-save-key").onclick = async () => {
         await setSetting("gemini_api_key", container.querySelector("#f-apikey").value.trim());
+        window.dispatchEvent(new CustomEvent("kcp-status-refresh"));
         toast("נשמר");
     };
 
