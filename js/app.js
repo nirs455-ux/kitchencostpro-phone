@@ -19,6 +19,7 @@ import { purgeOldTrash } from "./repo/suppliersRepo.js";
 import { consumeSharedFile } from "./share.js";
 import { isStaffMode, openUnlockDialog, guardSettings, hasPin, settingsUnlocked } from "./staff.js";
 import { initLang } from "./i18n.js";
+import { initStatusIcons, renderStatusIcons } from "./statusIcons.js";
 import { installErrorHandlers } from "./errorLog.js";
 import { openScanModal } from "./pages/scanModal.js";
 import { scanRecipeFile } from "./pages/recipesPage.js";
@@ -73,6 +74,7 @@ async function navigate(pageKey) {
     pageTitle.textContent = "KitchenCostPro - " + shown.title;
     document.getElementById("page-info").innerHTML = shown.info ? info(shown.info) : "";
     view.innerHTML = '<div class="empty-state">טוען...</div>';
+    renderStatusIcons();
     try {
         await shown.render(view);
     } catch (e) {
@@ -92,6 +94,7 @@ window.addEventListener("hashchange", () => {
 });
 
 document.getElementById("btn-settings").addEventListener("click", () => navigate("settings"));
+initStatusIcons();
 if (isStaffMode()) document.body.dataset.cook = "1"; // מצב טבח: מסתירים עלויות ופעולות עריכה
 if (isStaffMode()) {
     // מצב עובד: מסתירים הגדרות ושאר הלשוניות, ומציגים כפתור נעילה לפתיחה בקוד
