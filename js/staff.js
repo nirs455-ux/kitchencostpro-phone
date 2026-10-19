@@ -2,6 +2,7 @@
 // שים לב: זו נעילה נוחה למניעת בלבול ולחיצות בטעות, לא הגנת אבטחה מלאה (הנתונים שמורים בדפדפן של המכשיר).
 import { getSetting, setSetting } from "./repo/settingsRepo.js";
 import { openModal, closeModal, toast, escapeHtml } from "./ui.js";
+import { t } from "./i18n.js";
 
 const MODE_KEY = "kcp_mode";
 const ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // בלי תווים מבלבלים (0/O, 1/I)
@@ -56,8 +57,9 @@ export function enterStaffMode() {
     location.reload();
 }
 
-export function leaveStaffMode() {
+export async function leaveStaffMode() {
     setMode("owner");
+    await setSetting("role", "manager"); // חוזרים לתפקיד מנהל (הקוד אומת)
     location.hash = "home";
     location.reload();
 }
@@ -76,7 +78,7 @@ export function openUnlockDialog() {
     const fail = (m) => { err.textContent = m; err.style.display = "block"; };
     overlay.querySelector("#unlock-cancel").onclick = closeModal;
     const submit = async () => {
-        if (await verifyPin(overlay.querySelector("#unlock-pin").value)) { leaveStaffMode(); } else fail("קוד שגוי");
+        if (await verifyPin(overlay.querySelector("#unlock-pin").value)) { await leaveStaffMode(); } else fail("קוד שגוי");
     };
     overlay.querySelector("#unlock-ok").onclick = submit;
     overlay.querySelector("#unlock-pin").addEventListener("keydown", (e) => { if (e.key === "Enter") submit(); });
@@ -90,7 +92,7 @@ export function openUnlockDialog() {
                 <button type="button" class="btn btn-primary" id="rec-ok">שחזר</button></div>`);
         o2.querySelector("#rec-cancel").onclick = closeModal;
         o2.querySelector("#rec-ok").onclick = async () => {
-            if (await verifyRecovery(o2.querySelector("#rec-code").value)) { await removePin(); toast("הנעילה בוטלה"); leaveStaffMode(); }
+            if (await verifyRecovery(o2.querySelector("#rec-code").value)) { await removePin(); toast("הנעילה בוטלה"); await leaveStaffMode(); }
             else { const e2 = o2.querySelector("#rec-err"); e2.textContent = "קוד שחזור שגוי"; e2.style.display = "block"; }
         };
     };
@@ -121,4 +123,51 @@ export function openSetPinDialog(onDone) {
             o2.querySelector("#rec-done").onclick = () => { closeModal(); if (onDone) onDone(); };
         } catch (e) { err.textContent = e.message; err.style.display = "block"; }
     };
+}
+
+
+// ---- קוד מנהל להגדרות: כשיש קוד, כניסה להגדרות מבקשת אותו. אחרי אישור נשארות פתוחות 10 דקות ----
+const SETTINGS_OK_KEY = "kcp_settings_ok";
+const SETTINGS_TTL = 10 * 60 * 1000;
+
+export function settingsUnlocked() {
+    try { const v = Number(sessionStorage.getItem(SETTINGS_OK_KEY)); return !!v && Date.now() - v < SETTINGS_TTL; } catch (e) { return false; }
+}
+export function markSettingsUnlocked() {
+    try { sessionStorage.setItem(SETTINGS_OK_KEY, String(Date.now())); } catch (e) { /* לא קריטי */ }
+}
+
+// מריץ onOk אם אין קוד / הוזן קוד נכון / ההגדרות כבר נפתחו לאחרונה. onCancel בביטול.
+export async function guardSettings(onOk, onCancel = () => {}) {
+    if (!(await hasPin()) || settingsUnlocked()) { onOk(); return; }
+    const overlay = openModal(`
+        <h2>${escapeHtml(t("p.ask.title"))}</h2>
+        <div class="field"><label>${escapeHtml(t("p.ask.label"))}</label><input type="password" inputmode="numeric" autocomplete="off" id="gs-pin" maxlength="8"></div>
+        <div class="error-msg" id="gs-err"></div>
+        <div class="modal-actions"><button type="button" class="btn btn-secondary" id="gs-cancel">${escapeHtml(t("common.cancel"))}</button>
+            <button type="button" class="btn btn-primary" id="gs-ok">${escapeHtml(t("p.ask.ok"))}</button></div>
+        <div style="text-align:center;margin-top:10px;"><a href="#" id="gs-forgot" style="font-size:13px;">שכחתי את הקוד</a></div>`);
+    const err = overlay.querySelector("#gs-err");
+    overlay.querySelector("#gs-cancel").onclick = () => { closeModal(); onCancel(); };
+    const submit = async () => {
+        if (await verifyPin(overlay.querySelector("#gs-pin").value)) { markSettingsUnlocked(); closeModal(); onOk(); }
+        else { err.textContent = t("p.ask.wrong"); err.style.display = "block"; }
+    };
+    overlay.querySelector("#gs-ok").onclick = submit;
+    overlay.querySelector("#gs-pin").addEventListener("keydown", (e) => { if (e.key === "Enter") submit(); });
+    overlay.querySelector("#gs-forgot").onclick = (e) => {
+        e.preventDefault();
+        const o2 = openModal(`
+            <h2>שחזור גישה</h2>
+            <div class="field"><label>קוד השחזור שקיבלת כשהגדרת את הקוד</label><input type="text" id="gr-code" autocomplete="off" style="text-transform:uppercase;"></div>
+            <div class="error-msg" id="gr-err"></div>
+            <div class="modal-actions"><button type="button" class="btn btn-secondary" id="gr-cancel">${escapeHtml(t("common.cancel"))}</button>
+                <button type="button" class="btn btn-primary" id="gr-ok">${escapeHtml(t("p.ask.ok"))}</button></div>`);
+        o2.querySelector("#gr-cancel").onclick = () => { closeModal(); onCancel(); };
+        o2.querySelector("#gr-ok").onclick = async () => {
+            if (await verifyRecovery(o2.querySelector("#gr-code").value)) { await removePin(); markSettingsUnlocked(); toast("הקוד בוטל"); closeModal(); onOk(); }
+            else { const e2 = o2.querySelector("#gr-err"); e2.textContent = "קוד שחזור שגוי"; e2.style.display = "block"; }
+        };
+    };
+    setTimeout(() => overlay.querySelector("#gs-pin").focus(), 50);
 }

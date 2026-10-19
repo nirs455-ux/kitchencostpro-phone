@@ -17,7 +17,8 @@ import { applyTheme } from "./theme.js";
 import { info } from "./ui.js";
 import { purgeOldTrash } from "./repo/suppliersRepo.js";
 import { consumeSharedFile } from "./share.js";
-import { isStaffMode, openUnlockDialog } from "./staff.js";
+import { isStaffMode, openUnlockDialog, guardSettings, hasPin, settingsUnlocked } from "./staff.js";
+import { initLang } from "./i18n.js";
 import { installErrorHandlers } from "./errorLog.js";
 import { openScanModal } from "./pages/scanModal.js";
 import { scanRecipeFile } from "./pages/recipesPage.js";
@@ -43,7 +44,8 @@ const PAGES = {
 };
 
 installErrorHandlers();
-const STAFF_PAGES = new Set(["home", "inventory", "waste"]);
+let appRole = "manager"; // manager | cook | producer (נטען בהפעלה)
+const STAFF_PAGES = new Set(["home", "recipes", "inventory", "waste"]); // מצב טבח: בית, מתכונים (בלי כסף), מלאי ופחת
 
 const view = document.getElementById("view");
 const pageTitle = document.getElementById("page-title");
@@ -51,6 +53,13 @@ const navButtons = document.querySelectorAll("#bottom-nav button");
 
 async function navigate(pageKey) {
     if (!PAGES[pageKey]) pageKey = "home";
+    // הגדרות מוגנות בקוד מנהל (אם הוגדר). יצרן לא רואה מנות.
+    if (pageKey === "settings" && (await hasPin()) && !settingsUnlocked()) {
+        guardSettings(() => navigate("settings"), () => { if (location.hash === "#settings") navigate("home"); });
+        if (location.hash === "#settings") location.hash = "home";
+        return;
+    }
+    if (pageKey === "dishes" && appRole === "producer") pageKey = "home";
     if (isStaffMode() && !STAFF_PAGES.has(pageKey)) pageKey = "home"; // מצב עובד: רק בית וספירת מלאי
     if (pageKey === "files" && location.hash !== "#files") openFilesFolder(null);
     location.hash = pageKey;
@@ -83,6 +92,7 @@ window.addEventListener("hashchange", () => {
 });
 
 document.getElementById("btn-settings").addEventListener("click", () => navigate("settings"));
+if (isStaffMode()) document.body.dataset.cook = "1"; // מצב טבח: מסתירים עלויות ופעולות עריכה
 if (isStaffMode()) {
     // מצב עובד: מסתירים הגדרות ושאר הלשוניות, ומציגים כפתור נעילה לפתיחה בקוד
     document.getElementById("btn-settings").style.display = "none";
@@ -94,6 +104,9 @@ if (isStaffMode()) {
 document.getElementById("page-title").addEventListener("click", () => navigate("home"));
 
 await initLocale(); // סמל מטבע וכו' לפני שהמסכים מצוירים
+await initLang(); // שפת האשף והסיור
+appRole = (await getSetting("role")) || "manager"; // manager | cook | producer
+if (appRole === "producer") { const d = document.querySelector('#bottom-nav [data-page="dishes"]'); if (d) d.style.display = "none"; }
 await initCloud().catch(() => {}); // גיבוי אוטומטי לענן (אם מחובר)
 navigate(location.hash.replace("#", "") === "share" ? "home" : (location.hash.replace("#", "") || "home"));
 
