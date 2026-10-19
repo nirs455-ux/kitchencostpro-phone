@@ -15,6 +15,7 @@ import { suggestBaseHeuristic, computePercentages, scaleToBase, fmtPct } from ".
 import { RECIPE_UNIT_GRAMS } from "../recipeParse.js";
 import { textToGrams, gramsToKgText, describeQty, qtyWarning } from "../qty.js";
 import { bindPickerButton, refreshPickerButton } from "./ingredientPicker.js";
+import { isStaffMode } from "../staff.js";
 import { UNITS, convertToGrams, factorFor, scaleRecipe, fmtQty } from "../generator.js";
 import { recipeEggSummary, eggSummaryText, allocateEggCosts, isEggProduct, eggSizeOf, partGrams, eggBreakdown, EGG_SIZES, EGG_PARTS, EGG_PART_LABEL } from "../eggs.js";
 import { showImageFullscreen } from "../imageUtil.js";
@@ -50,15 +51,15 @@ export async function renderRecipesPage(container) {
     recipes.sort((a, b) => a.category.localeCompare(b.category, "he") || a.name.localeCompare(b.name, "he"));
     const draftCount = recipes.filter((r) => r.status === "draft").length;
 
-    container.innerHTML = `<div class="btn-row"><button class="btn btn-accent" id="btn-scan-recipe">📷 סרוק מתכון (תמונה / קובץ)</button></div>
-        ${recipes.length ? `<div class="fchips">
+    container.innerHTML = `<div class="btn-row mgr-only"><button class="btn btn-accent" id="btn-scan-recipe">📷 סרוק מתכון (תמונה / קובץ)</button></div>
+        ${recipes.length ? `<div class="fchips mgr-only">
             <button type="button" class="chip ${recipeFilter === "all" ? "active" : ""}" data-rf="all">הכול (${recipes.length})</button>
             <button type="button" class="chip ${recipeFilter === "ready" ? "active" : ""}" data-rf="ready">מוכנים (${recipes.length - draftCount})</button>
             <button type="button" class="chip ${recipeFilter === "draft" ? "active" : ""}" data-rf="draft">טיוטות (${draftCount})</button></div>` : ""}
-        <div id="recipes-list"></div><button class="fab-add" id="btn-add">+</button>`;
+        <div id="recipes-list"></div><button class="fab-add mgr-only" id="btn-add">+</button>`;
     container.querySelectorAll("[data-rf]").forEach((b) => { b.onclick = () => { recipeFilter = b.dataset.rf; renderRecipesPage(container); }; });
     const list = container.querySelector("#recipes-list");
-    const shown = recipes.filter((r) => recipeFilter === "all" || (recipeFilter === "draft" ? r.status === "draft" : r.status !== "draft"));
+    const shown = recipes.filter((r) => (isStaffMode() ? r.status !== "draft" : recipeFilter === "all" || (recipeFilter === "draft" ? r.status === "draft" : r.status !== "draft")));
     if (recipes.length === 0) {
         list.innerHTML = '<div class="empty-state">אין עדיין מתכונים - לחץ על + או סרוק מתכון מקובץ.</div>';
     } else if (shown.length === 0) {
@@ -100,11 +101,11 @@ function renderRecipeCard(r, container) {
                 <span>${r.final_weight > 0 ? r.final_weight.toFixed(0) + " גרם " + (r.is_auto_weight ? "(אוטומטי)" : "(ידני)") : "משקל טרם נקבע"}</span>
             </div>
             <div class="card-row"><span class="muted">${r.items.length} מרכיבים${missing ? " + " + missing + " חסרים" : ""}</span>
-                <span class="price-real">${isDraft ? "עלות חלקית " + money(r.total_cost) : money(r.cost_per_gram) + " / גרם"}</span></div>
+                <span class="price-real cost-only">${isDraft ? "עלות חלקית " + money(r.total_cost) : money(r.cost_per_gram) + " / גרם"}</span></div>
             <div class="card-actions">
                 <button class="btn btn-accent btn-small" data-details>פרטים</button>
-                <button class="btn ${isDraft ? "btn-primary" : "btn-secondary"} btn-small" data-edit>${isDraft ? "השלם" : "עריכה"}</button>
-                <button class="btn btn-danger btn-small" data-delete>מחיקה</button>
+                <button class="btn ${isDraft ? "btn-primary" : "btn-secondary"} btn-small mgr-only" data-edit>${isDraft ? "השלם" : "עריכה"}</button>
+                <button class="btn btn-danger btn-small mgr-only" data-delete>מחיקה</button>
             </div>
         </div>
     `);
@@ -153,6 +154,7 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
         return { ids: s.ids, source: "pending", reason: s.reason };
     };
     const saveBase = async (ids, source, reason) => {
+        if (isStaffMode()) return;
         await setRecipeBase(r.id, { base_ids: ids, base_source: source, base_reason: reason });
         r.base_ids = ids; r.base_source = source; r.base_reason = reason;
     };
@@ -183,12 +185,12 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
         let body = "";
         if (tab === "recipe") {
             body = `
-            <table class="simple"><thead><tr><th>רכיב</th><th>גרם</th><th>עלות</th></tr></thead><tbody>
-                ${[...r.items].sort((a, b) => b.quantity_g - a.quantity_g).map((i) => `<tr><td>${escapeHtml(nameOf(i))}${i.egg_part && i.egg_part !== "whole" ? " (" + EGG_PART_LABEL[i.egg_part] + ")" : ""}</td><td>${+Number(i.quantity_g).toFixed(1)}</td><td>${money(i.item_cost)}</td></tr>`).join("")}
+            <table class="simple"><thead><tr><th>רכיב</th><th>גרם</th><th class="cost-only">עלות</th></tr></thead><tbody>
+                ${[...r.items].sort((a, b) => b.quantity_g - a.quantity_g).map((i) => `<tr><td>${escapeHtml(nameOf(i))}${i.egg_part && i.egg_part !== "whole" ? " (" + EGG_PART_LABEL[i.egg_part] + ")" : ""}</td><td>${+Number(i.quantity_g).toFixed(1)}</td><td class="cost-only">${money(i.item_cost)}</td></tr>`).join("")}
                 ${missing.map((m) => `<tr style="color:var(--danger);"><td>⚠ ${escapeHtml(m.name)}</td><td colspan="2">${escapeHtml(originalText(m) || "—")} · לא במזווה</td></tr>`).join("")}
             </tbody></table>
             ${r.status === "draft" ? `<div class="hint-warn">העלות חלקית - מחושבת רק מהרכיבים שבמזווה. לחץ "השלם" כדי להוסיף את החסרים.</div>`
-                : `<div class="card-row" style="font-weight:700;margin:8px 0;"><span>עלות כוללת ${money(r.total_cost)}</span><span>${money(r.cost_per_gram)} / גרם</span></div>`}
+                : `<div class="card-row cost-only" style="font-weight:700;margin:8px 0;"><span>עלות כוללת ${money(r.total_cost)}</span><span>${money(r.cost_per_gram)} / גרם</span></div>`}
             ${eggNotes.map((e) => `<div class="hint-warn" style="background:var(--brand-soft);color:var(--text);">${escapeHtml(eggSummaryText(e))}</div>`).join("")}
             ${r.method ? `<div class="card-title" style="margin:12px 0 4px;">הוראות הכנה</div><div style="white-space:pre-wrap;font-size:14px;">${escapeHtml(r.method)}</div>` : ""}
             ${r.source_file ? '<div class="btn-row"><button type="button" class="btn btn-accent btn-small" id="d-source">📎 המסמך המקורי</button></div>' : ""}`;
@@ -240,15 +242,15 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
                 <div class="checkbox-field"><input type="checkbox" id="g-round" ${gen.round ? "checked" : ""}><label for="g-round">עיגול נוח</label></div>
             </div>
             ${sc ? `
-            <table class="simple"><thead><tr><th>רכיב</th><th>כמות</th><th>עלות</th></tr></thead><tbody>
-                ${[...sc.rows].sort((a, b) => b.grams - a.grams).map((o) => `<tr><td>${escapeHtml(nameOf(o))}${o.egg_part && o.egg_part !== "whole" ? " (" + o.eggLabel + ")" : ""}</td><td>${fmtQty(o.grams)}${o.egg_part ? `<br><span class="muted">= ${o.eggUnits} ${o.egg_part === "white" ? "חלבונים" : o.egg_part === "yolk" ? "חלמונים" : "ביצים"}</span>` : ""}</td><td>${money(o.cost)}</td></tr>`).join("")}
+            <table class="simple"><thead><tr><th>רכיב</th><th>כמות</th><th class="cost-only">עלות</th></tr></thead><tbody>
+                ${[...sc.rows].sort((a, b) => b.grams - a.grams).map((o) => `<tr><td>${escapeHtml(nameOf(o))}${o.egg_part && o.egg_part !== "whole" ? " (" + o.eggLabel + ")" : ""}</td><td>${fmtQty(o.grams)}${o.egg_part ? `<br><span class="muted">= ${o.eggUnits} ${o.egg_part === "white" ? "חלבונים" : o.egg_part === "yolk" ? "חלמונים" : "ביצים"}</span>` : ""}</td><td class="cost-only">${money(o.cost)}</td></tr>`).join("")}
             </tbody></table>
-            <div class="card-row" style="font-weight:700;margin:8px 0;"><span>סה"כ ${fmtQty(sc.totalGrams)}</span><span>${money(sc.totalCost)}</span></div>
+            <div class="card-row" style="font-weight:700;margin:8px 0;"><span>סה"כ ${fmtQty(sc.totalGrams)}</span><span class="cost-only">${money(sc.totalCost)}</span></div>
             ${sc.eggs.map((e) => `<div class="hint-warn" style="background:var(--brand-soft);color:var(--text);">${escapeHtml(eggSummaryText(e))}</div>`).join("")}
             <div class="btn-row">
                 <button type="button" class="btn btn-secondary btn-small" id="g-copy">📋 העתק</button>
                 <button type="button" class="btn btn-secondary btn-small" id="g-print">🖨 הדפס</button>
-                <button type="button" class="btn btn-primary btn-small" id="g-save">💾 שמור כמתכון חדש</button>
+                <button type="button" class="btn btn-primary btn-small mgr-only" id="g-save">💾 שמור כמתכון חדש</button>
             </div>` : '<div class="hint-warn">הזן מקדם או משקל גדולים מ-0.</div>'}
             <div class="card" style="margin-top:14px;">
                 <div class="card-title">המרת ביצים ${info("כותבים כמה חלבון, חלמון או ביצה שלמה צריך, והמערכת אומרת כמה ביצים לשבור, כמה זה עולה וכמה נשאר. גודל הביצה לפי מה שהוגדר במזווה.")}</div>
@@ -262,7 +264,7 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
                     <div class="field"><label>ב-</label><select id="e-unit"><option value="g" ${eggc.unit === "g" ? "selected" : ""}>ק"ג</option><option value="unit" ${eggc.unit === "unit" ? "selected" : ""}>יחידות</option></select></div>
                 </div>
                 ${eggc.unit === "g" && eggc.qty ? `<div class="hint">${describeQty(eggc.qty)}</div>` : ""}
-                ${eggRes ? `<div class="card-row" style="font-weight:700;"><span>לשבור ${eggRes.eggs} ביצים</span><span>${money(eggRes.eggsCost)}</span></div>
+                ${eggRes ? `<div class="card-row" style="font-weight:700;"><span>לשבור ${eggRes.eggs} ביצים</span><span class="cost-only">${money(eggRes.eggsCost)}</span></div>
                     ${eggc.unit === "unit" ? `<div class="hint">${eggQty} ${EGG_PART_LABEL[eggc.part]} = ${Math.round(eggG * 100) / 100} גרם</div>` : ""}
                     ${eggRes.leftWhiteCount > 0 ? `<div class="hint">נשארים ${eggRes.leftWhiteCount} חלבונים (${eggRes.leftWhiteG} גרם)</div>` : ""}
                     ${eggRes.leftYolkCount > 0 ? `<div class="hint">נשארים ${eggRes.leftYolkCount} חלמונים (${eggRes.leftYolkG} גרם)</div>` : ""}` : ""}`
@@ -282,7 +284,7 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
             <div class="card-title" style="margin:6px 0 4px;">רשימת רכיבים לתווית ${info("רכיבים לפי משקל יורד, והצהרת אלרגנים מצטברת מהרכיבים. זו טיוטה לעזר - האחריות לתיוג ולתקנות היא של בעל העסק. רכיב שלא הוגדרו לו אלרגנים מסומן כ'לא הוגדר' ולא כ'ללא אלרגנים'.")}</div>
             <div class="card" style="white-space:pre-wrap;font-size:14px;line-height:1.6;">${escapeHtml(labelText)}</div>
             <div class="card-title" style="margin:10px 0 4px;">אלרגנים לפי רכיב ${info("כאן מאשרים או מתקנים אילו אלרגנים יש בכל רכיב. השינוי נשמר במוצר ומשפיע על כל המתכונים שמשתמשים בו. ההצעה האוטומטית לפי שם המוצר היא רק עזר.")}</div>
-            ${allergenRows().map((x) => `<div class="card-row" style="padding:6px 0;border-bottom:1px solid var(--border,#0001);"><span><b>${escapeHtml(x.name)}</b><br><span class="muted">${x.text}</span></span><button type="button" class="btn btn-secondary btn-small" data-al-edit="${x.id}">ערוך</button></div>`).join("")}
+            ${allergenRows().map((x) => `<div class="card-row" style="padding:6px 0;border-bottom:1px solid var(--border,#0001);"><span><b>${escapeHtml(x.name)}</b><br><span class="muted">${x.text}</span></span><button type="button" class="btn btn-secondary btn-small mgr-only" data-al-edit="${x.id}">ערוך</button></div>`).join("")}
             <div class="checkbox-field" style="margin:10px 0 8px;"><input type="checkbox" id="d-pct" ${showPercent ? "checked" : ""}><label for="d-pct">הצג אחוזים</label></div>
             <div class="btn-row">
                 <button type="button" class="btn btn-secondary btn-small" id="d-copy">📋 העתק</button>
@@ -303,7 +305,7 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
             </div>
             ${body}
             <div class="modal-actions"><button type="button" class="btn btn-secondary" id="d-close">סגור</button>
-                <button type="button" class="btn btn-primary" id="d-edit">${r.status === "draft" ? "השלם" : "עריכה"}</button></div>
+                <button type="button" class="btn btn-primary mgr-only" id="d-edit">${r.status === "draft" ? "השלם" : "עריכה"}</button></div>
         `);
         if (keepTop) overlay.querySelector(".modal").scrollTop = keepTop;
         overlay.querySelector("#d-close").onclick = closeModal;

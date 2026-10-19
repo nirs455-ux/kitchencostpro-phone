@@ -21,6 +21,7 @@ function renderStaffHome(container) {
         <input type="file" id="staff-file" accept="image/*" capture="environment" style="display:none">
         <button class="btn btn-primary btn-big btn-block" id="staff-shoot" style="margin:14px 0 6px;">📷 צלם קבלה</button>
         <div class="hint" style="text-align:center;margin-bottom:14px;">הקבלה נשלחת לבדיקה של המנהל</div>
+        <button class="btn btn-secondary btn-big btn-block" id="staff-recipes" style="margin-bottom:10px;">📖 מתכונים</button>
         <button class="btn btn-secondary btn-big btn-block" id="staff-count">📋 ספירת מלאי</button>
         <button class="btn btn-secondary btn-big btn-block" id="staff-waste" style="margin-top:10px;">🗑 רישום זריקה</button>
         <div id="staff-sent" class="hint" style="text-align:center;margin-top:14px;"></div>`;
@@ -34,6 +35,7 @@ function renderStaffHome(container) {
         toast("הקבלה נשלחה לבדיקה ✓");
         container.querySelector("#staff-sent").textContent = `נשלחו ${(await listQueue()).length} קבלות שמחכות למנהל`;
     });
+    container.querySelector("#staff-recipes").onclick = () => go("recipes");
     container.querySelector("#staff-count").onclick = () => go("inventory");
     container.querySelector("#staff-waste").onclick = () => go("waste");
 }
@@ -85,7 +87,6 @@ export async function renderHomePage(container) {
     const items = [];
     if (queue.length) items.push({ cls: "warn", icon: "⏳", text: `${queue.length} חשבוניות מחכות לעיבוד`, btn: "עבד", fn: () => processQueue(queue, rerender) });
     if (alerts.length) items.push({ cls: "danger", icon: "⚠", text: `${alerts.length} שינויי מחיר ב-30 הימים האחרונים`, btn: "הצג", fn: () => showPriceChangesDialog(alerts, "שינויי מחיר (30 יום אחרונים)") });
-    if (owed.count) items.push({ cls: "warn", icon: "💶", text: `🔴 ${owed.count === 1 ? "קבלת קופה קטנה אחת ממתינה" : owed.count + " קבלות קופה קטנה ממתינות"} להחזר · ${money(owed.total)}`, btn: "פתח", fn: () => { setSuppliersView("invoices", { mode: "owed" }); go("suppliers"); } });
     if (noWeight.length) items.push({ cls: "warn", icon: "⚖", text: `${noWeight.length} מוצרים ביחידות בלי משקל ליחידה (לא ניתן להשתמש בהם במתכון)`, btn: "למזווה", fn: () => go("pantry") });
     const cloudNow = getCloudStatus();
     const cloudFresh = cloudNow.enabled && cloudNow.lastBackup && daysSince(cloudNow.lastBackup) < 3; // גיבוי טרי בענן מחליף תזכורת לגיבוי ידני

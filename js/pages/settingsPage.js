@@ -8,6 +8,8 @@ import { buildReport, clearErrorLog } from "../errorLog.js";
 import { openTrashModal } from "./trashModal.js";
 import { listInvoicesWithItems } from "../repo/suppliersRepo.js";
 import { openSetupWizard } from "./setupWizard.js";
+import { openTour } from "./tour.js";
+import { t } from "../i18n.js";
 import { renderCloudCard } from "../cloud/cloudUi.js";
 
 export async function renderSettingsPage(container) {
@@ -23,6 +25,7 @@ export async function renderSettingsPage(container) {
     container.innerHTML = `
         <div class="card"><button class="btn btn-secondary btn-block" id="btn-files">📁 קבצים (קבלות, מתכונים, התקבלו)</button></div>
         <div class="card" id="cloud-card"></div>
+        <div class="card"><button class="btn btn-secondary btn-block" id="btn-tour">${t("settings.tour")}</button></div>
         <div class="card"><button class="btn btn-secondary btn-block" id="btn-wizard">🧭 אשף הפעלה (מפתח, מדינה, מטבע)</button></div>
         <div class="card">
             <div class="card-title">מפתח Gemini API ${info("נדרש לסריקת חשבוניות. נשמר רק בתוך הטלפון הזה, ולא נשלח לשום מקום חוץ מ-Google.")}</div>
@@ -79,6 +82,7 @@ export async function renderSettingsPage(container) {
     `;
     container.querySelector("#btn-files").onclick = () => { location.hash = "files"; };
     renderCloudCard(container.querySelector("#cloud-card"));
+    container.querySelector("#btn-tour").onclick = async () => openTour({ role: (await getSetting("role")) || "manager" });
     container.querySelector("#btn-wizard").onclick = () => openSetupWizard({ onDone: () => location.reload() });
 
     container.querySelector("#btn-save-key").onclick = async () => {
