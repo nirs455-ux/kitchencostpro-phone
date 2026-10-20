@@ -397,3 +397,11 @@ body[data-cook="1"] .cost-only, body[data-cook="1"] .mgr-only { display: none !i
 .gauge { height: 8px; border-radius: 4px; background: var(--surface-2); position: relative; margin: 8px 0; overflow: hidden; }
 .gauge i { position: absolute; inset-block: 0; inset-inline-start: 0; border-radius: 4px; }
 .modal.page-modal .item-row-inputs { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 9px 10px; margin-bottom: 7px; }
+
+.px-kids { color: var(--brand); font-weight: 700; cursor: pointer; }
+.px-indent { margin-inline-start: 18px; background: var(--surface-2); }
+
+.inv-item { display: flex; align-items: center; gap: 10px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 9px 11px; margin-bottom: 6px; }
+.inv-info { flex: 1; min-width: 0; }
+.inv-item .count-input { width: 88px; text-align: center; font-size: 16px; padding: 9px 6px; border-radius: 10px; border: 1px solid var(--input-border); background: var(--bg); color: var(--text); font-family: inherit; }
+.inv-sub { margin: 4px 14px 6px; color: var(--text-2); font-size: 13px; font-weight: 700; }
