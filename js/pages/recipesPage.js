@@ -68,6 +68,7 @@ export async function renderRecipesPage(container) {
     container.querySelectorAll("[data-rf]").forEach((b) => { b.onclick = () => { recipeFilter = b.dataset.rf; renderRecipesPage(container); }; });
     const list = container.querySelector("#recipes-list");
 
+
     const draw = () => {
         list.innerHTML = "";
         const base = recipes.filter((r) => (isStaffMode() ? r.status !== "draft" : recipeFilter === "all" || (recipeFilter === "draft" ? r.status === "draft" : r.status !== "draft")));
@@ -116,10 +117,26 @@ function renderRecipeRow(r, container) {
 }
 
 // ---------- פרטי מתכון: רכיבים, עלות, הוראות, מסמך מקורי, ורשימת רכיבים לתווית ----------
+// הדפסת מתכון מלא: רכיבים וכמויות (בלי עלויות) והוראות הכנה
+function printRecipe(r, lines, totalG) {
+    const w = window.open("", "_blank");
+    if (!w) { toast("הדפדפן חסם את חלון ההדפסה"); return; }
+    const rowsHtml = lines.map((l) => `<tr><td>${escapeHtml(l.name)}</td><td>${escapeHtml(l.qty)}</td></tr>`).join("");
+    w.document.write(`<html dir="rtl" lang="he"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(r.name)}</title>
+        <style>body{font-family:Arial,sans-serif;padding:20px;font-size:16px;line-height:1.6;color:#000}h1{font-size:24px;margin:0 0 4px}.c{color:#555;margin-bottom:14px}table{width:100%;border-collapse:collapse;margin:8px 0}td,th{border-bottom:1px solid #ccc;padding:7px 4px;text-align:right}th{border-bottom:2px solid #000}.tot{font-weight:700;margin:6px 0 18px}h2{font-size:18px;margin:18px 0 6px}.m{white-space:pre-wrap}</style></head>
+        <body><h1>${escapeHtml(r.name)}</h1><div class="c">${escapeHtml(r.category || "")}</div>
+        <table><thead><tr><th>רכיב</th><th>כמות</th></tr></thead><tbody>${rowsHtml}</tbody></table>
+        <div class="tot">סה"כ ${escapeHtml(totalG)}</div>
+        ${r.method ? `<h2>אופן ההכנה</h2><div class="m">${escapeHtml(r.method)}</div>` : ""}</body></html>`);
+    w.document.close();
+    w.focus();
+    setTimeout(() => w.print(), 300);
+}
+
 function printLabel(name, text) {
     const w = window.open("", "_blank");
     if (!w) { toast("הדפדפן חסם את חלון ההדפסה"); return; }
-    w.document.write(`<html dir="rtl" lang="he"><head><meta charset="utf-8"><title>${escapeHtml(name)}</title>
+    w.document.write(`<html dir="rtl" lang="he"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(name)}</title>
         <style>body{font-family:Arial,sans-serif;padding:24px;font-size:16px;line-height:1.7}h1{font-size:22px;margin:0 0 12px}.t{white-space:pre-wrap;border:1px solid #999;padding:14px;border-radius:6px}</style></head>
         <body><h1>${escapeHtml(name)}</h1><div class="t">${escapeHtml(text)}</div></body></html>`);
     w.document.close();
@@ -169,6 +186,26 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
         }
         return out;
     };
+    // אחוזים: "מהמשקל הסופי" (כל רכיב חלקי סך המשקל, סכום 100%) או "אחוזי אופים" (הקמחים = 100%, שאר הרכיבים ביחס אליהם)
+    let pctMode = "baker"; // ברירת מחדל: מתכון באחוזים לפי בסיס (השורש = 100%)
+    const pctView = () => {
+        const list = items().filter((i) => Number(i.quantity_g) > 0);
+        const total = list.reduce((n, i) => n + Number(i.quantity_g), 0);
+        if (!(total > 0)) return null;
+        const r1 = (n) => Math.round(n * 10) / 10;
+        if (pctMode === "baker") {
+            const sug = currentBase();
+            const P = computePercentages(items(), sug.ids);
+            if (!(P.baseGrams > 0)) return null;
+            const target = scaleGrams && scaleGrams > 0 ? scaleGrams : P.baseGrams;
+            const sc = scaleToBase(items(), sug.ids, target);
+            return { note: `הבסיס (100%) הוא השורש של המתכון, וכל רכיב אחר הוא אחוז ממנו. הסכום יכול לעבור 100%.${sug.reason ? " " + sug.reason + "." : ""}`, scaleLabel: 'כמות הבסיס (ק"ג) - לשינוי כמות המתכון', target,
+                rows: [...sc].sort((x, y) => y.grams - x.grams).map((x) => ({ name: x.name, pct: x.pct, grams: x.scaledGrams, isBase: x.isBase })), totalPct: P.totalPct, totalGrams: r1(sc.reduce((n, x) => n + x.scaledGrams, 0)), title: "מתכון באחוזים" };
+        }
+        const target = scaleGrams && scaleGrams > 0 ? scaleGrams : total;
+        return { note: `כל רכיב כאחוז מהמשקל הסופי של המתכון (${gramsToKgText(total)} ק"ג). הסכום תמיד 100%.`, scaleLabel: 'משקל סופי (ק"ג) - לשינוי כמות המתכון', target,
+            rows: [...list].sort((x, y) => y.quantity_g - x.quantity_g).map((i) => ({ name: i.name, pct: (Number(i.quantity_g) / total) * 100, grams: r1((Number(i.quantity_g) / total) * target) })), totalPct: 100, totalGrams: r1(target), title: "מהמשקל הסופי" };
+    };
     const draw = () => {
         // ציור מחדש לא מקפיץ למעלה: שומרים את מיקום הגלילה כשנשארים באותה לשונית
         const prevModal = document.querySelector("#modal-root .modal");
@@ -188,19 +225,20 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
                 : `<div class="card-row cost-only" style="font-weight:700;margin:8px 0;"><span>עלות כוללת ${money(r.total_cost)}</span><span>${money(r.cost_per_gram)} / גרם</span></div>`}
             ${eggNotes.map((e) => `<div class="hint-warn" style="background:var(--brand-soft);color:var(--text);">${escapeHtml(eggSummaryText(e))}</div>`).join("")}
             ${r.method ? `<div class="card-title" style="margin:12px 0 4px;">הוראות הכנה</div><div style="white-space:pre-wrap;font-size:14px;">${escapeHtml(r.method)}</div>` : ""}
-            ${r.source_file ? '<div class="btn-row"><button type="button" class="btn btn-accent btn-small" id="d-source">📎 המסמך המקורי</button></div>' : ""}`;
+            <div class="btn-row"><button type="button" class="btn btn-secondary btn-small" id="d-print-recipe">🖨 הדפס מתכון</button>${r.source_file ? '<button type="button" class="btn btn-accent btn-small" id="d-source">📎 המסמך המקורי</button>' : ""}</div>`;
         } else if (tab === "percent") {
-            // אחוז מהמשקל הסופי של המתכון: כל רכיב חלקי סך הרכיבים, הסכום תמיד 100%
-            const list = items().filter((i) => Number(i.quantity_g) > 0);
-            const total = list.reduce((n, i) => n + Number(i.quantity_g), 0);
-            const target = scaleGrams && scaleGrams > 0 ? scaleGrams : total;
-            body = total > 0 ? `
-            <div class="hint" style="margin-bottom:8px;">כל רכיב כאחוז מהמשקל הסופי של המתכון (${gramsToKgText(total)} ק"ג). הסכום תמיד 100%.</div>
-            <div class="field"><label>משקל סופי (ק"ג) - לשינוי כמות המתכון</label><input type="text" inputmode="decimal" id="p-scale" value="${gramsToKgText(target)}"><div class="hint">${describeQty(gramsToKgText(target))}</div></div>
+            const pv = pctView();
+            body = pv ? `
+            <div class="seg" id="p-mode" style="margin-bottom:8px;"><button type="button" data-pm="final" class="${pctMode === "final" ? "active" : ""}">מהמשקל הסופי</button><button type="button" data-pm="baker" class="${pctMode === "baker" ? "active" : ""}">לפי בסיס</button></div>
+            ${pctMode === "baker" ? `<div class="card"><div class="card-title">הבסיס (100%) ${info("בוחרים את השורש של המתכון, כמו פלפלים חריפים. כל הרכיבים שנבחרו יחד הם 100%, וכל רכיב אחר מוצג כאחוז מהם. אפשר לבחור כמה רכיבים.")}</div>
+                <div class="chips" id="p-base-chips">${items().map((i) => `<button type="button" class="chip ${currentBase().ids.includes(i.id) ? "active" : ""}" data-base="${i.id}">${escapeHtml(i.name)}</button>`).join("")}</div>
+                <div class="btn-row"><button type="button" class="btn btn-secondary btn-small mgr-only" id="p-auto">↺ הצעה אוטומטית</button></div></div>` : ""}
+            <div class="hint" style="margin-bottom:8px;">${escapeHtml(pv.note)}</div>
+            <div class="field"><label>${pv.scaleLabel}</label><input type="text" inputmode="decimal" id="p-scale" value="${gramsToKgText(pv.target)}"><div class="hint">${describeQty(gramsToKgText(pv.target))}</div></div>
             <table class="simple"><thead><tr><th>רכיב</th><th>אחוז</th><th>גרם</th></tr></thead><tbody>
-                ${[...list].sort((a, b) => b.quantity_g - a.quantity_g).map((i) => `<tr><td>${escapeHtml(i.name)}</td><td>${fmtPct((Number(i.quantity_g) / total) * 100)}%</td><td>${Math.round((Number(i.quantity_g) / total) * target * 10) / 10}</td></tr>`).join("")}
+                ${pv.rows.map((x) => `<tr style="${x.isBase ? "font-weight:700;" : ""}"><td>${escapeHtml(x.name)}${x.isBase ? " (בסיס)" : ""}</td><td>${fmtPct(x.pct)}%</td><td>${x.grams}</td></tr>`).join("")}
             </tbody></table>
-            <div class="card-row" style="margin:8px 0;"><span>סה"כ</span><b>100% · ${Math.round(target * 10) / 10} גרם</b></div>
+            <div class="card-row" style="margin:8px 0;"><span>סה"כ</span><b>${fmtPct(pv.totalPct)}% · ${pv.totalGrams} גרם</b></div>
             <div class="btn-row"><button type="button" class="btn btn-secondary btn-small" id="p-copy">📋 העתק</button><button type="button" class="btn btn-secondary btn-small" id="p-print">🖨 הדפס</button></div>`
             : '<div class="hint-warn">אין רכיבים עם כמות.</div>';
         } else if (tab === "gen") {
@@ -257,7 +295,7 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
                 ${r.status === "draft" ? `<span class="tag tag-warn">טיוטה · חסרים ${missing.length}</span>` : ""}</div>
             <div class="seg" id="d-seg">
                 <button type="button" data-t="recipe" class="${tab === "recipe" ? "active" : ""}">מתכון</button>
-                <button type="button" data-t="percent" class="${tab === "percent" ? "active" : ""}">אחוזים</button>
+                <button type="button" data-t="percent" class="${tab === "percent" ? "active" : ""}">באחוזים</button>
                 <button type="button" data-t="label" class="${tab === "label" ? "active" : ""}">אלרגנים</button>
                 ${r.status === "draft" ? "" : `<button type="button" data-t="gen" class="${tab === "gen" ? "active" : ""}">מחולל</button>`}
             </div>
@@ -277,6 +315,12 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
             renderRecipesPage(container);
         };
         overlay.querySelectorAll("#d-seg [data-t]").forEach((b) => { b.onclick = () => { tab = b.dataset.t; draw(); }; });
+        const prBtn = overlay.querySelector("#d-print-recipe");
+        if (prBtn) prBtn.onclick = () => {
+            const lines = [...r.items].sort((a, b) => b.quantity_g - a.quantity_g).map((i) => ({ name: nameOf(i) + (i.egg_part && i.egg_part !== "whole" ? " (" + EGG_PART_LABEL[i.egg_part] + ")" : ""), qty: fmtQty(i.quantity_g) }));
+            missing.forEach((m) => lines.push({ name: m.name, qty: originalText(m) || "" }));
+            printRecipe(r, lines, fmtQty(r.items.reduce((n, i) => n + (Number(i.quantity_g) || 0), 0)));
+        };
         const src = overlay.querySelector("#d-source");
         if (src) src.onclick = () => showImageFullscreen(r.source_file, r.name);
 
@@ -284,11 +328,24 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
         const scaleEl = overlay.querySelector("#p-scale");
         if (scaleEl) scaleEl.onchange = () => { scaleGrams = textToGrams(scaleEl.value) || null; draw(); };
         const bakersText = () => {
-            const list = items().filter((i) => Number(i.quantity_g) > 0);
-            const total = list.reduce((n, i) => n + Number(i.quantity_g), 0);
-            const target = scaleGrams && scaleGrams > 0 ? scaleGrams : total;
-            return [`${r.name} - באחוזים מהמשקל הסופי`, ...[...list].sort((x, y) => y.quantity_g - x.quantity_g).map((i) => `${i.name}: ${fmtPct((Number(i.quantity_g) / total) * 100)}% - ${Math.round((Number(i.quantity_g) / total) * target * 10) / 10} גרם`), `סה"כ: 100% - ${Math.round(target * 10) / 10} גרם`].join("\n");
+            const pv = pctView();
+            if (!pv) return "";
+            return [`${r.name} - ${pv.title}`, ...pv.rows.map((x) => `${x.name}${x.isBase ? " (בסיס)" : ""}: ${fmtPct(x.pct)}% - ${x.grams} גרם`), `סה"כ: ${fmtPct(pv.totalPct)}% - ${pv.totalGrams} גרם`].join("\n");
         };
+        overlay.querySelectorAll("[data-base]").forEach((b2) => {
+            b2.onclick = async () => {
+                const cur = currentBase().ids.slice();
+                const id = Number(b2.dataset.base);
+                const next = cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id];
+                if (!next.length) { toast("חייב להישאר לפחות רכיב אחד בבסיס"); return; }
+                await saveBase(next, "manual", "");
+                scaleGrams = null;
+                draw();
+            };
+        });
+        const autoBtn = overlay.querySelector("#p-auto");
+        if (autoBtn) autoBtn.onclick = async () => { const s2 = suggestBaseHeuristic(r.name, items()); await saveBase(s2.ids, "auto", s2.reason); scaleGrams = null; draw(); };
+        overlay.querySelectorAll("#p-mode [data-pm]").forEach((bt2) => { bt2.onclick = () => { pctMode = bt2.dataset.pm; scaleGrams = null; draw(); }; });
         const pCopy = overlay.querySelector("#p-copy");
         if (pCopy) pCopy.onclick = async () => { try { await navigator.clipboard.writeText(bakersText()); toast("הועתק"); } catch (e) { toast("לא הצלחתי להעתיק"); } };
         const pPrint = overlay.querySelector("#p-print");
