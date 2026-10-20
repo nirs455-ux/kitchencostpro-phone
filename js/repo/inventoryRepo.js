@@ -36,7 +36,7 @@ export async function buildInventoryView() {
         const purchased = await purchasedSince(p.id, lastCountDate);
         const theoretical = Math.round((lastCountedQuantity + purchased) * 1000) / 1000;
         out.push({
-            id: p.id, name: p.name, category: p.category, subcategory: p.subcategory || "",
+            id: p.id, name: p.name, category: p.category, subcategory: p.subcategory || "", unit_type: p.unit_type, pkg_size: p.pkg_size || 0,
             last_count_date: lastCountDate, last_counted_quantity: lastCountedQuantity,
             purchased_since: purchased, theoretical_quantity: theoretical,
         });

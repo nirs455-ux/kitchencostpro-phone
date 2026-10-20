@@ -61,6 +61,7 @@ export async function addPantryItem(data) {
 
     const row = {
         name, category: data.category, subcategory, unit_type: data.unit_type, unit_amount: unitAmount,
+        pkg_size: data.unit_type !== "unit" && parseFloat(data.pkg_size) > 0 ? parseFloat(data.pkg_size) : null, // גודל אריזה (ק"ג/ליטר) לספירה באריזות
         price, yield_pct: yieldPct, weight_before: weightBefore, weight_after: weightAfter,
         is_frozen: isFrozen ? 1 : 0, parent_id: null,
         ...(data.unit_type === "unit" && EGG_SIZES[data.egg_size] ? { egg_size: data.egg_size } : {}),
@@ -125,6 +126,7 @@ export async function updatePantryItem(id, data) {
         unit_amount: unitAmount, price, is_frozen: isFrozen ? 1 : 0,
     });
     if (data.unit_type === "unit" && EGG_SIZES[data.egg_size]) existing.egg_size = data.egg_size;
+    existing.pkg_size = data.unit_type !== "unit" && parseFloat(data.pkg_size) > 0 ? parseFloat(data.pkg_size) : null;
     if (Array.isArray(data.allergens)) { existing.allergens = data.allergens; existing.allergens_auto = false; }
     await dbPut("pantryItems", existing);
 }
