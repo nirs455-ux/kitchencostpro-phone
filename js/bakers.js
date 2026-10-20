@@ -23,6 +23,12 @@ export function suggestBaseHeuristic(recipeName, items) {
         return { ids: inName.map((i) => i.id), reason: `שם המתכון מכיל: ${inName.map((i) => i.name).join(", ")}` };
     }
 
+    // 1ב. מילה ראשונה של רכיבים תואמת מילה בשם המתכון (צ'ילי קרנץ -> כל סוגי הצ'ילי יחד הם הבסיס)
+    const nameWords = rn.split(/\s+/).filter((w) => w.length >= 3);
+    const firstWord = (n) => norm(n).split(/\s+/)[0] || "";
+    const byWord = list.filter((i) => { const w = firstWord(i.name); return w.length >= 3 && nameWords.includes(w); });
+    if (byWord.length) return { ids: byWord.map((i) => i.id), reason: `שם המתכון מכיל: ${firstWord(byWord[0].name)} (כל הרכיבים הללו יחד = 100%)` };
+
     // 2. מאפים: אם הקמחים יחד הם חלק משמעותי מהמשקל - הקמחים הם הבסיס (כל הקמחים יחד = 100%)
     const total = list.reduce((n, i) => n + Number(i.quantity_g), 0);
     const flours = list.filter((i) => isFlour(i.name));
