@@ -12,6 +12,7 @@ import { EGG_SIZES, isEggName, guessEggSize } from "../eggs.js";
 import { textToGrams, gramsToKgText, describeQty, qtyWarning } from "../qty.js";
 import { matchesDeep, normalize, orderCategories } from "./ingredientPicker.js";
 import { getFilter } from "../filters.js";
+import { assignAutoSubs, subOf } from "../autoGroups.js";
 import { effectivePrice } from "../formulas.js";
 import { buildInventoryView } from "../repo/inventoryRepo.js";
 
@@ -47,19 +48,18 @@ const CAT_STYLE = {
 const catStyle = (c) => CAT_STYLE[c] || ["📦", "var(--surface-2)"];
 const unitWord = (it) => (it.unit_type === "unit" ? "יחידה" : it.unit_type === "liter" ? "ליטר" : 'ק"ג');
 
-function pxRow(it, childCount) {
+function pxRow(it) {
     const [ic, tint] = catStyle(it.category);
     const noWeight = it.unit_type === "unit" && !it.unit_amount;
-    const tags = [it.is_frozen ? '<span class="tag tag-frozen">❄ קפוא</span>' : "", noWeight ? '<span class="tag tag-danger">חסר משקל</span>' : "",
-        childCount ? `<span class="muted">${childCount + 1} אפשרויות</span>` : ""].filter(Boolean).join(" ");
+    const tags = [it.is_frozen ? '<span class="tag tag-frozen">❄ קפוא</span>' : "", noWeight ? '<span class="tag tag-danger">חסר משקל</span>' : ""].filter(Boolean).join(" ");
     return h(`<div class="px-row" data-id="${it.id}"><span class="px-ic" style="background:${tint};">${ic}</span>
-        <div class="px-main"><div class="px-name">${escapeHtml(it.name)}</div><div class="px-meta">${escapeHtml(it.subcategory || it.category)}${tags ? " · " : ""}${tags}</div></div>
+        <div class="px-main"><div class="px-name">${escapeHtml(it.name)}</div><div class="px-meta">${escapeHtml(subOf(it) || it.category)}${tags ? " · " : ""}${tags}</div></div>
         <div class="px-price">${cur()}${Number(it.price).toFixed(2)}<small>/ ${unitWord(it)}</small></div></div>`);
 }
 
 export async function renderPantryProducts(container) {
     const root = container.parentElement; // כל עמוד המזווה (לשוניות + תוכן), לרענון אחרי מעבר ללשונית אחרת
-    const items = await listTopLevelPantryItems();
+    const items = assignAutoSubs(await listTopLevelPantryItems()); // תתי-קטגוריות אוטומטיות לפי תחילת השם (צ'ילי, שום...)
     const all = await dbGetAll("pantryItems");
     const kids = new Map();
     for (const c of all) if (c.parent_id) kids.set(c.parent_id, [...(kids.get(c.parent_id) || []), c]);
@@ -74,7 +74,7 @@ export async function renderPantryProducts(container) {
     let q = "";
     let chip = ""; // קטגוריה נבחרת בתצוגת הרשימה
     const sorted = () => [...items].sort((a, b) => a.category.localeCompare(b.category, "he") || (sortMode === "recent" ? (lastBought.get(b.id) || "").localeCompare(lastBought.get(a.id) || "") : 0) || a.name.localeCompare(b.name, "he"));
-    const visible = (it) => matchesDeep({ name: it.name, category: it.category, subcategory: it.subcategory || "", children: (kids.get(it.id) || []).map((c) => ({ name: c.name })) }, q);
+    const visible = (it) => matchesDeep({ name: it.name, category: it.category, subcategory: subOf(it) }, q); // חיפוש רק במוצרים (העיבוד שייך ללשונית עיבוד)
     const noWeight = items.filter((it) => it.unit_type === "unit" && !it.unit_amount);
 
     container.innerHTML = `
@@ -104,7 +104,7 @@ export async function renderPantryProducts(container) {
             ss.onchange = async () => { sortMode = ss.value; await setSetting("pantry_sort", sortMode); draw(); };
             const shown = rows.filter((it) => !chip || it.category === chip);
             if (!shown.length) list.innerHTML = `<div class="empty-state">${q ? "לא נמצא מוצר תואם." : "אין מוצרים בקטגוריה הזו."}</div>`;
-            for (const it of shown) list.appendChild(pxRow(it, (kids.get(it.id) || []).length));
+            for (const it of shown) list.appendChild(pxRow(it));
         } else {
             const searching = !!normalize(q);
             if (!rows.length) { list.innerHTML = '<div class="empty-state">לא נמצא מוצר תואם.</div>'; return; }
@@ -114,10 +114,10 @@ export async function renderPantryProducts(container) {
                 const [ic] = catStyle(cat);
                 const sec = h(`<div class="px-sec"><div class="px-sh" data-k="c:${escapeHtml(cat)}"><span class="px-ic" style="background:${catStyle(cat)[1]};">${ic}</span><b>${escapeHtml(cat)}</b><span class="px-cnt">${inCat.length}</span><span class="px-chev">${open ? "▾" : "◂"}</span></div></div>`);
                 if (open) {
-                    const subs = [...new Set(inCat.map((r) => r.subcategory || ""))];
+                    const subs = [...new Set(inCat.map((r) => subOf(r)))];
                     const hasSubs = subs.some(Boolean);
                     for (const sub of subs.sort((a, b) => a.localeCompare(b, "he"))) {
-                        const rowsSub = inCat.filter((r) => (r.subcategory || "") === sub);
+                        const rowsSub = inCat.filter((r) => subOf(r) === sub);
                         let body = rowsSub;
                         if (hasSubs && sub) {
                             const subOpen = searching || pxOpen.has(`s:${cat}:${sub}`);
@@ -125,7 +125,7 @@ export async function renderPantryProducts(container) {
                             sec.appendChild(sh);
                             if (!subOpen) continue;
                         }
-                        for (const it of body) sec.appendChild(pxRow(it, (kids.get(it.id) || []).length));
+                        for (const it of body) sec.appendChild(pxRow(it));
                     }
                 }
                 list.appendChild(sec);
@@ -153,12 +153,11 @@ async function openProductSheet(it, children, container, root) {
     try { stock = (await buildInventoryView()).find((x) => x.id === it.id); } catch (e) { /* לא קריטי */ }
     const row = (k, v) => `<div class="sh-row"><span class="muted">${k}</span><span>${v}</span></div>`;
     const overlay = openModal(`
-        <div class="sh-head"><span class="px-ic" style="background:${tint};">${ic}</span><div><div class="sh-name">${escapeHtml(it.name)}</div><div class="muted">${escapeHtml(it.category)}${it.subcategory ? " / " + escapeHtml(it.subcategory) : ""}${it.is_frozen ? " · ❄ קפוא" : ""}</div></div></div>
+        <div class="sh-head"><span class="px-ic" style="background:${tint};">${ic}</span><div><div class="sh-name">${escapeHtml(it.name)}</div><div class="muted">${escapeHtml(it.category)}${subOf(it) ? " / " + escapeHtml(subOf(it)) : ""}${it.is_frozen ? " · ❄ קפוא" : ""}</div></div></div>
         ${row("מחיר קנייה", `${cur()}${Number(it.price).toFixed(2)} / ${unitWord(it)}`)}
         ${Math.abs(eff - Number(it.price)) > 0.004 ? row("מחיר אמיתי (אחרי ניצולת)", `${cur()}${eff.toFixed(2)} (${Number(it.yield_pct).toFixed(0)}%)`) : ""}
         ${it.unit_type === "unit" ? row("משקל ליחידה", it.unit_amount ? `${gramsToKgText(it.unit_amount)} ק"ג` : '<span style="color:var(--danger);">חסר</span>') : ""}
         ${stock ? row("מלאי תיאורטי", `${+Number(stock.theoretical_quantity).toFixed(3)} ${unitWord(it)}`) : ""}
-        ${children.length ? row("תוצרים מפורקים", `${children.length}`) : ""}
         <div class="sh-actions">
             <button type="button" class="btn btn-secondary" id="sh-edit">עריכה</button>
             <button type="button" class="btn btn-secondary" id="sh-proc">עיבוד</button>

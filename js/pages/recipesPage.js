@@ -17,6 +17,7 @@ import { textToGrams, gramsToKgText, describeQty, qtyWarning } from "../qty.js";
 import { bindPickerButton, refreshPickerButton } from "./ingredientPicker.js";
 import { isStaffMode } from "../staff.js";
 import { listRow, groupsEl, orderCategories, matchesDeep, normalize } from "./listKit.js";
+import { assignAutoSubs, subOf } from "../autoGroups.js";
 import { UNITS, convertToGrams, factorFor, scaleRecipe, fmtQty } from "../generator.js";
 import { recipeEggSummary, eggSummaryText, allocateEggCosts, isEggProduct, eggSizeOf, partGrams, eggBreakdown, EGG_SIZES, EGG_PARTS, EGG_PART_LABEL } from "../eggs.js";
 import { showImageFullscreen } from "../imageUtil.js";
@@ -526,9 +527,10 @@ async function openRecipeModal(existing, container, draft = null) {
             button: row.querySelector(`#ing-pick-${id}`), select: row.querySelector(`#ing-source-${id}`), title: "בחר מרכיב", keyOf: (it) => String(it.id),
             getItems: () => {
                 const unitWord = (it) => (it.unit_type === "unit" ? "יחידה" : it.unit_type === "liter" ? "ליטר" : 'ק"ג');
+                assignAutoSubs(sources.filter((x) => !x.item.parent_id).map((x) => x.item));
                 return sources.filter((x) => !x.item.parent_id).map((x) => ({
-                    key: `p${x.id}`, id: x.id, name: x.name, category: x.item.category, subcategory: x.item.subcategory || "", hint: `${money(x.item.price)} / ${unitWord(x.item)}`,
-                    children: sources.filter((c) => c.item.parent_id === x.id).map((c) => ({ key: `p${c.id}`, id: c.id, name: c.name, category: x.item.category, subcategory: x.item.subcategory || "", hint: `${money(c.item.price)} / ${unitWord(c.item)}` })),
+                    key: `p${x.id}`, id: x.id, name: x.name, category: x.item.category, subcategory: subOf(x.item), hint: `${money(x.item.price)} / ${unitWord(x.item)}`,
+                    children: sources.filter((c) => c.item.parent_id === x.id).map((c) => ({ key: `p${c.id}`, id: c.id, name: c.name, category: x.item.category, subcategory: subOf(x.item), hint: `${money(c.item.price)} / ${unitWord(c.item)}` })),
                 }));
             },
         });

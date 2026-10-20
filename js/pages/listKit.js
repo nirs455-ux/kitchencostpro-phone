@@ -19,7 +19,7 @@ export function groupsEl(groups, open, searching, onToggle) {
     const wrap = document.createElement("div");
     for (const g of groups) {
         const isOpen = searching || open.has(g.key);
-        const sec = h(`<div class="px-sec"><div class="px-sh" data-k="${escapeHtml(g.key)}"><span class="px-ic" style="background:${g.tint || "var(--surface-2)"};">${g.ic || "📁"}</span><b>${escapeHtml(g.title)}</b><span class="px-cnt">${g.rows.length}</span><span class="px-chev">${isOpen ? "▾" : "◂"}</span></div></div>`);
+        const sec = h(`<div class="px-sec"><div class="px-sh" data-k="${escapeHtml(g.key)}"><span class="px-ic" style="background:${g.tint || "var(--surface-2)"};">${g.ic || "📁"}</span><b>${escapeHtml(g.title)}</b><span class="px-cnt">${g.count ?? g.rows.length}</span><span class="px-chev">${isOpen ? "▾" : "◂"}</span></div></div>`);
         sec.querySelector(".px-sh").onclick = () => onToggle(g.key);
         if (isOpen) for (const r of g.rows) sec.appendChild(r);
         wrap.appendChild(sec);

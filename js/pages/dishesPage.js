@@ -6,6 +6,7 @@ import { pricePerGram, itemCost as calcItemCost, computeDishPricing } from "../f
 import { textToGrams, gramsToKgText, describeQty, qtyWarning } from "../qty.js";
 import { bindPickerButton, refreshPickerButton } from "./ingredientPicker.js";
 import { listRow, matchesDeep } from "./listKit.js";
+import { assignAutoSubs, subOf } from "../autoGroups.js";
 import { h, openModal, closeModal, confirmDialog, toast, escapeHtml, money, info, busy, attemptClose, cur, curLabel } from "../ui.js";
 
 async function allSources() {
@@ -124,8 +125,10 @@ async function openDishModal(existing, container) {
             getItems: () => {
                 const hintOf = (s) => (s.source_type === "recipe" ? `${money(s.recipeCostPerGram * 1000)} / ק"ג` : `${money(s.ppgSource.price)} / ${s.ppgSource.unit_type === "unit" ? "יחידה" : s.ppgSource.unit_type === "liter" ? "ליטר" : 'ק"ג'}`);
                 const out = [];
+                assignAutoSubs(sources.filter((s) => s.source_type === "pantry" && !s.indent).map((s) => s.ppgSource));
+                const subFor = (s) => (s.source_type === "pantry" && s.ppgSource ? subOf(s.indent ? sources.find((p) => p.source_type === "pantry" && !p.indent && p.ppgSource.id === s.ppgSource.parent_id)?.ppgSource : s.ppgSource) : s.subcategory);
                 sources.forEach((s, i) => {
-                    const node = { key: `d${i}`, id: i, tab: s.source_type, name: s.plainName || s.name, category: s.category, subcategory: s.subcategory, hint: hintOf(s) };
+                    const node = { key: `d${i}`, id: i, tab: s.source_type, name: s.plainName || s.name, category: s.category, subcategory: subFor(s), hint: hintOf(s) };
                     if (s.indent && out.length) { (out[out.length - 1].children = out[out.length - 1].children || []).push(node); } else out.push(node);
                 });
                 return out;
