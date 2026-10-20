@@ -2,6 +2,7 @@
 // f.category: "" = מסך הקטגוריות, "*" = הכל, אחרת שם קטגוריה.
 import { CATEGORY_GROUPS } from "./constants.js";
 import { h, escapeHtml } from "./ui.js";
+import { subOf } from "./autoGroups.js";
 
 const states = {};
 
@@ -15,7 +16,7 @@ export function applyFilter(items, f) {
     if (!f.category) return [];
     return items.filter((i) =>
         (f.category === "*" || i.category === f.category) &&
-        (!f.subcategory || i.subcategory === f.subcategory)
+        (!f.subcategory || subOf(i) === f.subcategory)
     );
 }
 
@@ -64,8 +65,9 @@ export function mountFilterBar(container, items, f, onChange) {
     container.appendChild(bar);
 
     const scope = items.filter((i) => f.category === "*" || i.category === f.category);
-    const subs = Object.values(CATEGORY_GROUPS).flat().filter((s, idx, arr) => arr.indexOf(s) === idx)
-        .filter((s) => scope.some((i) => i.subcategory === s));
+    const fixedSubs = Object.values(CATEGORY_GROUPS).flat().filter((s, idx, arr) => arr.indexOf(s) === idx);
+    const present = [...new Set(scope.map(subOf).filter(Boolean))];
+    const subs = [...present.filter((s) => fixedSubs.includes(s)).sort((a, b) => fixedSubs.indexOf(a) - fixedSubs.indexOf(b)), ...present.filter((s) => !fixedSubs.includes(s)).sort((a, b) => a.localeCompare(b, "he"))];
     if (subs.length) {
         const row = h(`<div class="sub-scroll"></div>`);
         const chip = (label, active, sub) => {
@@ -74,7 +76,7 @@ export function mountFilterBar(container, items, f, onChange) {
             return c;
         };
         row.appendChild(chip(`הכל (${scope.length})`, !f.subcategory, ""));
-        for (const s of subs) row.appendChild(chip(`${s} (${scope.filter((i) => i.subcategory === s).length})`, f.subcategory === s, s));
+        for (const s of subs) row.appendChild(chip(`${s} (${scope.filter((i) => subOf(i) === s).length})`, f.subcategory === s, s));
         container.appendChild(row);
     }
 }
@@ -84,8 +86,9 @@ export function groupBySection(items) {
     const catOrder = Object.keys(CATEGORY_GROUPS);
     const groups = new Map();
     for (const it of items) {
-        const title = it.subcategory ? `${it.category} / ${it.subcategory}` : it.category;
-        if (!groups.has(title)) groups.set(title, { title, category: it.category, sub: it.subcategory || "", items: [] });
+        const sb = subOf(it);
+        const title = sb ? `${it.category} / ${sb}` : it.category;
+        if (!groups.has(title)) groups.set(title, { title, category: it.category, sub: sb, items: [] });
         groups.get(title).items.push(it);
     }
     return [...groups.values()].sort((a, b) => {
