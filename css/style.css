@@ -405,3 +405,8 @@ body[data-cook="1"] .cost-only, body[data-cook="1"] .mgr-only { display: none !i
 .inv-info { flex: 1; min-width: 0; }
 .inv-item .count-input { width: 88px; text-align: center; font-size: 16px; padding: 9px 6px; border-radius: 10px; border: 1px solid var(--input-border); background: var(--bg); color: var(--text); font-family: inherit; }
 .inv-sub { margin: 4px 14px 6px; color: var(--text-2); font-size: 13px; font-weight: 700; }
+
+.cv-row { display: flex; gap: 8px; }
+.cv-row input { flex: 1; min-width: 0; font-size: 22px; font-weight: 700; text-align: center; padding: 12px 8px; border-radius: 12px; border: 1px solid var(--input-border); background: var(--bg); color: var(--text); font-family: inherit; }
+.cv-row select { flex: 1; min-width: 0; }
+.cv-swap { text-align: center; margin: 6px 0; }
