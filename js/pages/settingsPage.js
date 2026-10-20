@@ -12,6 +12,8 @@ import { openTour } from "./tour.js";
 import { t } from "../i18n.js";
 import { renderCloudCard } from "../cloud/cloudUi.js";
 
+const setOpen = new Set(); // אזורים פתוחים (כברירת מחדל הכול סגור)
+
 export async function renderSettingsPage(container) {
     const apiKey = (await getSetting("gemini_api_key")) || "";
     const lastExport = await getSetting("last_export");
@@ -23,47 +25,11 @@ export async function renderSettingsPage(container) {
     try { persisted = navigator.storage && navigator.storage.persisted ? await navigator.storage.persisted() : null; } catch (e) { /* לא נתמך */ }
 
     container.innerHTML = `
-        <div class="card"><button class="btn btn-secondary btn-block" id="btn-files">📁 קבצים (קבלות, מתכונים, התקבלו)</button></div>
-        <div class="card" id="cloud-card"></div>
-        <div class="card"><button class="btn btn-secondary btn-block" id="btn-tour">${t("settings.tour")}</button></div>
-        <div class="card"><button class="btn btn-secondary btn-block" id="btn-wizard">🧭 אשף הפעלה (מפתח, מדינה, מטבע)</button></div>
-        <div class="card">
-            <div class="card-title">מפתח Gemini API ${info("נדרש לסריקת חשבוניות. נשמר רק בתוך הטלפון הזה, ולא נשלח לשום מקום חוץ מ-Google.")}</div>
-            <div class="field" style="margin-top:8px;"><input type="text" id="f-apikey" value="${apiKey}" placeholder="הדבק כאן את המפתח"></div>
-            <button class="btn btn-primary btn-small" id="btn-save-key">שמירה</button>
-        </div>
-
-        <div class="card">
-            <div class="card-title">מראה האפליקציה ${info("בחר ערכת עיצוב. השינוי מיידי, ואפשר להחליף בכל רגע.")}</div>
-            <div class="chips" id="theme-chips">${THEMES.map((t) => `<button type="button" class="chip ${t.key === currentTheme ? "active" : ""}" data-theme-key="${t.key}"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${t.color};margin-left:6px;"></span>${t.label}</button>`).join("")}</div>
-        </div>
-
-        <div class="card">
-            <div class="card-title">מצב עובד ${info("נעילה בקוד: העובד רואה רק צילום קבלות (נשלחות לבדיקה שלך) וספירת מלאי, בלי מחירים ורווחים. זו נעילה נוחה למניעת בלבול, לא הגנת אבטחה מלאה.")}</div>
-            ${pinSet ? `<div class="btn-row"><button class="btn btn-primary btn-small" id="btn-staff-on">🔒 נעל למצב עובד עכשיו</button>
-                <button class="btn btn-secondary btn-small" id="btn-staff-pin">שנה קוד</button>
-                <button class="btn btn-danger btn-small" id="btn-staff-off">בטל נעילה</button></div>`
-              : `<button class="btn btn-secondary btn-small" id="btn-staff-pin">הגדר קוד</button>`}
-        </div>
-
-        <div class="card">
-            <div class="card-title">פח חשבוניות</div>
-            <button class="btn btn-secondary btn-small" id="btn-trash-open">🗑 פתח פח (${trashCount})</button>
-        </div>
-
-        <div class="card">
-            <div class="card-title">דוח תקלה ${info("אם משהו לא עובד: לחץ להעתקת דוח קצר (גרסה, מכשיר והתקלות האחרונות), והדבק אותו בהודעה אליי.")}</div>
-            <div class="btn-row"><button class="btn btn-secondary btn-small" id="btn-report-copy">📋 העתק דוח תקלה</button>
-                <button class="btn btn-secondary btn-small" id="btn-report-clear">נקה יומן</button></div>
-        </div>
-
-        <div class="card">
-            <div class="card-title">סריקה מהירה ${info("כשכל השורות מזוהות, אין שינוי מחיר חריג, יש ספק והסכום תואם לקבלה - החשבונית נשמרת לבד אחרי 5 שניות (אפשר לעצור). אחרת תראה רק את מה שדורש בדיקה.")}</div>
-            <div class="checkbox-field"><input type="checkbox" id="f-autosave" ${autoSave ? "checked" : ""}>
-                <label for="f-autosave">שמירה אוטומטית אחרי סריקה כשהכול תקין</label></div>
-        </div>
-
-        <div class="card">
+        <div class="px-sec set-sec" data-sec="backup">
+            <div class="px-sh"><span class="px-ic" style="background:var(--accent-soft);">☁</span><b>גיבוי וענן</b><span class="px-chev">${setOpen.has("backup") ? "▾" : "◂"}</span></div>
+            <div class="set-body" ${setOpen.has("backup") ? "" : "hidden"}>
+                <div class="card" id="cloud-card"></div>
+                <div class="card">
             <div class="card-title">גיבוי (ייצוא/ייבוא) ${info("אין שרת ואין סנכרון אוטומטי - זה הגיבוי היחיד לנתונים שבטלפון. מומלץ לייצא אחרי כל עדכון משמעותי.")}</div>
             <div class="hint" style="margin-bottom:6px;"><b>גיבוי אחרון:</b> ${lastExport ? new Date(lastExport).toLocaleString("he-IL") : "עדיין לא יוצא"}
                 <br><b>אחסון קבוע:</b> ${persisted === true ? "פעיל - הדפדפן לא ימחק נתונים אוטומטית" : persisted === false ? "לא אושר ע\"י הדפדפן - מומלץ לגבות לעיתים קרובות" : "לא נתמך בדפדפן הזה"}</div>
@@ -74,12 +40,79 @@ export async function renderSettingsPage(container) {
             <input type="file" id="import-file" accept=".json" style="display:none;">
             <div class="error-msg" id="import-error"></div>
         </div>
-
-        <div class="card">
+            </div>
+        </div>
+        <div class="px-sec set-sec" data-sec="scan">
+            <div class="px-sh"><span class="px-ic" style="background:var(--brand-soft);">🤖</span><b>סריקה ובינה מלאכותית</b><span class="px-chev">${setOpen.has("scan") ? "▾" : "◂"}</span></div>
+            <div class="set-body" ${setOpen.has("scan") ? "" : "hidden"}>
+                <div class="card">
+            <div class="card-title">מפתח Gemini API ${info("נדרש לסריקת חשבוניות. נשמר רק בתוך הטלפון הזה, ולא נשלח לשום מקום חוץ מ-Google.")}</div>
+            <div class="field" style="margin-top:8px;"><input type="text" id="f-apikey" value="${apiKey}" placeholder="הדבק כאן את המפתח"></div>
+            <button class="btn btn-primary btn-small" id="btn-save-key">שמירה</button>
+        </div>
+                <div class="card">
+            <div class="card-title">סריקה מהירה ${info("כשכל השורות מזוהות, אין שינוי מחיר חריג, יש ספק והסכום תואם לקבלה - החשבונית נשמרת לבד אחרי 5 שניות (אפשר לעצור). אחרת תראה רק את מה שדורש בדיקה.")}</div>
+            <div class="checkbox-field"><input type="checkbox" id="f-autosave" ${autoSave ? "checked" : ""}>
+                <label for="f-autosave">שמירה אוטומטית אחרי סריקה כשהכול תקין</label></div>
+        </div>
+            </div>
+        </div>
+        <div class="px-sec set-sec" data-sec="look">
+            <div class="px-sh"><span class="px-ic" style="background:var(--warn-soft);">🎨</span><b>מראה</b><span class="px-chev">${setOpen.has("look") ? "▾" : "◂"}</span></div>
+            <div class="set-body" ${setOpen.has("look") ? "" : "hidden"}>
+                <div class="card">
+            <div class="card-title">מראה האפליקציה ${info("בחר ערכת עיצוב. השינוי מיידי, ואפשר להחליף בכל רגע.")}</div>
+            <div class="chips" id="theme-chips">${THEMES.map((t) => `<button type="button" class="chip ${t.key === currentTheme ? "active" : ""}" data-theme-key="${t.key}"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${t.color};margin-left:6px;"></span>${t.label}</button>`).join("")}</div>
+        </div>
+            </div>
+        </div>
+        <div class="px-sec set-sec" data-sec="staff">
+            <div class="px-sh"><span class="px-ic" style="background:var(--danger-soft);">🔒</span><b>הרשאות ומצב עובד</b><span class="px-chev">${setOpen.has("staff") ? "▾" : "◂"}</span></div>
+            <div class="set-body" ${setOpen.has("staff") ? "" : "hidden"}>
+                <div class="card">
+            <div class="card-title">מצב עובד ${info("נעילה בקוד: העובד רואה רק צילום קבלות (נשלחות לבדיקה שלך) וספירת מלאי, בלי מחירים ורווחים. זו נעילה נוחה למניעת בלבול, לא הגנת אבטחה מלאה.")}</div>
+            ${pinSet ? `<div class="btn-row"><button class="btn btn-primary btn-small" id="btn-staff-on">🔒 נעל למצב עובד עכשיו</button>
+                <button class="btn btn-secondary btn-small" id="btn-staff-pin">שנה קוד</button>
+                <button class="btn btn-danger btn-small" id="btn-staff-off">בטל נעילה</button></div>`
+              : `<button class="btn btn-secondary btn-small" id="btn-staff-pin">הגדר קוד</button>`}
+        </div>
+            </div>
+        </div>
+        <div class="px-sec set-sec" data-sec="tools">
+            <div class="px-sh"><span class="px-ic" style="background:var(--surface-2);">🧰</span><b>כלים (קבצים, פח, דוח תקלה)</b><span class="px-chev">${setOpen.has("tools") ? "▾" : "◂"}</span></div>
+            <div class="set-body" ${setOpen.has("tools") ? "" : "hidden"}>
+                <div class="card"><button class="btn btn-secondary btn-block" id="btn-files">📁 קבצים (קבלות, מתכונים, התקבלו)</button></div>
+                <div class="card">
+            <div class="card-title">פח חשבוניות</div>
+            <button class="btn btn-secondary btn-small" id="btn-trash-open">🗑 פתח פח (${trashCount})</button>
+        </div>
+                <div class="card">
+            <div class="card-title">דוח תקלה ${info("אם משהו לא עובד: לחץ להעתקת דוח קצר (גרסה, מכשיר והתקלות האחרונות), והדבק אותו בהודעה אליי.")}</div>
+            <div class="btn-row"><button class="btn btn-secondary btn-small" id="btn-report-copy">📋 העתק דוח תקלה</button>
+                <button class="btn btn-secondary btn-small" id="btn-report-clear">נקה יומן</button></div>
+        </div>
+            </div>
+        </div>
+        <div class="px-sec set-sec" data-sec="help">
+            <div class="px-sh"><span class="px-ic" style="background:var(--ok-soft);">🧭</span><b>עזרה ועל האפליקציה</b><span class="px-chev">${setOpen.has("help") ? "▾" : "◂"}</span></div>
+            <div class="set-body" ${setOpen.has("help") ? "" : "hidden"}>
+                <div class="card"><button class="btn btn-secondary btn-block" id="btn-tour">${t("settings.tour")}</button></div>
+                <div class="card"><button class="btn btn-secondary btn-block" id="btn-wizard">🧭 אשף הפעלה (מפתח, מדינה, מטבע)</button></div>
+                <div class="card">
             <div class="card-title">על האפליקציה ${info("גרסת טלפון עצמאית של KitchenCostPro - כל הנתונים נשמרים רק במכשיר הזה, בלי שרת. היא לא מסונכרנת עם הגרסה שבמחשב. השתמש בייצוא וייבוא כדי להעביר נתונים בין השתיים.")}</div>
             <div class="hint"><b>גרסה:</b> ${APP_VERSION}</div>
         </div>
+            </div>
+        </div>
     `;
+    container.querySelectorAll(".set-sec > .px-sh").forEach((hd) => {
+        hd.onclick = () => {
+            const sec = hd.parentElement, k = sec.dataset.sec, body = sec.querySelector(".set-body");
+            if (setOpen.has(k)) setOpen.delete(k); else setOpen.add(k);
+            body.hidden = !setOpen.has(k);
+            hd.querySelector(".px-chev").textContent = setOpen.has(k) ? "▾" : "◂";
+        };
+    });
     container.querySelector("#btn-files").onclick = () => { location.hash = "files"; };
     renderCloudCard(container.querySelector("#cloud-card"));
     container.querySelector("#btn-tour").onclick = async () => openTour({ role: (await getSetting("role")) || "manager" });

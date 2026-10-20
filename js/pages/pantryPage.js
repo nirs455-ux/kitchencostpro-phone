@@ -221,6 +221,10 @@ function openPantryModal(existing, container) {
             <label>כמה יחידות באריזה / מגש ${info("אם קונים באריזה (מגש ביצים של 30, חבילה של 10), הזן כאן את הכמות ובשדה המחיר את מחיר האריזה. המערכת תחשב מחיר ליחידה אחת. אם קונים ביחידה בודדת, השאר ריק או 1.")}</label>
             <input type="text" inputmode="numeric" id="f-pack" value="">
         </div>
+        <div class="field" id="f-bulk-wrap" style="display:none;">
+            <label>קונים באריזה גדולה? המשקל הכולל שלה (ק"ג) ${info('לא חובה. אם קונים 10 שקיות של קילו, כתוב 10 ובשדה המחיר את מחיר כל הקנייה. המערכת תחשב לבד מחיר לק"ג. אם המחיר כבר לק"ג, השאר ריק.')}</label>
+            <input type="text" inputmode="decimal" id="f-bulk" value="">
+        </div>
         <div class="field"><label id="f-price-label">מחיר קנייה (${curLabel()})</label><input type="number" step="any" id="f-price" value="${existing ? existing.price : ""}"><div class="hint" id="f-price-echo"></div></div>
         <div class="error-msg"></div>
         <div class="modal-actions">
@@ -270,6 +274,9 @@ function openPantryModal(existing, container) {
     const priceLabel = overlay.querySelector("#f-price-label");
     const priceEcho = overlay.querySelector("#f-price-echo");
     const unitEcho = overlay.querySelector("#f-unit-echo");
+    const bulkWrap = overlay.querySelector("#f-bulk-wrap");
+    const bulkInput = overlay.querySelector("#f-bulk");
+    const bulkKg = () => { const n = parseFloat(String(bulkInput.value).replace(",", ".")); return n > 0 ? n : 0; };
     const packCount = () => { const n = parseInt(String(packInput.value).trim(), 10); return n > 1 ? n : 1; };
     function syncPrice() {
         const ut = unitTypeSelect.value;
@@ -277,7 +284,10 @@ function openPantryModal(existing, container) {
         const pack = ut === "unit" ? packCount() : 1;
         priceLabel.textContent = ut === "unit" ? (pack > 1 ? `מחיר לאריזה של ${pack} (${curLabel()})` : `מחיר ליחידה אחת (${curLabel()})`) : ut === "liter" ? `מחיר לליטר (${curLabel()})` : `מחיר לק"ג (${curLabel()})`;
         const price = parseFloat(priceInput.value);
-        priceEcho.textContent = ut === "unit" && pack > 1 && price > 0 ? `= ${(price / pack).toFixed(2)} ${curLabel()} ליחידה אחת` : "";
+        bulkWrap.style.display = ut === "unit" || existing ? "none" : "block";
+        const bulk = ut !== "unit" && !existing ? bulkKg() : 0;
+        if (bulk > 0) priceLabel.textContent = `מחיר כל האריזה (${curLabel()})`;
+        priceEcho.textContent = ut === "unit" && pack > 1 && price > 0 ? `= ${(price / pack).toFixed(2)} ${curLabel()} ליחידה אחת` : bulk > 0 && price > 0 ? `= ${(price / bulk).toFixed(2)} ${curLabel()} ל${ut === "liter" ? "ליטר" : 'ק"ג'}` : "";
         const w = unitAmountInput.value;
         const warn = unitTypeSelect.value === "unit" && w ? qtyWarning(w) : null;
         unitEcho.innerHTML = warn ? `<span style="color:var(--danger);">${warn}</span>` : unitTypeSelect.value === "unit" ? describeQty(w) : "";
@@ -285,6 +295,7 @@ function openPantryModal(existing, container) {
     const unitAmountInput = overlay.querySelector("#f-unit-amount");
     packInput.addEventListener("input", syncPrice);
     priceInput.addEventListener("input", syncPrice);
+    bulkInput.addEventListener("input", syncPrice);
     unitAmountInput.addEventListener("input", syncPrice);
     function syncUnitAmount() {
         unitAmountWrap.style.display = unitTypeSelect.value === "unit" ? "block" : "none";
@@ -305,7 +316,9 @@ function openPantryModal(existing, container) {
             subcategory: overlay.querySelector("#f-subcategory").value,
             unit_type: unitTypeSelect.value,
             unit_amount: String(textToGrams(overlay.querySelector("#f-unit-amount").value) ?? ""),
-            price: unitTypeSelect.value === "unit" && packCount() > 1 && parseFloat(overlay.querySelector("#f-price").value) > 0
+            price: unitTypeSelect.value !== "unit" && !existing && bulkKg() > 0 && parseFloat(overlay.querySelector("#f-price").value) > 0
+                ? String(Math.round((parseFloat(overlay.querySelector("#f-price").value) / bulkKg()) * 10000) / 10000)
+                : unitTypeSelect.value === "unit" && packCount() > 1 && parseFloat(overlay.querySelector("#f-price").value) > 0
                 ? String(Math.round((parseFloat(overlay.querySelector("#f-price").value) / packCount()) * 10000) / 10000) : overlay.querySelector("#f-price").value,
             is_frozen: existing ? !!existing.is_frozen : false, // קפוא נקבע בעיבוד וניצולת
         };

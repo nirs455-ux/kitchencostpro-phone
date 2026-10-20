@@ -10,6 +10,7 @@ import { restoreInvoice } from "../repo/suppliersRepo.js";
 import { dbGet, dbPut, dbDelete } from "../db.js";
 import { h, openModal, closeModal, confirmDialog, toast, escapeHtml, money, info, busy, attemptClose, toastAction, cur } from "../ui.js";
 import { openScanModal } from "./scanModal.js";
+import { listRow, groupsEl } from "./listKit.js";
 import { compressImage, showImageFullscreen } from "../imageUtil.js";
 
 function todayLocal() {
@@ -24,6 +25,7 @@ const shortDate = (d) => { const [y, m, day] = (d || "").split("-"); return day 
 // מצב התצוגה נשמר בזמן שהדף נבנה מחדש (אחרי שמירה/מחיקה)
 let uiTab = "invoices";
 let uiFilter = { q: "", mode: "all", month: "", supplier: "" };
+const invOpen = new Set(); // חודשים פתוחים (כברירת מחדל הכול סגור)
 
 // מאפשר למסכים אחרים (למשל מסך הבית) לפתוח את הדף בלשונית/סינון מסוימים
 export function setSuppliersView(tab, filter = {}) {
@@ -141,22 +143,16 @@ export async function renderSuppliersPage(container) {
             groups.get(ym).push(inv);
         }
         box.innerHTML = "";
+        const searching = !!(uiFilter.q.trim() || uiFilter.month || uiFilter.supplier || uiFilter.mode === "owed");
+        const gs = [];
         for (const [ym, arr] of groups) {
             const total = arr.reduce((n, i) => n + (i.document_type === "credit" ? -i.total_amount : i.total_amount), 0);
-            box.appendChild(h(`<div class="month-head"><span>${ym ? monthLabel(ym) : "ללא תאריך"}</span><span>${money(total)}</span></div>`));
+            const rows = [];
             for (const inv of arr) {
                 const preview = inv.items.slice(0, 2).map((it) => escapeHtml(it.product_name)).join(", ") + (inv.items.length > 2 ? ` +${inv.items.length - 2}` : "");
-                const row = h(`
-                    <div class="inv-row ${inv.petty_cash ? (inv.reimbursed ? "petty-paid" : "petty-owed") : ""}">
-                        <div class="inv-main">
-                            <div class="inv-sup">${escapeHtml(inv.supplier_name)}
-                                ${inv.document_type === "credit" ? '<span class="tag tag-danger">זיכוי</span>' : ""}
-                                ${inv.petty_cash ? `<button type="button" class="petty-tag ${inv.reimbursed ? "paid" : "owed"}" data-petty="${inv.id}">${inv.reimbursed ? "הוחזר" : "ממתין להחזר"}</button>` : ""}</div>
-                            <div class="inv-sub">${shortDate(inv.invoice_date)} · ${preview}</div>
-                        </div>
-                        <div class="inv-amt">${money(inv.total_amount)}${inv.has_image ? ' <span title="יש תמונה">🖼</span>' : ""}</div>
-                    </div>`);
-                row.onclick = () => openInvoiceDetails(inv);
+                const tags = (inv.document_type === "credit" ? ' <span class="tag tag-danger">זיכוי</span>' : "") + (inv.petty_cash ? ` <button type="button" class="petty-tag ${inv.reimbursed ? "paid" : "owed"}" data-petty="${inv.id}">${inv.reimbursed ? "הוחזר" : "ממתין להחזר"}</button>` : "");
+                const row = listRow({ ic: inv.document_type === "credit" ? "↩" : "🧾", tint: inv.petty_cash && !inv.reimbursed ? "var(--danger-soft)" : "var(--accent-soft)", name: inv.supplier_name,
+                    meta: `${shortDate(inv.invoice_date)} · ${preview}${tags}`, end: `${money(inv.total_amount)}${inv.has_image ? " 🖼" : ""}`, onClick: () => openInvoiceDetails(inv) });
                 const pt = row.querySelector("[data-petty]");
                 if (pt) pt.onclick = async (e) => {
                     e.stopPropagation(); // לא פותח את החשבונית
@@ -165,9 +161,11 @@ export async function renderSuppliersPage(container) {
                     toastAction(was ? "סומן: ממתין להחזר" : "סומן: הוחזר", "בטל", async () => { await setPettyReimbursed(inv.id, was); rerender(); });
                     rerender();
                 };
-                box.appendChild(row);
+                rows.push(row);
             }
+            gs.push({ key: "inv:" + ym, title: `${ym ? monthLabel(ym) : "ללא תאריך"} · ${money(total)}`, ic: "📅", tint: "var(--brand-soft)", rows });
         }
+        box.appendChild(groupsEl(gs, invOpen, searching, (k) => { if (invOpen.has(k)) invOpen.delete(k); else invOpen.add(k); drawGroups(); }));
     }
 
     // ---- פרטי חשבונית (לחיצה על שורה): תוכן + פעולות במקום אחד ----
@@ -251,12 +249,7 @@ export async function renderSuppliersPage(container) {
             const mine = invoices.filter((i) => i.supplier_id === s.id);
             const monthTotal = mine.filter((i) => (i.invoice_date || "").startsWith(thisMonth)).reduce((n, i) => n + (i.document_type === "credit" ? -i.total_amount : i.total_amount), 0);
             const last = mine.map((i) => i.invoice_date).sort().pop();
-            const row = h(`
-                <div class="inv-row">
-                    <div class="inv-main"><div class="inv-sup">${escapeHtml(s.name)}</div>
-                        <div class="inv-sub">${mine.length === 1 ? "חשבונית אחת" : mine.length + " חשבוניות"}${last ? " · אחרונה " + shortDate(last) : ""}</div></div>
-                    <div class="inv-amt">${money(monthTotal)}<div class="muted">החודש</div></div>
-                </div>`);
+            const row = listRow({ ic: "🚚", tint: "var(--accent-soft)", name: s.name, meta: `${mine.length === 1 ? "חשבונית אחת" : mine.length + " חשבוניות"}${last ? " · אחרונה " + shortDate(last) : ""}`, end: `${money(monthTotal)}<small>החודש</small>` });
             row.onclick = () => {
                 const overlay = openModal(`
                     <h2>${escapeHtml(s.name)}</h2>

@@ -1,6 +1,7 @@
 // מסך "קבצים": כל התמונות והמסמכים שנשמרו באפליקציה, מחולקים לתיקיות (קבלות, מתכונים, התקבלו).
 // בענן (בהמשך) התיקייה תיקרא KitchenCostPro ותכיל תת-תיקיות באותם שמות.
 import { h, escapeHtml, money } from "../ui.js";
+import { listRow } from "./listKit.js";
 import { dbGetAll } from "../db.js";
 import { listInvoicesWithItems } from "../repo/suppliersRepo.js";
 import { listQueue } from "../repo/scanQueue.js";
@@ -42,7 +43,7 @@ export async function renderFilesPage(container) {
         container.innerHTML = `<div class="hint" style="margin:4px 2px 10px;">כל מה שצילמת או העלית, מסודר בתיקיות.</div><div id="files-folders"></div>`;
         const box = container.querySelector("#files-folders");
         for (const f of FOLDERS) {
-            const card = h(`<div class="card files-folder"><div class="card-row"><span class="card-title">${f.icon} ${f.title}</span><span class="seg-n">${n[f.key]}</span></div><div class="muted">${f.hint}</div></div>`);
+            const card = listRow({ ic: f.icon, tint: "var(--accent-soft)", name: f.title, meta: f.hint, end: String(n[f.key]) });
             card.onclick = () => { openFolder = f.key; renderFilesPage(container); };
             box.appendChild(card);
         }
