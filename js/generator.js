@@ -116,3 +116,20 @@ export function fmtQty(g) {
     const n = Math.round(g * 100) / 100;
     return n >= 1000 ? `${n} גרם (${+(n / 1000).toFixed(2)} ק"ג)` : `${n} גרם`;
 }
+
+// המרה כמו ממיר מטבעות: מיחידה אחת לאחרת. משקל<->משקל ונפח<->נפח מדויקים; משקל<->נפח דורש צפיפות (הערכה לפי שם החומר).
+// מחזיר { value, estimated, note } או null אם לא תקין.
+export function convertUnits({ qty, from, to, name }) {
+    qty = Number(qty);
+    const a = UNIT_BY_KEY[from];
+    const b = UNIT_BY_KEY[to];
+    if (!a || !b || !(qty > 0)) return null;
+    const round = (n) => Math.round(n * 1000) / 1000;
+    if (a.weight && b.weight) return { value: round((qty * a.weight) / b.weight), estimated: false, note: "" };
+    if (a.volume && b.volume) return { value: round((qty * a.volume) / b.volume), estimated: false, note: "" };
+    const d = densityFor(name);
+    const dens = d || 1;
+    const note = d ? "הערכה לפי צפיפות ממוצעת של החומר" : "לא זוהה החומר - חושב כמו מים (1 גרם למ\"ל). הקלד חומר כמו קמח או סוכר";
+    if (a.volume) return { value: round((qty * a.volume * dens) / b.weight), estimated: true, note };
+    return { value: round((qty * a.weight) / dens / b.volume), estimated: true, note };
+}
