@@ -41,11 +41,16 @@ export async function renderInventoryPage(container) {
         for (const sub of subs) {
             if (sub) body.appendChild(h(`<div class="inv-sub">${escapeHtml(sub)}</div>`));
             for (const it of inCat.filter((x) => subOf(x) === sub)) {
+                // מוצר עם גודל אריזה (בקבוק 370 מ"ל): סופרים באריזות, והמערכת ממירה לליטר/ק"ג לבד
+                const f = it.pkg_size > 0 ? it.pkg_size : 0;
+                const cv = (n) => (f ? Math.round((n / f) * 100) / 100 : n);
+                const uw = f ? "אריזות" : unitWord(it.unit_type);
+                const pkgNote = f ? ` · אריזה = ${+Number(f).toFixed(3)} ${it.unit_type === "liter" ? "ל'" : 'ק"ג'}` : "";
                 const row = h(`<div class="inv-item" data-name="${escapeHtml(normalize(it.name + " " + cat + " " + sub))}">
                     <div class="inv-info"><div class="px-name">${escapeHtml(it.name)}</div>
-                        <div class="px-meta">קודם: ${it.last_count_date ? `${it.last_counted_quantity} (${it.last_count_date.split("-").reverse().join("/")})` : "טרם נספר"} · קניות: ${it.purchased_since} · תיאורטי: <b>${it.theoretical_quantity}</b> ${unitWord(it.unit_type)}</div>
+                        <div class="px-meta">קודם: ${it.last_count_date ? `${cv(it.last_counted_quantity)} (${it.last_count_date.split("-").reverse().join("/")})` : "טרם נספר"} · קניות: ${cv(it.purchased_since)} · תיאורטי: <b>${cv(it.theoretical_quantity)}</b> ${uw}${pkgNote}</div>
                         <div class="muted" id="variance-${it.id}"></div></div>
-                    <input type="text" inputmode="decimal" class="count-input" id="count-${it.id}" data-theoretical="${it.theoretical_quantity}" placeholder="ספרתי">
+                    <input type="text" inputmode="decimal" class="count-input" id="count-${it.id}" data-theoretical="${cv(it.theoretical_quantity)}" data-factor="${f || 1}" placeholder="${f ? "אריזות" : "ספרתי"}">
                 </div>`);
                 body.appendChild(row);
                 rows.push({ el: row, it });
@@ -93,7 +98,8 @@ export async function renderInventoryPage(container) {
         container.querySelectorAll(".count-input").forEach((input) => {
             if (input.value === "") return;
             const pantry_item_id = input.id.replace("count-", "");
-            counts.push({ pantry_item_id, counted_quantity: String(input.value).replace(",", ".") });
+            const n = parseFloat(String(input.value).replace(",", "."));
+            counts.push({ pantry_item_id, counted_quantity: Number.isNaN(n) ? "x" : String(Math.round(n * (parseFloat(input.dataset.factor) || 1) * 10000) / 10000) });
         });
         try {
             await saveInventoryCounts(countDate, counts);

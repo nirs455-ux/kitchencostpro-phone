@@ -202,7 +202,7 @@ function openPantryModal(existing, container) {
         </div>
         <div class="form-row">
             <div class="field">
-                <label>איך המוצר נקנה ומתומחר? ${info('בוחרים לפי איך קונים ומתמחרים: לפי משקל (ירקות, קמח, בשר: מחיר לק"ג), לפי נפח (נוזלים בכמות: שמן, חלב במיכל: מחיר לליטר), או לפי יחידה (כל מה שנספר בחתיכות: ביצה, בקבוק, קופסה, חבילה: מחיר ליחידה). בכל המקרים במתכון כותבים כמה ק"ג או ליטר, והמערכת מחשבת עלות. מוצר ביחידות צריך גם משקל ליחידה אחת, כדי שאפשר יהיה להשתמש בו במתכון.')}</label>
+                <label>איך המוצר נקנה ומתומחר? ${info('משקל: קמח, סוכר, ירקות, בשר (מחיר לק"ג). נפח: שמן, חלב, מיצים (מחיר לליטר). יחידה: מה שנספר בחתיכות, כמו ביצה, קופסה או בקבוק שרוצים לספור. במתכון תמיד כותבים ק"ג או ליטר והמערכת מחשבת עלות. אם האריזה היא לא קילו או ליטר (למשל בקבוק 370 מ"ל), אפשר להוסיף את גודל האריזה בשדה שמתחת.')}</label>
                 <select id="f-unit-type">
                     ${UNIT_TYPES.map((u) => `<option value="${u}" ${existing && existing.unit_type === u ? "selected" : ""}>${UNIT_FORM_LABELS[u]}</option>`).join("")}
                 </select>
@@ -222,8 +222,9 @@ function openPantryModal(existing, container) {
             <input type="text" inputmode="numeric" id="f-pack" value="">
         </div>
         <div class="field" id="f-bulk-wrap" style="display:none;">
-            <label>קונים באריזה גדולה? המשקל הכולל שלה (ק"ג) ${info('לא חובה. אם קונים 10 שקיות של קילו, כתוב 10 ובשדה המחיר את מחיר כל הקנייה. המערכת תחשב לבד מחיר לק"ג. אם המחיר כבר לק"ג, השאר ריק.')}</label>
-            <input type="text" inputmode="decimal" id="f-bulk" value="">
+            <label>גודל האריזה (לא חובה) ${info('אם האריזה היא לא קילו או ליטר: בקבוק שמן 370 מ"ל, שקית קמח 800 גרם, ארגז 10 ק"ג. כותבים את הגודל ובשדה המחיר את מחיר האריזה, והמערכת מחשבת לבד מחיר לק"ג או לליטר. אם המחיר שלך כבר לק"ג או לליטר, משאירים ריק. כשמוגדר גודל אריזה, בספירת מלאי סופרים אריזות (בקבוקים, שקיות) והמערכת ממירה לבד לליטר או ק"ג.')}</label>
+            <div class="cv-row"><input type="text" inputmode="decimal" id="f-buy-qty" value="" placeholder="למשל 370"><select id="f-buy-unit"></select></div>
+            <input type="hidden" id="f-bulk" value="">
         </div>
         <div class="field"><label id="f-price-label">מחיר קנייה (${curLabel()})</label><input type="number" step="any" id="f-price" value="${existing ? existing.price : ""}"><div class="hint" id="f-price-echo"></div></div>
         <div class="error-msg"></div>
@@ -281,13 +282,13 @@ function openPantryModal(existing, container) {
     function syncPrice() {
         const ut = unitTypeSelect.value;
         packWrap.style.display = ut === "unit" ? "block" : "none";
+        bulkWrap.style.display = ut === "unit" ? "none" : "block";
         const pack = ut === "unit" ? packCount() : 1;
-        priceLabel.textContent = ut === "unit" ? (pack > 1 ? `מחיר לאריזה של ${pack} (${curLabel()})` : `מחיר ליחידה אחת (${curLabel()})`) : ut === "liter" ? `מחיר לליטר (${curLabel()})` : `מחיר לק"ג (${curLabel()})`;
-        const price = parseFloat(priceInput.value);
-        bulkWrap.style.display = ut === "unit" || existing ? "none" : "block";
         const bulk = ut !== "unit" && !existing ? bulkKg() : 0;
-        if (bulk > 0) priceLabel.textContent = `מחיר כל האריזה (${curLabel()})`;
-        priceEcho.textContent = ut === "unit" && pack > 1 && price > 0 ? `= ${(price / pack).toFixed(2)} ${curLabel()} ליחידה אחת` : bulk > 0 && price > 0 ? `= ${(price / bulk).toFixed(2)} ${curLabel()} ל${ut === "liter" ? "ליטר" : 'ק"ג'}` : "";
+        const unitName = ut === "unit" ? "ליחידה אחת" : ut === "liter" ? "לליטר" : 'לק"ג';
+        priceLabel.textContent = ut === "unit" ? (pack > 1 ? `מחיר לאריזה של ${pack} (${curLabel()})` : `מחיר ליחידה אחת (${curLabel()})`) : bulk > 0 ? `מחיר האריזה (${curLabel()})` : `מחיר ${unitName} (${curLabel()})`;
+        const price = parseFloat(priceInput.value);
+        priceEcho.textContent = ut === "unit" && pack > 1 && price > 0 ? `= ${(price / pack).toFixed(2)} ${curLabel()} ליחידה אחת` : bulk > 0 && price > 0 ? `= ${(price / bulk).toFixed(2)} ${curLabel()} ${unitName}` : "";
         const w = unitAmountInput.value;
         const warn = unitTypeSelect.value === "unit" && w ? qtyWarning(w) : null;
         unitEcho.innerHTML = warn ? `<span style="color:var(--danger);">${warn}</span>` : unitTypeSelect.value === "unit" ? describeQty(w) : "";
@@ -302,11 +303,35 @@ function openPantryModal(existing, container) {
     }
     catSelect.onchange = syncSubcategory;
     packInput.addEventListener("input", () => { packInput.dataset.touched = "1"; });
-    unitTypeSelect.onchange = () => { syncUnitAmount(); syncEgg(true); syncPrice(); };
+    // גודל אריזה (לא חובה) למשקל/נפח: 370 מ"ל, 800 גרם. נשמר מחיר לק"ג/ליטר מחושב מתוך מחיר האריזה
+    const buyQty = overlay.querySelector("#f-buy-qty");
+    const buyUnit = overlay.querySelector("#f-buy-unit");
+    const PKG_MULT = { g: 0.001, kg: 1, ml: 0.001, l: 1 };
+    let pkgType = "";
+    function syncBuy() {
+        const type = unitTypeSelect.value;
+        if (type !== "unit" && type !== pkgType) {
+            pkgType = type;
+            buyUnit.innerHTML = (type === "liter" ? [["ml", 'מ"ל'], ["l", "ליטר"]] : [["g", "גרם"], ["kg", 'ק"ג']]).map(([k, l]) => `<option value="${k}">${l}</option>`).join("");
+        }
+        const q = parseFloat(String(buyQty.value).replace(",", ".")) || 0;
+        bulkInput.value = type !== "unit" && q > 0 ? String(Math.round(q * (PKG_MULT[buyUnit.value] || 1) * 10000) / 10000) : "";
+        syncPrice();
+    }
+    buyQty.addEventListener("input", syncBuy);
+    buyUnit.addEventListener("change", syncBuy);
+    unitTypeSelect.onchange = () => { syncUnitAmount(); syncEgg(true); syncBuy(); };
     syncSubcategory();
     syncUnitAmount();
     syncEgg(!existing);
-    syncPrice();
+    syncBuy();
+    if (existing && existing.pkg_size > 0 && existing.unit_type !== "unit") { // עריכה: מציג את גודל האריזה השמור (המחיר נשאר לק"ג/ליטר)
+        const q = Number(existing.pkg_size);
+        const u = existing.unit_type === "liter" ? (q < 1 ? "ml" : "l") : (q < 1 ? "g" : "kg");
+        buyUnit.value = u;
+        buyQty.value = String(Math.round((q / PKG_MULT[u]) * 1000) / 1000);
+        syncBuy();
+    }
 
     overlay.querySelector("#btn-cancel").onclick = () => attemptClose(overlay);
     overlay.querySelector("#btn-save").onclick = busy(async () => {
@@ -320,6 +345,7 @@ function openPantryModal(existing, container) {
                 ? String(Math.round((parseFloat(overlay.querySelector("#f-price").value) / bulkKg()) * 10000) / 10000)
                 : unitTypeSelect.value === "unit" && packCount() > 1 && parseFloat(overlay.querySelector("#f-price").value) > 0
                 ? String(Math.round((parseFloat(overlay.querySelector("#f-price").value) / packCount()) * 10000) / 10000) : overlay.querySelector("#f-price").value,
+            pkg_size: unitTypeSelect.value !== "unit" ? String(bulkKg() || "") : "",
             is_frozen: existing ? !!existing.is_frozen : false, // קפוא נקבע בעיבוד וניצולת
         };
         if (isEggForm()) data.egg_size = eggSizeSel.value;
