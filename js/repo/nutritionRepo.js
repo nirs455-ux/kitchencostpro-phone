@@ -2,6 +2,7 @@
 // נשמר בטבלת ההגדרות, כך שנכלל בגיבוי בלי שינוי מבנה מסד.
 import { getSetting, setSetting } from "./settingsRepo.js";
 import { parseUsdaFoods, parseOffProduct, cleanNutrition } from "../nutrition.js";
+import { geminiFetch } from "./gemini.js";
 
 const DB_KEY = "nutrition_db";
 const USDA_KEY = "usda_api_key";
@@ -37,9 +38,7 @@ export async function toEnglishFoodName(geminiKey, name) {
     if (!clean || !geminiKey || !/[֐-׿]/.test(clean)) return clean;
     try {
         const prompt = `Translate this food/ingredient name from Hebrew to a short English search term suitable for the USDA FoodData Central database (generic raw ingredient name, e.g. "olive oil", "garlic raw", "wheat flour white"). Answer with the English term only, no quotes, no explanation.\nName: ${clean}`;
-        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${geminiKey}`, {
-            method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
-        });
+        const res = await geminiFetch(geminiKey, { contents: [{ parts: [{ text: prompt }] }] });
         if (!res.ok) return clean;
         const j = await res.json();
         const text = String(j.candidates[0].content.parts[0].text || "").trim().replace(/^["'`]+|["'`]+$/g, "").split("\n")[0];

@@ -1,6 +1,7 @@
 // סריקת חשבונית - קריאה ישירה ל-Gemini מהדפדפן (אין שרת שמסתיר את המפתח - ראה הגדרות).
 // תרגום מדויק של /api/scan-invoice ו-/api/scan-invoice/apply מ-main.py.
 import { dbGetAll, dbGet, dbPut } from "../db.js";
+import { geminiFetch } from "./gemini.js";
 import { getCloseMatches } from "../fuzzyMatch.js";
 import { CATEGORY_GROUPS, UNIT_TYPES } from "../constants.js";
 import { saveInvoice } from "./suppliersRepo.js";
@@ -27,38 +28,16 @@ export async function scanInvoiceImage(apiKey, file, onRetry) {
     // הכנת הקובץ: תמונה (מכווצת) / PDF נשלחים כמו שהם; Word / Excel / טקסט וכו' - חילוץ טקסט
     const prepared = await prepareParts(file, "תוכן החשבונית");
 
-    // שרת Gemini לפעמים עמוס (503/429) - זה זמני. מנסים שוב אוטומטית עם המתנה גדלה, בלי לבקש מהמשתמש לצלם מחדש.
-    const RETRY_STATUSES = [429, 500, 502, 503, 504];
-    const DELAYS = [2000, 4000, 8000, 12000];
+    // Gemini לפעמים עמוס (503/429): ניסיון חוזר קצר, ואז מודל גיבוי (js/repo/gemini.js). בלי לבקש מהמשתמש לצלם מחדש.
     let response;
-    for (let attempt = 0; attempt <= DELAYS.length; attempt++) {
-        try {
-            response = await fetch(
-                `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${apiKey}`,
-                {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        contents: [{ parts: [{ text: INVOICE_SCAN_PROMPT }, ...prepared.parts] }],
-                    }),
-                }
-            );
-        } catch (e) {
-            if (attempt < DELAYS.length) {
-                if (onRetry) onRetry(attempt + 1, DELAYS.length);
-                await new Promise((r) => setTimeout(r, DELAYS[attempt]));
-                continue;
-            }
-            const err = new Error("אין חיבור לאינטרנט או שהשרת לא זמין. אפשר לנסות שוב, או לשמור את התמונה לעיבוד מאוחר.");
-            err.queueable = true;
-            throw err;
-        }
-        if (RETRY_STATUSES.includes(response.status) && attempt < DELAYS.length) {
-            if (onRetry) onRetry(attempt + 1, DELAYS.length);
-            await new Promise((r) => setTimeout(r, DELAYS[attempt]));
-            continue;
-        }
-        break;
+    try {
+        response = await geminiFetch(apiKey, { contents: [{ parts: [{ text: INVOICE_SCAN_PROMPT }, ...prepared.parts] }] }, {
+            onRetry: (i) => { if (onRetry) onRetry(i.attempt, 3, i.model); },
+        });
+    } catch (e) {
+        const err = new Error("אין חיבור לאינטרנט או שהשרת לא זמין. אפשר לנסות שוב, או לשמור את התמונה לעיבוד מאוחר.");
+        err.queueable = true;
+        throw err;
     }
     if (!response.ok) {
         const code = response.status;
@@ -255,26 +234,10 @@ export async function scanRecipeImage(apiKey, file) {
     const filePart = prepared.parts;
 
     let response;
-    for (let attempt = 0; attempt < 3; attempt++) {
-        try {
-            response = await fetch(
-                `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${apiKey}`,
-                {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        contents: [{ parts: [{ text: RECIPE_SCAN_PROMPT }, ...filePart] }],
-                    }),
-                }
-            );
-        } catch (e) {
-            throw new Error(`שגיאת רשת בפנייה ל-API: ${e.message}`);
-        }
-        if ((response.status === 429 || response.status === 503) && attempt < 2) {
-            await new Promise((r) => setTimeout(r, 2000));
-            continue;
-        }
-        break;
+    try {
+        response = await geminiFetch(apiKey, { contents: [{ parts: [{ text: RECIPE_SCAN_PROMPT }, ...filePart] }] });
+    } catch (e) {
+        throw new Error("אין חיבור לאינטרנט או שהשרת לא זמין. נסה שוב בעוד רגע.");
     }
     if (!response.ok) {
         const text = await response.text();
@@ -324,27 +287,17 @@ export async function createPantryItemFromInvoice({ name, category, unitType, un
 export async function suggestRecipeBase(apiKey, recipeName, items) {
     if (!apiKey || !items.length) return null;
     const prompt = buildBasePrompt(recipeName, items);
-    for (let attempt = 0; attempt < 3; attempt++) {
-        try {
-            const response = await fetch(
-                `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${apiKey}`,
-                { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }) }
-            );
-            if ((response.status === 429 || response.status === 503) && attempt < 2) {
-                await new Promise((r) => setTimeout(r, 1500));
-                continue;
-            }
-            if (!response.ok) return null;
-            const result = await response.json();
-            let text = result.candidates[0].content.parts[0].text.trim();
-            if (text.startsWith("```")) {
-                text = text.split("```")[1];
-                if (text.startsWith("json")) text = text.slice(4);
-            }
-            return parseBaseAnswer(JSON.parse(text.trim()), items);
-        } catch (e) {
-            return null;
+    try {
+        const response = await geminiFetch(apiKey, { contents: [{ parts: [{ text: prompt }] }] });
+        if (!response.ok) return null;
+        const result = await response.json();
+        let text = result.candidates[0].content.parts[0].text.trim();
+        if (text.startsWith("```")) {
+            text = text.split("```")[1];
+            if (text.startsWith("json")) text = text.slice(4);
         }
+        return parseBaseAnswer(JSON.parse(text.trim()), items);
+    } catch (e) {
+        return null;
     }
-    return null;
 }
