@@ -13,6 +13,7 @@ import { t, LANGS, getLang } from "../i18n.js";
 import { renderCloudCard } from "../cloud/cloudUi.js";
 import { getUsdaKey, setUsdaKey } from "../repo/nutritionRepo.js";
 import { loadDemoData } from "../demoData.js";
+import { agentConfigured } from "../agent.js";
 
 const setOpen = new Set(); // אזורים פתוחים (כברירת מחדל הכול סגור)
 
@@ -49,7 +50,7 @@ export async function renderSettingsPage(container) {
             <div class="px-sh"><span class="px-ic" style="background:var(--brand-soft);">🤖</span><b>סריקה ובינה מלאכותית</b><span class="px-chev">${setOpen.has("scan") ? "▾" : "◂"}</span></div>
             <div class="set-body" ${setOpen.has("scan") ? "" : "hidden"}>
                 <div class="card">
-            <div class="card-title">מפתח Gemini API ${info("נדרש לסריקת חשבוניות. נשמר רק בתוך הטלפון הזה, ולא נשלח לשום מקום חוץ מ-Google.")}</div>
+            <div class="card-title">${agentConfigured() ? "מפתח Gemini אישי (לא חובה)" : "מפתח Gemini API"} ${info(agentConfigured() ? "בלי מפתח האפליקציה משתמשת בסוכן משותף עם מגבלה יומית. אם תזין מפתח אישי, הסריקה תעבור ישירות לחשבון שלך בגוגל, בלי המגבלה. נשמר רק בתוך הטלפון הזה, ולא נשלח לשום מקום חוץ מ-Google." : "נדרש לסריקת חשבוניות. נשמר רק בתוך הטלפון הזה, ולא נשלח לשום מקום חוץ מ-Google.")}</div>
             <div class="field" style="margin-top:8px;"><input type="text" id="f-apikey" value="${apiKey}" placeholder="הדבק כאן את המפתח"></div>
             <button class="btn btn-primary btn-small" id="btn-save-key">שמירה</button>
         </div>
@@ -109,7 +110,7 @@ export async function renderSettingsPage(container) {
             <div class="px-sh"><span class="px-ic" style="background:var(--ok-soft);">🧭</span><b>עזרה ועל האפליקציה</b><span class="px-chev">${setOpen.has("help") ? "▾" : "◂"}</span></div>
             <div class="set-body" ${setOpen.has("help") ? "" : "hidden"}>
                 <div class="card"><button class="btn btn-secondary btn-block" id="btn-tour">${t("settings.tour")}</button></div>
-                <div class="card"><button class="btn btn-secondary btn-block" id="btn-wizard">🧭 אשף הפעלה (מפתח, מדינה, מטבע)</button></div>
+                <div class="card"><button class="btn btn-secondary btn-block" id="btn-wizard">🧭 שפה ומטבע</button></div>
                 <div class="card">
             <div class="card-title">על האפליקציה ${info("גרסת טלפון עצמאית של KitchenCostPro - כל הנתונים נשמרים רק במכשיר הזה, בלי שרת. היא לא מסונכרנת עם הגרסה שבמחשב. השתמש בייצוא וייבוא כדי להעביר נתונים בין השתיים.")}</div>
             <div class="hint"><b>גרסה:</b> ${APP_VERSION}</div>

@@ -1,5 +1,6 @@
 import { scanInvoiceImage, applyScannedInvoice } from "../repo/scanRepo.js";
 import { getSetting } from "../repo/settingsRepo.js";
+import { getAgentKey } from "../agent.js";
 import { listSuppliers, addSupplier } from "../repo/suppliersRepo.js";
 import { CATEGORY_GROUPS, UNIT_TYPES, UNIT_TYPE_LABELS } from "../constants.js";
 import { h, openModal, closeModal, toast, escapeHtml, info, busy, attemptClose, cur } from "../ui.js";
@@ -16,7 +17,7 @@ function todayLocal() {
 }
 
 export async function openScanModal({ supplierAware, onDone, initialFile = null }) {
-    const apiKey = await getSetting("gemini_api_key");
+    const apiKey = await getAgentKey();
     const autoSaveEnabled = !!(await getSetting("scan_autosave"));
     const suppliers = supplierAware ? await listSuppliers() : [];
 

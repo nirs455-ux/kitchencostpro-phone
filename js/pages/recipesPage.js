@@ -9,6 +9,7 @@ import { h, openModal, closeModal, confirmDialog, toast, escapeHtml, money, busy
 import { openImagePicker } from "../imagePicker.js";
 import { scanRecipeImage, suggestRecipeBase } from "../repo/scanRepo.js";
 import { getSetting } from "../repo/settingsRepo.js";
+import { getAgentKey } from "../agent.js";
 import { dbGetAll, dbGet } from "../db.js";
 import { buildLabel } from "../recipeLabel.js";
 import { suggestBaseHeuristic, computePercentages, scaleToBase, fmtPct } from "../bakers.js";
@@ -100,7 +101,7 @@ export async function renderRecipesPage(container) {
 
 // סורק קובץ מתכון מכל סוג (תמונה / PDF / Word / Excel / טקסט...) ופותח טיוטה לבדיקה. משמש גם ל"שתף".
 export async function scanRecipeFile(file, container) {
-    const apiKey = await getSetting("gemini_api_key");
+    const apiKey = await getAgentKey();
     openModal('<div style="text-align:center;padding:24px;color:#666;">קורא את המתכון...</div>');
     try {
         const draft = await scanRecipeImage(apiKey, file);

@@ -1,6 +1,7 @@
 // חלון ערכים תזונתיים למוצר: חיפוש ב-USDA (עם תרגום השם לאנגלית), חיפוש לפי ברקוד ב-Open Food Facts, או הזנה ידנית.
 import { openModal, closeModal, toast, escapeHtml, h, busy } from "../ui.js";
 import { getSetting } from "../repo/settingsRepo.js";
+import { getAgentKey } from "../agent.js";
 import { getNutritionDb, saveNutrition, removeNutrition, getUsdaKey, toEnglishFoodName, searchUsda, lookupBarcode } from "../repo/nutritionRepo.js";
 import { NUTRIENTS } from "../nutrition.js";
 
@@ -47,7 +48,7 @@ export async function openNutritionLookup({ name, pantryId, onSaved, onDone }) {
         const box = ov.querySelector("#nu-results");
         box.innerHTML = '<div class="hint">מחפש...</div>';
         const q = ov.querySelector("#nu-q").value;
-        const en = await toEnglishFoodName(await getSetting("gemini_api_key"), q);
+        const en = await toEnglishFoodName(await getAgentKey(), q);
         const { foods, error } = await searchUsda(en, await getUsdaKey());
         box.innerHTML = "";
         if (error) { box.innerHTML = `<div class="hint-warn">${escapeHtml(error)}</div>`; return; }

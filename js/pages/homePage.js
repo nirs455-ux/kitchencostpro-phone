@@ -1,6 +1,7 @@
 // מסך בית: פעולה ראשית אחת (סריקה), ומה שדורש תשומת לב עכשיו. מי שפותח בפעם הראשונה רואה צעדים ברורים.
 import { h, toast, escapeHtml, money, setFlag } from "../ui.js";
 import { getSetting } from "../repo/settingsRepo.js";
+import { getAgentKey } from "../agent.js";
 import { dbGetAll } from "../db.js";
 import { listInvoicesWithItems, priceChanges, pettyCashOwed } from "../repo/suppliersRepo.js";
 import { openScanModal } from "./scanModal.js";
@@ -47,7 +48,7 @@ export async function renderHomePage(container) {
     const rerender = () => renderHomePage(container);
     const pantry = await dbGetAll("pantryItems");
     const invoices = await listInvoicesWithItems();
-    const apiKey = await getSetting("gemini_api_key");
+    const apiKey = await getAgentKey();
     const lastExport = await getSetting("last_export");
     const owed = await pettyCashOwed();
     const alerts = await priceChanges({ thresholdPct: 10, sinceDays: 30 });
@@ -96,7 +97,7 @@ export async function renderHomePage(container) {
         const text = cst.state === "conflict" ? "הענן שונה ממכשיר אחר" : cst.state === "needs-auth" ? "הגיבוי לענן מחכה לאישור שלך" : "הגיבוי לענן נכשל";
         items.unshift({ cls: "warn", icon: "☁️", text, btn: "טפל", fn: async () => { await resolveCloudIssue(); rerender(); } });
     }
-    if (!pantry.length && !invoices.length) items.push({ cls: "ok", icon: "🧪", text: "רוצה לראות איך זה עובד? טען נתוני דוגמה (מזווה, מתכונים, מנות ומוצר יצרן)", btn: "טען", fn: async () => { await loadDemoData(); toast("נתוני הדוגמה נטענו"); rerender(); } });
+    if (!pantry.length && !invoices.length) items.push({ cls: "ok", icon: "🧪", text: "רוצה לנסות עם נתוני דוגמה? (מזווה, מתכונים, מנות ומוצר יצרן)", btn: "טען", fn: async () => { await loadDemoData(); toast("נתוני הדוגמה נטענו"); rerender(); } });
     const order = { danger: 0, warn: 1, ok: 2 };
     items.sort((x, y) => (order[x.cls] ?? 1) - (order[y.cls] ?? 1));
     if (items.length) {
@@ -130,6 +131,6 @@ async function processQueue(queue, rerender) {
     openScanModal({
         supplierAware: true,
         initialFile: first.blob,
-        onDone: async () => { await removeFromQueue(first.id); toast("עובד"); rerender(); },
+        onDone: async () => { await removeFromQueue(first.id); toast("טופל"); rerender(); },
     });
 }
