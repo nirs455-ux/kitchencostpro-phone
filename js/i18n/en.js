@@ -8,6 +8,9 @@ export default {
 
     "w.exit.text": "Leave the setup? You can run it again any time from Settings.",
     "w.exit.label": "Exit",
+    "w1.title": "Welcome",
+    "w1.sub": "Choose a language and a currency and you are ready. You can change everything later in Settings.",
+    "w1.go": "Start",
 
     "w.s.lang": "Language",
     "w.s.agent": "Agent",

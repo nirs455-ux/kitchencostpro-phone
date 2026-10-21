@@ -8,6 +8,9 @@ export default {
 
     "w.exit.text": "Einrichtung verlassen? Du kannst sie jederzeit in den Einstellungen erneut starten.",
     "w.exit.label": "Beenden",
+    "w1.title": "Willkommen",
+    "w1.sub": "Wähle Sprache und Währung, und es kann losgehen. Alles lässt sich später in den Einstellungen ändern.",
+    "w1.go": "Los geht's",
 
     "w.s.lang": "Sprache",
     "w.s.agent": "Agent",
