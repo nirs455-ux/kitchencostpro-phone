@@ -6,6 +6,8 @@ import { getBusiness, saveBusiness, listProducts, saveProduct, deleteProduct, NU
 import { buildLabel } from "../recipeLabel.js";
 import { buildLabelHtml, LABEL_SIZES, netText } from "../producerLabel.js";
 import { textToGrams, gramsToKgText } from "../qty.js";
+import { getNutritionDb } from "../repo/nutritionRepo.js";
+import { computeNutrition } from "../nutrition.js";
 import { listRow } from "./listKit.js";
 import { productEconomics } from "../producerCost.js";
 
@@ -82,7 +84,7 @@ function openProductModal(existing, recipes, onSaved, presetRecipeId = null, pan
         <button type="button" class="btn btn-secondary btn-small" id="p-pack-add" style="margin-bottom:10px;">＋ הוסף אריזה</button>
         <div class="field"><label>מחיר מכירה ליחידה (${curLabel()}, לפני מע"מ)</label><input type="text" inputmode="decimal" id="p-sell" value="${existing && existing.sell_price ? existing.sell_price : ""}"></div>
         <details class="pg-more"><summary>ערכים תזונתיים ל-100 גרם (לא חובה)</summary>
-            <div class="hint">מזינים ידנית לפי בדיקה או תווית של הספק. החישוב האוטומטי יתווסף בהמשך.</div>
+            <div class="hint">אם משאירים ריק, הערכים יחושבו אוטומטית מהמתכון (לשונית "תזונה" במתכון). מזינים כאן רק אם יש בדיקה מעבדה או תווית מוכנה.</div>
             <div class="form-row" style="flex-wrap:wrap;">${NUTRITION_FIELDS.map((f) => `<div class="field" style="min-width:45%;"><label>${escapeHtml(f.label)}</label><input type="text" inputmode="decimal" data-nu="${f.key}" value="${nut[f.key] != null ? nut[f.key] : ""}"></div>`).join("")}</div>
         </details>
         <div class="error-msg"></div>
@@ -153,8 +155,15 @@ async function openPrintModal(p, recipes) {
     const business = await getBusiness();
     const label = buildLabel({ items: recipe.items.map((i) => ({ pantry_item_id: i.pantry_item_id, ingredient_name: i.ingredient_name, quantity_g: i.quantity_g })), pantryById: byId });
     const missing = recipe.draft_ingredients || [];
-    const hasNu = p.nutrition && Object.keys(p.nutrition).length > 0;
+    // ערכים תזונתיים: ידניים (אם הוזנו במוצר) או מחושבים מהמתכון
+    const N = computeNutrition({ items: recipe.items, byId, nutritionById: await getNutritionDb(), weightG: recipe.final_weight > 0 && !recipe.is_auto_weight ? recipe.final_weight : 0 });
+    const manualNu = p.nutrition && Object.keys(p.nutrition).length > 0;
+    const calcNu = N.rows.some((r) => r.has);
+    const labelProduct = { ...p, nutrition: manualNu ? p.nutrition : calcNu ? N.per100 : {} };
+    const hasNu = manualNu || calcNu;
     const warns = [
+        !manualNu && calcNu && N.missing.length ? `הערכים התזונתיים מחושבים מהמתכון אבל חסרים ערכים ל: ${N.missing.map(escapeHtml).join(", ")} (מכסים ${N.coveragePct}% מהמשקל).` : "",
+        !manualNu && calcNu && !(recipe.final_weight > 0 && !recipe.is_auto_weight) ? "הערכים מחולקים במשקל הגולמי של הרכיבים. אם יש ירידה בבישול, הזן משקל סופי במתכון." : "",
         missing.length ? `במתכון יש ${missing.length} רכיבים שעדיין לא במזווה (${missing.map((m) => escapeHtml(m.name)).join(", ")}) והם לא ברשימה.` : "",
         label.unknown.length ? `לא הוגדרו אלרגנים עבור: ${label.unknown.map(escapeHtml).join(", ")}. בדוק בלשונית "אלרגנים" של המתכון.` : "",
         !business.name ? "פרטי העסק עוד לא הוגדרו, ולכן לא יופיעו על המדבקה." : "",
@@ -169,11 +178,11 @@ async function openPrintModal(p, recipes) {
             <div class="field"><label>תאריך ייצור</label><input type="date" id="l-date" value="${state.date}"></div>
         </div>
         <div class="field"><label>גודל מדבקה</label><select id="l-size">${LABEL_SIZES.map((s) => `<option value="${s.key}" ${s.key === state.size ? "selected" : ""}>${s.label}</option>`).join("")}</select></div>
-        ${hasNu ? `<div class="checkbox-field"><input type="checkbox" id="l-nu" checked><label for="l-nu">הצג ערכים תזונתיים</label></div>` : ""}
+        ${hasNu ? `<div class="checkbox-field"><input type="checkbox" id="l-nu" checked><label for="l-nu">הצג ערכים תזונתיים (${manualNu ? "ידני" : "מחושב מהמתכון"})</label></div>` : ""}
         <div class="card-title" style="margin:8px 0 4px;">תצוגה מקדימה</div>
         <div style="overflow:auto;background:var(--surface-2);padding:10px;border-radius:10px;"><iframe id="l-prev" style="border:0;background:#fff;width:100%;height:260px;"></iframe></div>
         <div class="modal-actions"><button type="button" class="btn btn-secondary" id="l-close">סגור</button><button type="button" class="btn btn-primary" id="l-print">🖨 הדפס</button></div>`);
-    const html = (count) => buildLabelHtml({ product: p, business, label, productionDate: state.date, count, size: state.size, showNutrition: state.nutrition });
+    const html = (count) => buildLabelHtml({ product: labelProduct, business, label, productionDate: state.date, count, size: state.size, showNutrition: state.nutrition });
     const sync = () => {
         state.count = parseInt(ov.querySelector("#l-count").value, 10) || 1;
         state.date = ov.querySelector("#l-date").value || todayIso();

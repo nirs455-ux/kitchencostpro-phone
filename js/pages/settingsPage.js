@@ -11,11 +11,13 @@ import { openSetupWizard } from "./setupWizard.js";
 import { openTour } from "./tour.js";
 import { t, LANGS, getLang } from "../i18n.js";
 import { renderCloudCard } from "../cloud/cloudUi.js";
+import { getUsdaKey, setUsdaKey } from "../repo/nutritionRepo.js";
 
 const setOpen = new Set(); // אזורים פתוחים (כברירת מחדל הכול סגור)
 
 export async function renderSettingsPage(container) {
     const apiKey = (await getSetting("gemini_api_key")) || "";
+    const usdaKey = await getUsdaKey();
     const lastExport = await getSetting("last_export");
     const currentTheme = (await getSetting("theme")) || "";
     const pinSet = await hasPin();
@@ -49,6 +51,11 @@ export async function renderSettingsPage(container) {
             <div class="card-title">מפתח Gemini API ${info("נדרש לסריקת חשבוניות. נשמר רק בתוך הטלפון הזה, ולא נשלח לשום מקום חוץ מ-Google.")}</div>
             <div class="field" style="margin-top:8px;"><input type="text" id="f-apikey" value="${apiKey}" placeholder="הדבק כאן את המפתח"></div>
             <button class="btn btn-primary btn-small" id="btn-save-key">שמירה</button>
+        </div>
+        <div class="card">
+            <div class="card-title">מפתח USDA (ערכים תזונתיים) ${info("לחיפוש ערכים תזונתיים של חומרי גלם במאגר USDA. המפתח חינמי: נרשמים בכתובת fdc.nal.usda.gov/api-key-signup.html והוא מגיע במייל. בלי מפתח החיפוש עובד אבל מוגבל מאוד. נשמר רק בתוך הטלפון הזה.")}</div>
+            <div class="field" style="margin-top:8px;"><input type="text" id="f-usdakey" value="${usdaKey}" placeholder="הדבק כאן את המפתח (לא חובה)"></div>
+            <button class="btn btn-primary btn-small" id="btn-save-usda">שמירה</button>
         </div>
                 <div class="card">
             <div class="card-title">סריקה מהירה ${info("כשכל השורות מזוהות, אין שינוי מחיר חריג, יש ספק והסכום תואם לקבלה - החשבונית נשמרת לבד אחרי 5 שניות (אפשר לעצור). אחרת תראה רק את מה שדורש בדיקה.")}</div>
@@ -128,6 +135,7 @@ export async function renderSettingsPage(container) {
         toast("נשמר");
     };
 
+    container.querySelector("#btn-save-usda").onclick = async () => { await setUsdaKey(container.querySelector("#f-usdakey").value); toast("נשמר"); };
     container.querySelectorAll("[data-lang-key]").forEach((b) => {
         b.onclick = async () => { await setSetting("language", b.dataset.langKey); location.reload(); };
     });

@@ -18,6 +18,9 @@ import { bindPickerButton, refreshPickerButton, resetPickerMemory } from "./ingr
 import { isStaffMode } from "../staff.js";
 import { listRow, groupsEl, orderCategories, matchesDeep, normalize } from "./listKit.js";
 import { requestNewProductFor } from "./producerPage.js";
+import { openNutritionLookup } from "./nutritionModal.js";
+import { getNutritionDb } from "../repo/nutritionRepo.js";
+import { computeNutrition, perServing, NUTRIENTS } from "../nutrition.js";
 import { assignAutoSubs, subOf } from "../autoGroups.js";
 import { UNITS, convertUnits, factorFor, scaleRecipe, fmtQty } from "../generator.js";
 import { recipeEggSummary, eggSummaryText, allocateEggCosts, isEggProduct, eggSizeOf, partGrams, eggBreakdown, EGG_SIZES, EGG_PARTS, EGG_PART_LABEL } from "../eggs.js";
@@ -148,6 +151,8 @@ function printLabel(name, text) {
 async function openRecipeDetails(r, container, startTab = "recipe") {
     const rows = await dbGetAll("pantryItems");
     const byId = new Map(rows.map((p) => [p.id, p]));
+    const nutriDb = await getNutritionDb();
+    let servingG = 0; // גודל מנה לתצוגה (לא נשמר)
     const missing = r.draft_ingredients || [];
     let tab = r.status === "draft" && startTab === "gen" ? "recipe" : startTab;
     let showPercent = false;
@@ -244,6 +249,24 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
             ${r.final_weight > 0 && !r.is_auto_weight ? `<div class="hint">משקל סופי אחרי בישול וסינון: <b>${Math.round(r.final_weight)} גרם</b> (ניצולת ${Math.round((r.final_weight / r.items.reduce((n, i) => n + (Number(i.quantity_g) || 0), 0)) * 100)}%). האחוזים כאן הם מהמשקל הגולמי של הרכיבים.</div>` : '<div class="hint">המשקלים כאן הם גולמיים (סכום הרכיבים). אם יש ירידה בבישול או בסינון, מזינים משקל סופי בעריכת המתכון.</div>'}
             <div class="btn-row"><button type="button" class="btn btn-secondary btn-small" id="p-copy">📋 העתק</button><button type="button" class="btn btn-secondary btn-small" id="p-print">🖨 הדפס</button></div>`
             : '<div class="hint-warn">אין רכיבים עם כמות.</div>';
+        } else if (tab === "nutri") {
+            const fin = r.final_weight > 0 && !r.is_auto_weight ? r.final_weight : 0;
+            const N = computeNutrition({ items: r.items, byId, nutritionById: nutriDb, weightG: fin });
+            const sv = servingG > 0 ? perServing(N.per100, servingG) : null;
+            body = N.rows.length ? `
+            <div class="hint" style="margin-bottom:8px;">${fin > 0 ? `הערכים מחולקים במשקל הסופי של המתכון: <b>${Math.round(fin)} גרם</b>.` : `הערכים מחולקים במשקל הגולמי (סכום הרכיבים, ${Math.round(N.rawG)} גרם). אם יש ירידה בבישול או בסינון, הזן משקל סופי בעריכת המתכון.`}</div>
+            ${N.missing.length ? `<div class="hint-warn">חסרים ערכים ל: ${N.missing.map(escapeHtml).join(", ")}. הערכים מכסים ${N.coveragePct}% ממשקל הרכיבים.</div>` : ""}
+            <table class="simple"><thead><tr><th>רכיב</th><th>גרם</th><th>קק"ל ל-100 ג'</th><th></th></tr></thead><tbody>
+                ${N.rows.map((x) => `<tr><td>${escapeHtml(x.name)}</td><td>${+x.grams.toFixed(1)}</td><td>${x.has && x.per100.kcal != null ? x.per100.kcal : "—"}</td><td><button type="button" class="btn btn-secondary btn-small mgr-only" data-nu-open="${x.id}">${x.has ? "✎" : "חפש"}</button></td></tr>`).join("")}
+            </tbody></table>
+            <div class="card-title" style="margin:12px 0 4px;">סיכום ${info("ערכים ל-100 גרם מוצר מוגמר, לפי סכום הרכיבים. במנה: מזינים גודל מנה בק\"ג ורואים את הערכים שלה. הערכים הם הערכה לפי מאגר חומרי גלם, בלי שינויים בבישול.")}</div>
+            <div class="field"><label>גודל מנה (ק"ג, לא חובה)</label><input type="text" inputmode="decimal" id="nu-serving" value="${servingG > 0 ? gramsToKgText(servingG) : ""}" placeholder="למשל 0.150"></div>
+            <table class="simple"><thead><tr><th></th><th>ל-100 גרם</th>${sv ? "<th>למנה</th>" : ""}<th>סה"כ</th></tr></thead><tbody>
+                ${NUTRIENTS.map((n) => `<tr><td>${escapeHtml(n.label)}</td><td><b>${N.per100[n.key]}</b></td>${sv ? `<td>${sv[n.key]}</td>` : ""}<td>${N.total[n.key]}</td></tr>`).join("")}
+            </tbody></table>
+            <div class="btn-row"><button type="button" class="btn btn-secondary btn-small" id="nu-copy">📋 העתק</button><button type="button" class="btn btn-secondary btn-small" id="nu-print">🖨 הדפס</button></div>
+            <div class="hint" style="margin-top:8px;">הערכים הם הערכה בלבד. לתיוג רשמי נדרשת בדיקה מקצועית.</div>`
+            : '<div class="hint-warn">אין רכיבים עם כמות.</div>';
         } else if (tab === "gen") {
             const curWeight = r.items.reduce((n, i) => n + (Number(i.quantity_g) || 0), 0);
             const f = factorFor({ mode: gen.mode, value: gen.value, currentWeight: curWeight });
@@ -300,6 +323,7 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
                 <button type="button" data-t="recipe" class="${tab === "recipe" ? "active" : ""}">מתכון</button>
                 <button type="button" data-t="percent" class="${tab === "percent" ? "active" : ""}">באחוזים</button>
                 <button type="button" data-t="label" class="${tab === "label" ? "active" : ""}">אלרגנים</button>
+                <button type="button" data-t="nutri" class="${tab === "nutri" ? "active" : ""}">תזונה</button>
                 ${r.status === "draft" ? "" : `<button type="button" data-t="gen" class="${tab === "gen" ? "active" : ""}">מחולל</button>`}
             </div>
             ${body}
@@ -355,6 +379,21 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
         if (pCopy) pCopy.onclick = async () => { try { await navigator.clipboard.writeText(bakersText()); toast("הועתק"); } catch (e) { toast("לא הצלחתי להעתיק"); } };
         const pPrint = overlay.querySelector("#p-print");
         if (pPrint) pPrint.onclick = () => printLabel(r.name + " - באחוזים", bakersText());
+
+        // ---- לשונית תזונה ----
+        overlay.querySelectorAll("[data-nu-open]").forEach((b2) => {
+            b2.onclick = () => { const id = Number(b2.dataset.nuOpen); const row = byId.get(id); openNutritionLookup({ name: row ? row.name : "", pantryId: id, onDone: () => openRecipeDetails(r, container, "nutri") }); };
+        });
+        const nuServ = overlay.querySelector("#nu-serving");
+        if (nuServ) nuServ.onchange = () => { servingG = textToGrams(nuServ.value) || 0; draw(); };
+        const nutriText = () => {
+            const N = computeNutrition({ items: r.items, byId, nutritionById: nutriDb, weightG: r.final_weight > 0 && !r.is_auto_weight ? r.final_weight : 0 });
+            return [`${r.name} - ערכים תזונתיים ל-100 גרם`, ...NUTRIENTS.map((n) => `${n.label}: ${N.per100[n.key]}`), `(חושב על ${Math.round(N.weightG)} גרם. הערכה בלבד)`].join("\n");
+        };
+        const nuCopy = overlay.querySelector("#nu-copy");
+        if (nuCopy) nuCopy.onclick = async () => { try { await navigator.clipboard.writeText(nutriText()); toast("הועתק"); } catch (e) { toast("לא הצלחתי להעתיק"); } };
+        const nuPrint = overlay.querySelector("#nu-print");
+        if (nuPrint) nuPrint.onclick = () => printLabel(r.name + " - ערכים תזונתיים", nutriText());
 
         // ---- לשונית מחולל ----
         const bind = (sel, ev, fn) => { const el = overlay.querySelector(sel); if (el) el[ev] = fn; };
