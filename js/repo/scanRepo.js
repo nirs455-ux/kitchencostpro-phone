@@ -23,6 +23,13 @@ function fileToBase64(file) {
     });
 }
 
+// הסוכן מחזיר 503 עם סיבה: agent_unavailable (מפתח/קרדיטים) או agent_off (מתג כיבוי). מחזיר true אם זו בעיה בצד הבעלים.
+async function agentDown(response) {
+    if (response.status !== 503) return false;
+    try { const j = await response.clone().json(); return j && (j.error === "agent_unavailable" || j.error === "agent_off"); } catch (e) { return false; }
+}
+const AGENT_DOWN_MSG = "הסוכן לא זמין כרגע (ייתכן שהקרדיטים נגמרו). זה לא קשור אליך: אפשר לשמור את התמונה לעיבוד מאוחר ולנסות שוב בהמשך.";
+
 export async function scanInvoiceImage(apiKey, file, onRetry) {
     if (!apiKey) throw new Error("לא הוגדר מפתח API של Gemini. הזן אותו במסך ההגדרות.");
     // הכנת הקובץ: תמונה (מכווצת) / PDF נשלחים כמו שהם; Word / Excel / טקסט וכו' - חילוץ טקסט
@@ -41,11 +48,13 @@ export async function scanInvoiceImage(apiKey, file, onRetry) {
     }
     if (!response.ok) {
         const code = response.status;
+        if (await agentDown(response)) { const err = new Error(AGENT_DOWN_MSG); err.queueable = true; throw err; }
         if (code === 503 || code === 429 || code === 500 || code === 502 || code === 504) {
             const err = new Error("שרת הקריאה של Google עמוס כרגע (זה זמני, לא קשור לאפליקציה). ניסינו כמה פעמים. אפשר לנסות שוב, או לשמור את התמונה לעיבוד מאוחר.");
             err.queueable = true;
             throw err;
         }
+        if (code === 402) throw new Error("הגעת למגבלה היומית של הסוכן. אפשר להמשיך מחר, או להזין מפתח Gemini אישי בהגדרות.");
         if (code === 400 || code === 403) throw new Error("מפתח ה-API לא תקין או חסרות הרשאות. בדוק את המפתח בהגדרות.");
         const text = await response.text();
         throw new Error(`שגיאה מהשרת (${code}): ${text.slice(0, 120)}`);
@@ -240,6 +249,8 @@ export async function scanRecipeImage(apiKey, file) {
         throw new Error("אין חיבור לאינטרנט או שהשרת לא זמין. נסה שוב בעוד רגע.");
     }
     if (!response.ok) {
+        if (await agentDown(response)) throw new Error(AGENT_DOWN_MSG);
+        if (response.status === 402) throw new Error("הגעת למגבלה היומית של הסוכן. אפשר להמשיך מחר, או להזין מפתח Gemini אישי בהגדרות.");
         const text = await response.text();
         throw new Error(`שגיאה מה-API (${response.status}): ${text.slice(0, 300)}`);
     }

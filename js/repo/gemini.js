@@ -1,3 +1,5 @@
+import { AGENT_SENTINEL, agentFetch } from "../agent.js";
+
 // קריאה ל-Gemini עם התמודדות עם עומס: ניסיון חוזר קצר באותו מודל, ואז מעבר למודל גיבוי. טהור יחסית (fetch בלבד), לשימוש כל הסריקות.
 export const GEMINI_MODELS = ["gemini-3.6-flash", "gemini-2.5-flash", "gemini-2.5-flash-lite"];
 const RETRY_STATUSES = new Set([429, 500, 502, 503, 504]);
@@ -8,6 +10,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // body: אובייקט הבקשה (contents...). onRetry(info) נקרא לפני כל המתנה/מעבר מודל. מחזיר Response (תקין או האחרון שנכשל)
 // networkError: אם אין חיבור בכלל אחרי כל הניסיונות - נזרקת שגיאה עם .network = true
 export async function geminiFetch(apiKey, body, { onRetry, models = GEMINI_MODELS, fetchImpl = fetch, delays = DELAYS } = {}) {
+    if (apiKey === AGENT_SENTINEL) { // דרך הסוכן: מחזיר 402 (מגבלה יומית) או 503 (עמוס); בלי לגעת במפתח בצד הלקוח
+        try { return await agentFetch(body, fetchImpl); } catch (e) { const err = new Error("network"); err.network = true; throw err; }
+    }
     let last = null;
     let networkFailures = 0;
     for (let m = 0; m < models.length; m++) {
