@@ -13,6 +13,7 @@ import { compressImage } from "../imageUtil.js";
 import { getCloudStatus } from "../cloud/cloudGlue.js";
 import { computeStatus, openWizardAt } from "../statusIcons.js";
 import { resolveCloudIssue } from "../cloud/cloudUi.js";
+import { loadDemoData } from "../demoData.js";
 
 const go = (page) => { location.hash = page; };
 
@@ -95,6 +96,7 @@ export async function renderHomePage(container) {
         const text = cst.state === "conflict" ? "הענן שונה ממכשיר אחר" : cst.state === "needs-auth" ? "הגיבוי לענן מחכה לאישור שלך" : "הגיבוי לענן נכשל";
         items.unshift({ cls: "warn", icon: "☁️", text, btn: "טפל", fn: async () => { await resolveCloudIssue(); rerender(); } });
     }
+    if (!pantry.length && !invoices.length) items.push({ cls: "ok", icon: "🧪", text: "רוצה לראות איך זה עובד? טען נתוני דוגמה (מזווה, מתכונים, מנות ומוצר יצרן)", btn: "טען", fn: async () => { await loadDemoData(); toast("נתוני הדוגמה נטענו"); rerender(); } });
     const order = { danger: 0, warn: 1, ok: 2 };
     items.sort((x, y) => (order[x.cls] ?? 1) - (order[y.cls] ?? 1));
     if (items.length) {

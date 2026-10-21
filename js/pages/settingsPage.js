@@ -12,6 +12,7 @@ import { openTour } from "./tour.js";
 import { t, LANGS, getLang } from "../i18n.js";
 import { renderCloudCard } from "../cloud/cloudUi.js";
 import { getUsdaKey, setUsdaKey } from "../repo/nutritionRepo.js";
+import { loadDemoData } from "../demoData.js";
 
 const setOpen = new Set(); // אזורים פתוחים (כברירת מחדל הכול סגור)
 
@@ -91,6 +92,7 @@ export async function renderSettingsPage(container) {
             <div class="px-sh"><span class="px-ic" style="background:var(--surface-2);">🧰</span><b>כלים (קבצים, פח, דוח תקלה)</b><span class="px-chev">${setOpen.has("tools") ? "▾" : "◂"}</span></div>
             <div class="set-body" ${setOpen.has("tools") ? "" : "hidden"}>
                 <div class="card"><button class="btn btn-secondary btn-block" id="btn-producer">🏭 יצרן: מוצרים ומדבקות</button></div>
+                <div class="card"><button class="btn btn-secondary btn-block" id="btn-demo">🧪 טען נתוני דוגמה (להדגמה)</button></div>
                 <div class="card"><button class="btn btn-secondary btn-block" id="btn-files">📁 קבצים (קבלות, מתכונים, התקבלו)</button></div>
                 <div class="card">
             <div class="card-title">פח חשבוניות</div>
@@ -123,6 +125,10 @@ export async function renderSettingsPage(container) {
             hd.querySelector(".px-chev").textContent = setOpen.has(k) ? "▾" : "◂";
         };
     });
+    container.querySelector("#btn-demo").onclick = async () => {
+        if (!(await confirmDialog("להוסיף נתוני דוגמה (מזווה, מתכונים, מנות, חשבונית ומוצר יצרן)?<br><br>הנתונים הקיימים שלך לא יימחקו, רק יתווספו פריטים חדשים."))) return;
+        try { await loadDemoData(); toast("נתוני הדוגמה נטענו"); location.hash = "home"; } catch (e) { toast("לא הצלחתי לטעון: " + e.message); }
+    };
     container.querySelector("#btn-producer").onclick = () => { location.hash = "producer"; };
     container.querySelector("#btn-files").onclick = () => { location.hash = "files"; };
     renderCloudCard(container.querySelector("#cloud-card"));
