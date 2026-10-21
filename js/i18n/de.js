@@ -66,7 +66,7 @@ export default {
     "r.cook.name": "🧑‍🍳 Koch",
     "r.cook.desc": "Einfach: Rezepte mit Skalierung, Abfall erfassen und Bestand zählen. Keine Preise und kein Gewinn. Mit Code gesperrt.",
     "r.producer.name": "🏭 Hersteller",
-    "r.producer.desc": "Du verkaufst verpackte Produkte: Vorrat, Rechnungen und Rezepte, später ein Herstellermodul (Etiketten, Allergene und Nährwerte). Keine Gerichte.",
+    "r.producer.desc": "Du verkaufst verpackte Produkte: Vorrat, Rechnungen, Rezepte und Gerichte (Preiskalkulation) sowie ein Herstellermodul: Produkte mit Verpackung, Etiketten mit Zutaten und Allergenen und Gesamtkosten.",
     "r.cook.needPin": "Für Koch ist ein Manager-Code nötig, damit niemand allein in den erweiterten Modus wechseln kann.",
 
     "p.title": "Manager-Code",
@@ -136,7 +136,7 @@ export default {
     "tour.settings.t": "⚙️ Einstellungen",
     "tour.settings.d": "Gemini-Schlüssel, Cloud-Backup, Aussehen der App, Manager-Code, manuelles Backup und der Rechnungs-Papierkorb. Durch den Manager-Code geschützt.",
     "tour.producer.t": "🏭 Hersteller",
-    "tour.producer.d": "Bald: Firmendaten, deine Produkte und Etiketten mit Zutatenliste und Allergenen.",
+    "tour.producer.d": "Firmendaten, deine Produkte mit Verpackung und Gesamtkosten sowie Etiketten mit Zutatenliste, Allergenen und Datumsangaben.",
     "tour.cookRecipes.t": "📖 Rezepte",
     "tour.cookRecipes.d": "Die Rezepte der Küche: Rezept lesen, und im Tab Generator (מחולל) Mengen vergrößern oder verkleinern und Einheiten umrechnen.",
     "tour.cookWaste.t": "🗑 Abfall",

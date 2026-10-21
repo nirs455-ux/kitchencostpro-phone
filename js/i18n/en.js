@@ -66,7 +66,7 @@ export default {
     "r.cook.name": "🧑‍🍳 Cook",
     "r.cook.desc": "Basic: recipes with the scaling tool, waste logging and stock counts. No prices and no profit. Locked with a code.",
     "r.producer.name": "🏭 Producer",
-    "r.producer.desc": "You sell packaged products: pantry, invoices and recipes, and later a producer module (labels, allergens and nutrition values). No dishes.",
+    "r.producer.desc": "You sell packaged products: pantry, invoices, recipes and dishes (pricing), plus a producer module: products with packaging, labels with ingredients and allergens, and total cost.",
     "r.cook.needPin": "Cook requires a manager code, so nobody can switch to the extended mode alone.",
 
     "p.title": "Manager code",
@@ -136,7 +136,7 @@ export default {
     "tour.settings.t": "⚙️ Settings",
     "tour.settings.d": "Gemini key, cloud backup, app look, manager code, manual backup and the invoice trash. Protected by the manager code.",
     "tour.producer.t": "🏭 Producer",
-    "tour.producer.d": "Coming soon: business details, your products and labels with an ingredient list and allergens.",
+    "tour.producer.d": "Business details, your products with packaging and total cost, and labels with an ingredient list, allergens and dates.",
     "tour.cookRecipes.t": "📖 Recipes",
     "tour.cookRecipes.d": "The kitchen's recipes: read the recipe, and in the Generator tab (מחולל) make quantities bigger or smaller and convert units.",
     "tour.cookWaste.t": "🗑 Waste",
