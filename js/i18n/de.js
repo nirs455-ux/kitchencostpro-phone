@@ -18,7 +18,7 @@ export default {
 
     "w.lang.title": "Sprache wählen",
     "w.lang.sub": "Du kannst sie jederzeit in den Einstellungen ändern.",
-    "w.lang.partial": "teilweise: nur Einrichtung und Tour",
+    "w.lang.partial": "erste Übersetzung",
     "w.lang.note": "Der Rest der App ist derzeit auf Hebräisch. Wir übersetzen ihn Bildschirm für Bildschirm.",
 
     "a.title": "KI-Agent",

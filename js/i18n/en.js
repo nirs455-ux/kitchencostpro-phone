@@ -18,7 +18,7 @@ export default {
 
     "w.lang.title": "Choose a language",
     "w.lang.sub": "You can change it any time in Settings.",
-    "w.lang.partial": "partial: setup and tour only",
+    "w.lang.partial": "first translation",
     "w.lang.note": "The rest of the app is currently in Hebrew. We will translate it screen by screen.",
 
     "a.title": "AI agent",
