@@ -6,10 +6,10 @@ import de from "./i18n/de.js";
 import { getSetting } from "./repo/settingsRepo.js";
 
 export const DICT = { he, en, de };
-// partial = האפליקציה כולה עוד לא מתורגמת בשפה הזאת. dir = כיוון הכתיבה של שכבות האשף והסיור
+// partial = התרגום עדיין ראשוני בשפה הזאת (מוצג ליד השם באשף). dir = כיוון הכתיבה של שכבות האשף והסיור
 export const LANGS = [
     { key: "he", name: "עברית", dir: "rtl", partial: false },
-    { key: "en", name: "English", dir: "ltr", partial: true },
+    { key: "en", name: "English", dir: "ltr", partial: false },
     { key: "de", name: "Deutsch", dir: "ltr", partial: true },
 ];
 
