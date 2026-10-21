@@ -56,13 +56,23 @@ async function pushRecent(key) {
 }
 
 // items: [{ key, type, id, name, category, subcategory, indent, hint, tab }]. tabs: [{ key, label }] (אם יש יותר מאחד מוצגת בחירה)
+// זוכר איפה עצרת (לשונית, חיפוש, קטגוריה וגלילה) כדי שהוספת מרכיב הבא תמשיך משם. מתאפס כשפותחים בונה חדש.
+let memory = null;
+export function resetPickerMemory() { memory = null; }
+
 export async function openIngredientPicker({ title = "בחר מרכיב", items, tabs = null, onPick }) {
-    const recentKeys = (await loadRecents());
     const layer = document.createElement("div");
     layer.className = "picker";
     document.body.appendChild(layer);
     const tabList = tabs && tabs.length > 1 ? tabs : null;
     const st = { tab: tabList ? tabList[0].key : null, q: "", cat: "", sub: "", open: null };
+    let restoreScroll = 0;
+    if (memory && (!tabList || tabList.some((t) => t.key === memory.tab))) {
+        st.tab = memory.tab; st.q = memory.q; st.cat = memory.cat; st.sub = memory.sub;
+        restoreScroll = memory.scroll || 0;
+    }
+    let lastScroll = restoreScroll;
+    const remember = () => { memory = { tab: st.tab, q: st.q, cat: st.cat, sub: st.sub, scroll: lastScroll }; };
     const flat = items.flatMap((i) => [i, ...(i.children || [])]);
 
     const close = () => layer.remove();
@@ -80,7 +90,7 @@ export async function openIngredientPicker({ title = "בחר מרכיב", items,
             r.onclick = async () => {
                 const item = flat.find((i) => i.key === r.dataset.key);
                 if (!item) return;
-                await pushRecent(item.key).catch(() => {});
+                remember();
                 close();
                 onPick(item);
             };
@@ -100,6 +110,7 @@ export async function openIngredientPicker({ title = "בחר מרכיב", items,
             ${subs.length ? `<div class="pk-chips" id="pk-subs"><button type="button" class="chip ${st.sub ? "" : "active"}" data-sub="">כל ${escapeHtml(st.cat)}</button>${subs.map((c) => `<button type="button" class="chip ${st.sub === c ? "active" : ""}" data-sub="${escapeHtml(c)}">${escapeHtml(c)}</button>`).join("")}</div>` : ""}
             <div class="pk-list" id="pk-list"></div>`;
         const list = layer.querySelector("#pk-list");
+        list.addEventListener("scroll", () => { lastScroll = list.scrollTop; });
 
         let shown = base.filter((i) => matchesDeep(i, st.q) && (!st.cat || i.category === st.cat) && (!st.sub || i.subcategory === st.sub));
         const mk = (i) => {
@@ -113,10 +124,6 @@ export async function openIngredientPicker({ title = "בחר מרכיב", items,
             list.innerHTML = rankResults(shown, st.q).map((i) => mk({ ...i, hint: [i.category, i.hint].filter(Boolean).join(" · ") })).join("");
         } else {
             let html = "";
-            if (!st.cat) {
-                const rec = recentKeys.map((k) => base.find((i) => i.key === k)).filter(Boolean);
-                if (rec.length) html += `<div class="pk-head">אחרונים</div>${rec.map(mk).join("")}`;
-            }
             // קבוצות לפי קטגוריה (ואם נבחרה קטגוריה עם תתי-קטגוריות: לפי תת-קטגוריה)
             const groupBy = st.cat ? (i) => i.subcategory || "" : (i) => i.category || "אחר";
             const groups = new Map();
@@ -147,13 +154,14 @@ export async function openIngredientPicker({ title = "בחר מרכיב", items,
                 const item = flat.find((i) => i.key === r.dataset.key);
                 if (!item) return;
                 if ((item.children || []).length) { st.open = item.key; draw(); return; }
-                await pushRecent(item.key).catch(() => {});
+                remember();
                 close();
                 onPick(item);
             };
         });
     }
     draw();
+    if (restoreScroll) { const l = layer.querySelector("#pk-list"); if (l) l.scrollTop = restoreScroll; layer.scrollTop = restoreScroll; }
     return { close };
 }
 

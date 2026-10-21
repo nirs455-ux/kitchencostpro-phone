@@ -4,7 +4,7 @@ import { dbGetAll } from "../db.js";
 import { NON_FOOD_CATEGORIES } from "../constants.js";
 import { pricePerGram, itemCost as calcItemCost, computeDishPricing } from "../formulas.js";
 import { textToGrams, gramsToKgText, describeQty, qtyWarning } from "../qty.js";
-import { bindPickerButton, refreshPickerButton } from "./ingredientPicker.js";
+import { bindPickerButton, refreshPickerButton, resetPickerMemory } from "./ingredientPicker.js";
 import { listRow, matchesDeep } from "./listKit.js";
 import { assignAutoSubs, subOf } from "../autoGroups.js";
 import { h, openModal, closeModal, confirmDialog, toast, escapeHtml, money, info, busy, attemptClose, cur, curLabel } from "../ui.js";
@@ -60,6 +60,7 @@ export async function renderDishesPage(container) {
 }
 
 async function openDishModal(existing, container) {
+    resetPickerMemory();
     const sources = await allSources();
     let rowCounter = 0;
 
@@ -87,6 +88,7 @@ async function openDishModal(existing, container) {
             <div class="error-msg"></div>
         </div>
         <div class="pg-foot"><div class="pg-sum"><span>עלות המנה</span><b id="cost-display">${cur()}0.00</b></div>
+            <div class="pg-sum"><span>מחיר כולל מע"מ</span><b id="sell-display">—</b></div>
             <button type="button" class="btn btn-primary btn-block" id="btn-save">שמירת מנה</button></div>
     `, { page: true });
     const delBtn = overlay.querySelector("#btn-del-dish");
@@ -179,13 +181,22 @@ async function openDishModal(existing, container) {
             const r = computeDishPricing(total, sellingPrice, vatPct);
             const tone = r.food_cost_pct > 33 ? "var(--danger)" : r.food_cost_pct > 30 ? "var(--warn-border)" : "var(--ok)";
             preview.innerHTML = `
-                <div class="gauge"><i style="width:${Math.min(100, Math.max(2, r.food_cost_pct)).toFixed(0)}%;background:${tone};"></i></div>
-                <div class="card-row"><span>עלות מזון</span><b style="color:${tone};">${r.food_cost_pct.toFixed(1)}%</b></div>
-                <div class="card-row"><span>רווח</span><span>${money(r.profit_amount)} (${r.profit_pct.toFixed(1)}%)</span></div>
-                <div class="card-row"><span class="muted">מחיר מכירה כולל מע"מ</span><span class="muted">${money(sellingPrice)}</span></div>
+                <div class="pr-box">
+                    <div class="pr-row"><span>מחיר לפני מע"מ</span><b>${money(priceBeforeVat)}</b></div>
+                    <div class="pr-row"><span>מע"מ (${+vatPct.toFixed(1)}%)</span><b>${money(sellingPrice - priceBeforeVat)}</b></div>
+                    <div class="pr-row pr-big"><span>מחיר מכירה כולל מע"מ</span><b>${money(sellingPrice)}</b></div>
+                    <div class="pr-row"><span>עלות המנה</span><b>${money(total)}</b></div>
+                    <div class="pr-row"><span>רווח (לפני מע"מ)</span><b>${money(r.profit_amount)} · ${r.profit_pct.toFixed(1)}%</b></div>
+                    <div class="gauge"><i style="width:${Math.min(100, Math.max(2, r.food_cost_pct)).toFixed(0)}%;background:${tone};"></i></div>
+                    <div class="pr-row"><span>עלות מזון</span><b style="color:${tone};">${r.food_cost_pct.toFixed(1)}%</b></div>
+                </div>
             `;
+            const sd = overlay.querySelector("#sell-display");
+            if (sd) sd.textContent = money(sellingPrice);
         } else {
             preview.innerHTML = `<div class="card-row"><span class="muted">הזן מחיר (ידנית או דרך מכפיל/יעד למעלה) כדי לראות רווחיות</span></div>`;
+            const sd = overlay.querySelector("#sell-display");
+            if (sd) sd.textContent = "—";
         }
         return total;
     }

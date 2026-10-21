@@ -14,7 +14,7 @@ import { buildLabel } from "../recipeLabel.js";
 import { suggestBaseHeuristic, computePercentages, scaleToBase, fmtPct } from "../bakers.js";
 import { RECIPE_UNIT_GRAMS } from "../recipeParse.js";
 import { textToGrams, gramsToKgText, describeQty, qtyWarning } from "../qty.js";
-import { bindPickerButton, refreshPickerButton } from "./ingredientPicker.js";
+import { bindPickerButton, refreshPickerButton, resetPickerMemory } from "./ingredientPicker.js";
 import { isStaffMode } from "../staff.js";
 import { listRow, groupsEl, orderCategories, matchesDeep, normalize } from "./listKit.js";
 import { assignAutoSubs, subOf } from "../autoGroups.js";
@@ -222,7 +222,8 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
                 ${missing.map((m) => `<tr style="color:var(--danger);"><td>⚠ ${escapeHtml(m.name)}</td><td colspan="2">${escapeHtml(originalText(m) || "—")} · לא במזווה</td></tr>`).join("")}
             </tbody></table>
             ${r.status === "draft" ? `<div class="hint-warn">העלות חלקית - מחושבת רק מהרכיבים שבמזווה. לחץ "השלם" כדי להוסיף את החסרים.</div>`
-                : `<div class="card-row cost-only" style="font-weight:700;margin:8px 0;"><span>עלות כוללת ${money(r.total_cost)}</span><span>${money(r.cost_per_gram)} / גרם</span></div>`}
+                : `<div class="card-row cost-only" style="font-weight:700;margin:8px 0;"><span>עלות כוללת ${money(r.total_cost)}</span><span>${money(r.cost_per_gram)} / גרם</span></div>
+                <div class="hint" style="margin:-4px 0 8px;">${r.final_weight > 0 && !r.is_auto_weight ? `משקל גולמי ${Math.round(r.items.reduce((n, i) => n + (Number(i.quantity_g) || 0), 0))} גרם · <b>משקל סופי ${Math.round(r.final_weight)} גרם</b>. העלות לגרם מחושבת על המשקל הסופי.` : "המשקל הוא סכום הרכיבים הגולמיים. אם יש ירידה בבישול או בסינון, מזינים משקל סופי בעריכת המתכון."}</div>`}
             ${eggNotes.map((e) => `<div class="hint-warn" style="background:var(--brand-soft);color:var(--text);">${escapeHtml(eggSummaryText(e))}</div>`).join("")}
             ${r.method ? `<div class="card-title" style="margin:12px 0 4px;">הוראות הכנה</div><div style="white-space:pre-wrap;font-size:14px;">${escapeHtml(r.method)}</div>` : ""}
             <div class="btn-row"><button type="button" class="btn btn-secondary btn-small" id="d-print-recipe">🖨 הדפס מתכון</button>${r.source_file ? '<button type="button" class="btn btn-accent btn-small" id="d-source">📎 המסמך המקורי</button>' : ""}</div>`;
@@ -238,7 +239,8 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
             <table class="simple"><thead><tr><th>רכיב</th><th>אחוז</th><th>גרם</th></tr></thead><tbody>
                 ${pv.rows.map((x) => `<tr style="${x.isBase ? "font-weight:700;" : ""}"><td>${escapeHtml(x.name)}${x.isBase ? " (בסיס)" : ""}</td><td>${fmtPct(x.pct)}%</td><td>${x.grams}</td></tr>`).join("")}
             </tbody></table>
-            <div class="card-row" style="margin:8px 0;"><span>סה"כ</span><b>${fmtPct(pv.totalPct)}% · ${pv.totalGrams} גרם</b></div>
+            <div class="card-row" style="margin:8px 0;"><span>סה"כ גולמי</span><b>${fmtPct(pv.totalPct)}% · ${pv.totalGrams} גרם</b></div>
+            ${r.final_weight > 0 && !r.is_auto_weight ? `<div class="hint">משקל סופי אחרי בישול וסינון: <b>${Math.round(r.final_weight)} גרם</b> (ניצולת ${Math.round((r.final_weight / r.items.reduce((n, i) => n + (Number(i.quantity_g) || 0), 0)) * 100)}%). האחוזים כאן הם מהמשקל הגולמי של הרכיבים.</div>` : '<div class="hint">המשקלים כאן הם גולמיים (סכום הרכיבים). אם יש ירידה בבישול או בסינון, מזינים משקל סופי בעריכת המתכון.</div>'}
             <div class="btn-row"><button type="button" class="btn btn-secondary btn-small" id="p-copy">📋 העתק</button><button type="button" class="btn btn-secondary btn-small" id="p-print">🖨 הדפס</button></div>`
             : '<div class="hint-warn">אין רכיבים עם כמות.</div>';
         } else if (tab === "gen") {
@@ -454,6 +456,7 @@ function scanNoticeHtml(draft) {
 }
 
 async function openRecipeModal(existing, container, draft = null) {
+    resetPickerMemory();
     const sources = await ingredientSources();
     const isEdit = !!existing;
     const src = existing || draft;
@@ -477,7 +480,11 @@ async function openRecipeModal(existing, container, draft = null) {
             <div id="ingredients-box"></div>
             <button type="button" class="pg-add" id="btn-add-row">＋ הוסף מרכיב</button>
             <details class="pg-more"><summary>הוראות הכנה</summary><textarea id="f-method" rows="5" style="width:100%;">${src && src.method ? escapeHtml(src.method) : ""}</textarea></details>
-            <details class="pg-more"><summary>משקל סופי ידני</summary><div class="hint">בק"ג. ריק = סכום המרכיבים.</div><input type="text" inputmode="decimal" id="f-manual-weight" value="${existing && !existing.is_auto_weight ? gramsToKgText(existing.final_weight) : ""}"></details>
+            <div class="card-pg" style="margin-top:10px;">
+                <div class="field" style="margin:0;"><label>משקל סופי אחרי בישול וסינון (ק"ג, לא חובה) ${info('ריק = סכום הרכיבים הגולמיים. אם המתכון מתבשל, מתמצה או מסונן והמשקל יורד (למשל מ-0.733 ל-0.550), כתוב כאן את המשקל שיוצא בפועל. העלות לגרם והעלות לק"ג יחושבו על המשקל הסופי, כך שהם מדויקים.')}</label>
+                    <input type="text" inputmode="decimal" id="f-manual-weight" value="${existing && !existing.is_auto_weight ? gramsToKgText(existing.final_weight) : ""}" placeholder="למשל 0.550">
+                    <div class="hint" id="f-weight-echo"></div></div>
+            </div>
             ${(existing && existing.source_file) || (draft && draft.source_file) ? '<div class="hint">📎 המסמך המקורי יישמר עם המתכון.</div>' : ""}
             <div class="hint" id="egg-note"></div>
             <div class="hint" id="partial-note" style="display:none;color:var(--danger);">העלות חלקית - יש רכיבים שעדיין לא במזווה.</div>
@@ -633,6 +640,7 @@ async function openRecipeModal(existing, container, draft = null) {
         return { s, size, part: meta.eggPart, grams };
     }
 
+    overlay.querySelector("#f-manual-weight").addEventListener("input", () => recalc());
     function recalc() {
         let total = 0;
         let hasUnmatched = false;
@@ -675,6 +683,17 @@ async function openRecipeModal(existing, container, draft = null) {
             g.rows.forEach((r, i) => { r.lineEl.textContent = money(costs[i]); total += costs[i]; });
         }
         overlay.querySelector("#total-cost-display").textContent = money(total);
+        {
+            let rawG = 0;
+            box.querySelectorAll(".item-row-inputs").forEach((row) => {
+                const id = row.id.replace("ing-row-", "");
+                const eg = eggRow(id);
+                rawG += eg ? eg.grams : textToGrams(overlay.querySelector(`#ing-qty-${id}`).value) || 0;
+            });
+            const fin = textToGrams(overlay.querySelector("#f-manual-weight").value) || 0;
+            const echo = overlay.querySelector("#f-weight-echo");
+            if (echo) echo.textContent = rawG > 0 ? `משקל גולמי (סכום הרכיבים): ${Math.round(rawG)} גרם${fin > 0 ? ` · משקל סופי: ${Math.round(fin)} גרם · ניצולת ${Math.round((fin / rawG) * 100)}%` : ""}` : "";
+        }
         const eggLines = [];
         box.querySelectorAll(".item-row-inputs").forEach((row) => {
             const id = row.id.replace("ing-row-", "");
