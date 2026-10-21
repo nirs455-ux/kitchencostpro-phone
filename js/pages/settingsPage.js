@@ -9,7 +9,7 @@ import { openTrashModal } from "./trashModal.js";
 import { listInvoicesWithItems } from "../repo/suppliersRepo.js";
 import { openSetupWizard } from "./setupWizard.js";
 import { openTour } from "./tour.js";
-import { t } from "../i18n.js";
+import { t, LANGS, getLang } from "../i18n.js";
 import { renderCloudCard } from "../cloud/cloudUi.js";
 
 const setOpen = new Set(); // אזורים פתוחים (כברירת מחדל הכול סגור)
@@ -61,6 +61,8 @@ export async function renderSettingsPage(container) {
             <div class="px-sh"><span class="px-ic" style="background:var(--warn-soft);">🎨</span><b>מראה</b><span class="px-chev">${setOpen.has("look") ? "▾" : "◂"}</span></div>
             <div class="set-body" ${setOpen.has("look") ? "" : "hidden"}>
                 <div class="card">
+            <div class="card-title">שפה / Language</div>
+            <div class="chips" id="lang-chips" style="margin-bottom:14px;">${LANGS.map((l) => `<button type="button" class="chip ${l.key === getLang() ? "active" : ""}" data-lang-key="${l.key}">${l.name}</button>`).join("")}</div>
             <div class="card-title">מראה האפליקציה ${info("בחר ערכת עיצוב. השינוי מיידי, ואפשר להחליף בכל רגע.")}</div>
             <div class="chips" id="theme-chips">${THEMES.map((t) => `<button type="button" class="chip ${t.key === currentTheme ? "active" : ""}" data-theme-key="${t.key}"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${t.color};margin-left:6px;"></span>${t.label}</button>`).join("")}</div>
         </div>
@@ -81,6 +83,7 @@ export async function renderSettingsPage(container) {
         <div class="px-sec set-sec" data-sec="tools">
             <div class="px-sh"><span class="px-ic" style="background:var(--surface-2);">🧰</span><b>כלים (קבצים, פח, דוח תקלה)</b><span class="px-chev">${setOpen.has("tools") ? "▾" : "◂"}</span></div>
             <div class="set-body" ${setOpen.has("tools") ? "" : "hidden"}>
+                <div class="card"><button class="btn btn-secondary btn-block" id="btn-producer">🏭 יצרן: מוצרים ומדבקות</button></div>
                 <div class="card"><button class="btn btn-secondary btn-block" id="btn-files">📁 קבצים (קבלות, מתכונים, התקבלו)</button></div>
                 <div class="card">
             <div class="card-title">פח חשבוניות</div>
@@ -113,6 +116,7 @@ export async function renderSettingsPage(container) {
             hd.querySelector(".px-chev").textContent = setOpen.has(k) ? "▾" : "◂";
         };
     });
+    container.querySelector("#btn-producer").onclick = () => { location.hash = "producer"; };
     container.querySelector("#btn-files").onclick = () => { location.hash = "files"; };
     renderCloudCard(container.querySelector("#cloud-card"));
     container.querySelector("#btn-tour").onclick = async () => openTour({ role: (await getSetting("role")) || "manager" });
@@ -124,6 +128,9 @@ export async function renderSettingsPage(container) {
         toast("נשמר");
     };
 
+    container.querySelectorAll("[data-lang-key]").forEach((b) => {
+        b.onclick = async () => { await setSetting("language", b.dataset.langKey); location.reload(); };
+    });
     container.querySelectorAll("[data-theme-key]").forEach((b) => {
         b.onclick = async () => {
             await chooseTheme(b.dataset.themeKey);

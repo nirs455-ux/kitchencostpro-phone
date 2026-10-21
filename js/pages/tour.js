@@ -5,7 +5,7 @@ import { getSetting } from "../repo/settingsRepo.js";
 // אילו דפים מוצגים לכל תפקיד (בסדר הצגה)
 export const TOUR_PAGES = {
     manager: ["home", "pantry", "recipes", "dishes", "suppliers", "files", "settings"],
-    producer: ["home", "pantry", "recipes", "suppliers", "files", "producer", "settings"],
+    producer: ["home", "pantry", "recipes", "dishes", "suppliers", "files", "producer", "settings"],
     cook: ["cookRecipes", "cookWaste", "cookCount"],
 };
 
