@@ -410,3 +410,12 @@ body[data-cook="1"] .cost-only, body[data-cook="1"] .mgr-only { display: none !i
 .cv-row input { flex: 1; min-width: 0; font-size: 22px; font-weight: 700; text-align: center; padding: 12px 8px; border-radius: 12px; border: 1px solid var(--input-border); background: var(--bg); color: var(--text); font-family: inherit; }
 .cv-row select { flex: 1; min-width: 0; }
 .cv-swap { text-align: center; margin: 6px 0; }
+
+.pr-box { margin-top: 8px; }
+.pr-row { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--border); color: var(--text); font-size: 15px; }
+.pr-row span { color: var(--text); opacity: .85; }
+.pr-row b { font-size: 18px; font-weight: 800; color: var(--text); white-space: nowrap; }
+.pr-big { background: var(--brand-soft); border-radius: 10px; border-bottom: 0; padding: 10px 10px; margin: 4px 0; }
+.pr-big span { opacity: 1; font-weight: 700; }
+.pr-big b { font-size: 24px; }
+.pg-sum b { font-weight: 800; }
