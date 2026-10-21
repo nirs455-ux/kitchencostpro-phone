@@ -1,20 +1,27 @@
 // אייקוני מצב בסרגל העליון: 🤖 סוכן (מפתח Gemini) ו-☁️ ענן (גיבוי ל-Drive). אדום = לא מחובר, כתום = דורש טיפול, ירוק = תקין.
 // לחיצה מסבירה מה זה אומר ומציעה לחבר. מוסתרים במצב טבח.
 import { getSetting } from "./repo/settingsRepo.js";
+import { getAgentKey, agentConfigured } from "./agent.js";
 import { getCloudStatus, isCloudAvailable, runBackup } from "./cloud/cloudGlue.js";
 import { resolveCloudIssue, fmtWhen } from "./cloud/cloudUi.js";
 import { openModal, closeModal, toast, escapeHtml } from "./ui.js";
 import { isStaffMode } from "./staff.js";
 import { downloadExport } from "./export.js";
 
-// כדי להימנע מתלות מעגלית עם האשף, הוא נטען רק בלחיצה
+// האשף הוא רק שפה ומטבע, ולכן "חבר סוכן" מוביל להגדרות (מפתח אישי) ו"חבר ל-Google" מפעיל את החיבור ישירות.
 export async function openWizardAt(step) {
-    const { openSetupWizard } = await import("./pages/setupWizard.js");
-    openSetupWizard({ startStep: step, onDone: () => { window.dispatchEvent(new CustomEvent("kcp-status-refresh")); if (location.hash === "#home" || !location.hash) location.reload(); } });
+    if (step === 2) {
+        const { runConnectFlow } = await import("./cloud/cloudUi.js");
+        await runConnectFlow();
+        window.dispatchEvent(new CustomEvent("kcp-status-refresh"));
+        if (location.hash === "#home" || !location.hash) location.reload();
+        return;
+    }
+    location.hash = "settings";
 }
 
 export async function computeStatus() {
-    const hasKey = !!(await getSetting("gemini_api_key"));
+    const hasKey = !!(await getAgentKey());
     const cs = getCloudStatus();
     const available = await isCloudAvailable();
     let cloud = "bad";
@@ -42,10 +49,11 @@ function popup(title, text, buttons) {
     ov.querySelectorAll("[data-i]").forEach((el) => { el.onclick = async () => { closeModal(); await buttons[Number(el.dataset.i)].run(); }; });
 }
 
-function openAgentPopup(st) {
+async function openAgentPopup(st) {
+    const hasOwnKey = !!(await getSetting("gemini_api_key"));
     if (st.agent === "ok") {
-        popup("🤖 הסוכן מחובר ✓", "מפתח Gemini שמור, ואפשר לסרוק חשבוניות ומתכונים מתמונה.", [
-            { label: "בדוק או החלף מפתח", cls: "btn-primary", run: () => openWizardAt(1) },
+        popup("🤖 הסוכן מחובר ✓", agentConfigured() && !hasOwnKey ? "הסוכן המשותף פעיל (עם מגבלה יומית), ואפשר לסרוק חשבוניות ומתכונים מתמונה. מי שרוצה בלי מגבלה יכול להזין מפתח Gemini אישי בהגדרות." : "מפתח Gemini שמור, ואפשר לסרוק חשבוניות ומתכונים מתמונה.", [
+            { label: agentConfigured() ? "מפתח אישי בהגדרות" : "בדוק או החלף מפתח", cls: "btn-primary", run: () => { if (agentConfigured()) location.hash = "settings"; else openWizardAt(1); } },
             { label: "סגור", run: () => {} },
         ]);
     } else {
