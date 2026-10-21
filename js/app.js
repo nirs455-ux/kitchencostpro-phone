@@ -7,6 +7,7 @@ import { renderInventoryPage } from "./pages/inventoryPage.js";
 import { renderSettingsPage } from "./pages/settingsPage.js";
 import { renderHomePage } from "./pages/homePage.js";
 import { renderFilesPage, openFilesFolder } from "./pages/filesPage.js";
+import { renderProducerPage } from "./pages/producerPage.js";
 import { openSetupWizard } from "./pages/setupWizard.js";
 import { initLocale } from "./locale.js";
 import { initCloud, getCloudStatus } from "./cloud/cloudGlue.js";
@@ -18,7 +19,8 @@ import { info } from "./ui.js";
 import { purgeOldTrash } from "./repo/suppliersRepo.js";
 import { consumeSharedFile } from "./share.js";
 import { isStaffMode, openUnlockDialog, guardSettings, hasPin, settingsUnlocked } from "./staff.js";
-import { initLang } from "./i18n.js";
+import { initLang, getLang, langDir } from "./i18n.js";
+import { initDomTranslate } from "./domTranslate.js";
 import { initStatusIcons, renderStatusIcons } from "./statusIcons.js";
 import { installErrorHandlers } from "./errorLog.js";
 import { openScanModal } from "./pages/scanModal.js";
@@ -40,6 +42,7 @@ const PAGES = {
     waste: { title: "פחת", render: renderPantryPage, info: "" },
     inventory: { title: "ספירת מלאי", render: renderInventoryPage,
         info: "מזינים את הכמות שנספרה בפועל, והמערכת מחשבת את היתרה התיאורטית ומציגה את ההפרש." },
+    producer: { title: "יצרן", render: renderProducerPage, info: "פרטי העסק, המוצרים שאתה משווק ומדבקות להדפסה עם רכיבים, אלרגנים, תאריך ייצור ותוקף וערכים תזונתיים." },
     files: { title: "קבצים", render: renderFilesPage, info: "כל התמונות והמסמכים שנשמרו באפליקציה: קבלות וחשבוניות, מתכונים, וקבצים שהתקבלו. בהמשך יסונכרנו לתיקייה KitchenCostPro בענן." },
     settings: { title: "הגדרות", render: renderSettingsPage, info: "" },
 };
@@ -60,7 +63,6 @@ async function navigate(pageKey) {
         if (location.hash === "#settings") location.hash = "home";
         return;
     }
-    if (pageKey === "dishes" && appRole === "producer") pageKey = "home";
     if (isStaffMode() && !STAFF_PAGES.has(pageKey)) pageKey = "home"; // מצב עובד: רק בית וספירת מלאי
     if (pageKey === "files" && location.hash !== "#files") openFilesFolder(null);
     location.hash = pageKey;
@@ -109,8 +111,9 @@ document.getElementById("page-title").addEventListener("click", () => navigate("
 
 await initLocale(); // סמל מטבע וכו' לפני שהמסכים מצוירים
 await initLang(); // שפת האשף והסיור
+await initDomTranslate(getLang(), langDir()); // תרגום כל הממשק (עברית = בלי שינוי)
 appRole = (await getSetting("role")) || "manager"; // manager | cook | producer
-if (appRole === "producer") { const d = document.querySelector('#bottom-nav [data-page="dishes"]'); if (d) d.style.display = "none"; }
+if (appRole === "producer") { const pb = document.querySelector('#bottom-nav [data-page="producer"]'); if (pb && !isStaffMode()) pb.style.display = ""; }
 await initCloud().catch(() => {}); // גיבוי אוטומטי לענן (אם מחובר)
 navigate(location.hash.replace("#", "") === "share" ? "home" : (location.hash.replace("#", "") || "home"));
 
