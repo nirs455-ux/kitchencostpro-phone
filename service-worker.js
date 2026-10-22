@@ -1,4 +1,4 @@
-const CACHE_NAME = "kcp-v63";
+const CACHE_NAME = "kcp-v64";
 const ASSETS = [
     "./",
     "./index.html",
@@ -71,6 +71,7 @@ const ASSETS = [
     "./js/export.js",
     "./js/repo/pantryRepo.js",
     "./js/repo/recipesRepo.js",
+    "./js/repo/subRecipes.js",
     "./js/repo/dishesRepo.js",
     "./js/repo/suppliersRepo.js",
     "./js/repo/inventoryRepo.js",
