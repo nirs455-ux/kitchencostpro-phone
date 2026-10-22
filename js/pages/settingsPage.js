@@ -1,5 +1,5 @@
 import { getSetting, setSetting } from "../repo/settingsRepo.js";
-import { downloadExport, importAndReplace } from "../export.js";
+import { downloadExport, downloadSafetyCopy, inspectBackup, importAndReplace } from "../export.js";
 import { toast, confirmDialog, info } from "../ui.js";
 import { APP_VERSION, THEMES } from "../constants.js";
 import { chooseTheme } from "../theme.js";
@@ -39,8 +39,9 @@ export async function renderSettingsPage(container) {
             <div class="hint" style="margin-bottom:6px;"><b>גיבוי אחרון:</b> ${lastExport ? new Date(lastExport).toLocaleString("he-IL") : "עדיין לא יוצא"}
                 <br><b>אחסון קבוע:</b> ${persisted === true ? "פעיל - הדפדפן לא ימחק נתונים אוטומטית" : persisted === false ? "לא אושר ע\"י הדפדפן - מומלץ לגבות לעיתים קרובות" : "לא נתמך בדפדפן הזה"}</div>
             <div class="btn-row">
-                <button class="btn btn-primary btn-small" id="btn-export">📤 ייצוא קובץ גיבוי</button>
-                <button class="btn btn-secondary btn-small" id="btn-import">📥 ייבוא מקובץ</button>
+                <button class="btn btn-primary btn-small" id="btn-export">📤 גיבוי מלא (עם תמונות)</button>
+                <button class="btn btn-secondary btn-small" id="btn-export-lite">📄 גיבוי קל (בלי תמונות)</button>
+                <button class="btn btn-secondary btn-small" id="btn-import">📥 שחזור מקובץ</button>
             </div>
             <input type="file" id="import-file" accept=".json" style="display:none;">
             <div class="error-msg" id="import-error"></div>
@@ -182,8 +183,12 @@ export async function renderSettingsPage(container) {
     container.querySelector("#f-autosave").onchange = async (e) => { await setSetting("scan_autosave", e.target.checked); toast("נשמר"); };
 
     container.querySelector("#btn-export").onclick = async () => {
-        await downloadExport();
+        await downloadExport({ images: true });
         toast("קובץ גיבוי הורד");
+    };
+    container.querySelector("#btn-export-lite").onclick = async () => {
+        await downloadExport({ images: false });
+        toast("גיבוי קל הורד (בלי תמונות חשבוניות)");
     };
 
     const fileInput = container.querySelector("#import-file");
@@ -191,16 +196,20 @@ export async function renderSettingsPage(container) {
     fileInput.addEventListener("change", async () => {
         const file = fileInput.files[0];
         if (!file) return;
-        const ok = await confirmDialog("ייבוא יחליף את כל הנתונים הקיימים בטלפון בנתונים מהקובץ. להמשיך?");
-        if (!ok) { fileInput.value = ""; return; }
+        const el = container.querySelector("#import-error");
+        el.style.display = "none";
         try {
             const text = await file.text();
+            const s = inspectBackup(text); // בודק שהקובץ תקין לפני שנוגעים בנתונים
+            const when = s.exportedAt ? new Date(s.exportedAt).toLocaleString("he-IL") : "לא ידוע";
+            const ok = await confirmDialog(`הקובץ מכיל ${s.pantry} מוצרים, ${s.recipes} מתכונים ו-${s.dishes} מנות (נוצר: ${when}).<br><br>השחזור יחליף את <b>כל</b> הנתונים הקיימים בטלפון.${s.noImages ? "<br>זה גיבוי בלי תמונות, ולכן תמונות חשבוניות שקיימות היום יימחקו." : ""}<br><br>לפני כן יורד אוטומטית עותק של המצב הנוכחי, לשמירה למקרה שתתחרט. להמשיך?`);
+            if (!ok) { fileInput.value = ""; return; }
+            await downloadSafetyCopy();
             await importAndReplace(text);
             toast("הנתונים יובאו בהצלחה");
             location.hash = "pantry";
             location.reload();
         } catch (e) {
-            const el = container.querySelector("#import-error");
             el.textContent = e.message;
             el.style.display = "block";
         }
