@@ -141,4 +141,25 @@ export async function dbClearAll() {
     );
 }
 
+// מחליף את כל הנתונים בטרנזקציה אחת: או שהכול מוחלף או שכלום לא משתנה (כשל באמצע = ביטול מלא, הנתונים הישנים נשארים).
+// stores = { שם_מאגר: [שורות] }
+export async function dbReplaceAll(stores) {
+    const db = await openDB();
+    const names = Object.keys(STORES);
+    await new Promise((resolve, reject) => {
+        const t = db.transaction(names, "readwrite");
+        t.oncomplete = () => resolve();
+        t.onerror = () => reject(t.error);
+        t.onabort = () => reject(t.error || new Error("השחזור בוטל, הנתונים הקיימים לא שונו"));
+        try {
+            for (const name of names) {
+                const os = t.objectStore(name);
+                os.clear();
+                for (const row of stores[name] || []) os.put(row);
+            }
+        } catch (e) { try { t.abort(); } catch (e2) { /* כבר בוטל */ } reject(e); }
+    });
+    for (const name of names) notify(name);
+}
+
 export { STORES };
