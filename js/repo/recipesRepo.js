@@ -15,7 +15,7 @@ export async function listRecipesWithItems() {
     return out;
 }
 
-async function resolveRecipeItems(items) {
+export async function resolveRecipeItems(items) {
     const resolved = [];
     const eggRows = [];
     let totalCost = 0;
@@ -55,6 +55,7 @@ async function resolveRecipeItems(items) {
 
 function computeWeight(manualWeight, rawWeight) {
     const mw = manualWeight === "" || manualWeight == null ? 0 : parseFloat(manualWeight);
+    if (mw < 0) throw new Error("משקל סופי לא יכול להיות שלילי");
     if (mw && mw > 0) return { finalWeight: mw, isAutoWeight: 0 };
     return { finalWeight: rawWeight, isAutoWeight: 1 };
 }
@@ -69,6 +70,12 @@ export async function saveRecipe(existingId, data) {
         .filter((d) => d.name);
     const items = data.items || [];
     if (items.length === 0 && draftIngredients.length === 0) throw new Error("יש להוסיף לפחות מרכיב אחד");
+    {
+        const key = name.toLowerCase();
+        const prevName = existingId ? String(((await dbGet("recipes", existingId)) || {}).name || "").trim().toLowerCase() : null;
+        const clash = prevName === key ? null : (await dbGetAll("recipes")).find((r) => r.id !== existingId && String(r.name || "").trim().toLowerCase() === key);
+        if (clash) throw new Error("כבר קיים מתכון בשם הזה. שנה את השם או ערוך את הקיים.");
+    }
 
     const { resolved, totalCost, rawWeight } = await resolveRecipeItems(items);
     const { finalWeight, isAutoWeight } = computeWeight(data.final_weight, rawWeight);
@@ -101,6 +108,12 @@ export async function saveRecipe(existingId, data) {
         await dbPut("recipeItems", { ...it, recipe_id: recipeId });
     }
     return recipeId;
+}
+
+// כמה מנות משתמשות במתכון (להתראה לפני מחיקה)
+export async function recipeDishCount(id) {
+    const rows = (await dbGetAll("dishItems")).filter((d) => d.source_type === "recipe" && d.source_id === id);
+    return new Set(rows.map((r) => r.dish_id)).size;
 }
 
 export async function deleteRecipe(id) {

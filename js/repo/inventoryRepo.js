@@ -51,6 +51,7 @@ export async function saveInventoryCounts(countDate, counts) {
         const pantryItemId = parseInt(c.pantry_item_id, 10);
         const countedQuantity = parseFloat(c.counted_quantity);
         if (Number.isNaN(pantryItemId) || Number.isNaN(countedQuantity)) throw new Error("נתוני ספירה לא תקינים");
+        if (countedQuantity < 0) throw new Error("כמות שנספרה לא יכולה להיות שלילית");
         const item = await dbGet("pantryItems", pantryItemId);
         if (!item) throw new Error(`מוצר לא נמצא (מזהה ${pantryItemId})`);
         await dbPut("inventoryCounts", { pantry_item_id: pantryItemId, count_date: countDate, counted_quantity: countedQuantity });

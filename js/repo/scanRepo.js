@@ -30,6 +30,12 @@ async function agentDown(response) {
 }
 const AGENT_DOWN_MSG = "הסוכן לא זמין כרגע (ייתכן שהקרדיטים נגמרו). זה לא קשור אליך: אפשר לשמור את התמונה לעיבוד מאוחר ולנסות שוב בהמשך.";
 
+// שגיאת פענוח של תשובת Gemini -> הודעה ברורה (תשובה ריקה/חסומה או טקסט שאינו JSON)
+function unreadableMessage(e) {
+    if (e instanceof TypeError) return "הסוכן לא החזיר תשובה (ייתכן שהתמונה לא ברורה או נחסמה). נסה לצלם שוב.";
+    return "לא הצלחתי לקרוא את התוכן. נסה לצלם שוב, ישר ובאור טוב.";
+}
+
 export async function scanInvoiceImage(apiKey, file, onRetry) {
     if (!apiKey) throw new Error("לא הוגדר מפתח API של Gemini. הזן אותו במסך ההגדרות.");
     // הכנת הקובץ: תמונה (מכווצת) / PDF נשלחים כמו שהם; Word / Excel / טקסט וכו' - חילוץ טקסט
@@ -55,6 +61,7 @@ export async function scanInvoiceImage(apiKey, file, onRetry) {
             throw err;
         }
         if (code === 402) throw new Error("הגעת למגבלה היומית של הסוכן. אפשר להמשיך מחר, או להזין מפתח Gemini אישי בהגדרות.");
+        if (code === 413) throw new Error("הקובץ גדול מדי לסריקה. צלם שוב בגודל קטן יותר, או שלח רק חלק מהעמודים.");
         if (code === 400 || code === 403) throw new Error("מפתח ה-API לא תקין או חסרות הרשאות. בדוק את המפתח בהגדרות.");
         const text = await response.text();
         throw new Error(`שגיאה מהשרת (${code}): ${text.slice(0, 120)}`);
@@ -69,12 +76,13 @@ export async function scanInvoiceImage(apiKey, file, onRetry) {
         }
         parsed = JSON.parse(text.trim());
     } catch (e) {
-        throw new Error(`לא הצלחתי לפרש את התשובה: ${e.message}`);
+        throw new Error(unreadableMessage(e));
     }
 
     const pantryRows = (await dbGetAll("pantryItems")).filter((r) => !r.parent_id);
     const byName = new Map(pantryRows.map((r) => [r.name.trim().toLowerCase(), r]));
     const items = mergeDiscountLines(parsed.items || []);
+    const skippedLines = items.skipped || 0;
     const enrichedItems = [];
     // כינויים שנלמדו מסריקות קודמות: שם בקבלה -> מוצר מזווה שהמשתמש בחר
     const aliases = (await getSetting("scan_aliases")) || {};
@@ -123,7 +131,7 @@ export async function scanInvoiceImage(apiKey, file, onRetry) {
         });
     }
 
-    return { supplier_name: parsed.supplier_name || null, invoice_date: parsed.invoice_date || null, invoice_total: toFloat(parsed.invoice_total), items: enrichedItems, attachment: prepared.attachment, partial: !!prepared.partial };
+    return { skipped_lines: skippedLines, supplier_name: parsed.supplier_name || null, invoice_date: parsed.invoice_date || null, invoice_total: toFloat(parsed.invoice_total), items: enrichedItems, attachment: prepared.attachment, partial: !!prepared.partial };
 }
 
 // מחיל את שורות הסריקה על המזווה (ואופציונלית שומר כחשבונית מקושרת לספק). מקביל ל-apply_scanned_invoice.
@@ -250,6 +258,7 @@ export async function scanRecipeImage(apiKey, file) {
     }
     if (!response.ok) {
         if (await agentDown(response)) throw new Error(AGENT_DOWN_MSG);
+        if (response.status === 413) throw new Error("הקובץ גדול מדי לסריקה. צלם שוב בגודל קטן יותר, או שלח רק חלק מהעמודים.");
         if (response.status === 402) throw new Error("הגעת למגבלה היומית של הסוכן. אפשר להמשיך מחר, או להזין מפתח Gemini אישי בהגדרות.");
         const text = await response.text();
         throw new Error(`שגיאה מה-API (${response.status}): ${text.slice(0, 300)}`);
@@ -264,7 +273,7 @@ export async function scanRecipeImage(apiKey, file) {
         }
         parsed = JSON.parse(text.trim());
     } catch (e) {
-        throw new Error(`לא הצלחתי לפרש את התשובה: ${e.message}`);
+        throw new Error(unreadableMessage(e));
     }
     const pantry = (await dbGetAll("pantryItems")).filter((r) => !NON_FOOD_CATEGORIES.has(r.category));
     const draft = buildRecipeDraft(parsed, pantry);

@@ -29,6 +29,7 @@ export async function openSetupWizard({ onDone } = {}) {
         country: (await getSetting("country")) || "IL",
         currency: (await getSetting("currency")) || "ILS",
         units: (await getSetting("units")) || "metric",
+        producer: !!((await getSetting("producer_mode")) || (await getSetting("role")) === "producer"),
     };
     const root = document.createElement("div");
     root.className = "wiz";
@@ -39,8 +40,10 @@ export async function openSetupWizard({ onDone } = {}) {
         if (save) await saveLocale({ country: state.country, currency: state.currency, units: state.units, language: state.lang });
         await setSetting("setup_done", true);
         if (!(await getSetting("role"))) await setSetting("role", "manager");
+        if (save) await setSetting("producer_mode", !!state.producer);
         root.remove();
         window.dispatchEvent(new CustomEvent("kcp-status-refresh"));
+        window.dispatchEvent(new CustomEvent("kcp-nav-refresh"));
         if (state.lang !== startLang) { location.reload(); return; } // כדי שכל הממשק יעבור לשפה החדשה
         if (onDone) onDone(state);
     };
@@ -53,6 +56,7 @@ export async function openSetupWizard({ onDone } = {}) {
                 ${LANGS.map((l) => `<button type="button" class="wiz-opt ${state.lang === l.key ? "on" : ""}" data-lang="${l.key}"><b>${escapeHtml(l.name)}</b></button>`).join("")}
                 <div class="field" style="margin-top:14px;"><label>${t("c.country")}</label><select id="w-country">${COUNTRIES.map((x) => `<option value="${x.key}" ${x.key === state.country ? "selected" : ""}>${t(`country.${x.key}`)}</option>`).join("")}</select></div>
                 <div class="field"><label>${t("c.currency")}</label><select id="w-cur">${Object.keys(CURRENCIES).map((k) => `<option value="${k}" ${k === state.currency ? "selected" : ""}>${t(`cur.${k}`)}</option>`).join("")}</select></div>
+                <label class="wiz-opt ${state.producer ? "on" : ""}" style="display:flex;gap:10px;align-items:flex-start;margin-top:16px;"><input type="checkbox" id="w-prod" ${state.producer ? "checked" : ""} style="margin-top:4px;"><span><b>${t("w1.producer")}</b><small style="display:block;color:var(--text-2);margin-top:3px;">${t("w1.producerSub")}</small></span></label>
             </div>
             <div class="wiz-foot"><button type="button" class="btn btn-primary" id="w-go">${t("w1.go")}</button></div>`;
         const q = (s) => root.querySelector(s);
@@ -61,6 +65,7 @@ export async function openSetupWizard({ onDone } = {}) {
         root.querySelectorAll("[data-lang]").forEach((o) => { o.onclick = () => { state.lang = o.dataset.lang; setLang(state.lang); draw(); }; });
         q("#w-country").onchange = (e) => { const c = countryByKey(e.target.value); state.country = c.key; state.currency = c.currency; state.units = c.units; draw(); };
         q("#w-cur").onchange = (e) => { state.currency = e.target.value; };
+        q("#w-prod").onchange = (e) => { state.producer = e.target.checked; draw(); };
     };
     draw();
 }

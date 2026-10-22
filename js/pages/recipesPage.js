@@ -1,6 +1,6 @@
 // ספר מתכונים: מתכון נשמר גם כשחסרים רכיבים (טיוטה שאפשר להשלים אחר כך), המסמך המקורי נשמר איתו,
 // ויש תצוגת פרטים עם רשימת רכיבים לתווית והצהרת אלרגנים.
-import { listRecipesWithItems, saveRecipe, deleteRecipe, setRecipeBase } from "../repo/recipesRepo.js";
+import { listRecipesWithItems, saveRecipe, deleteRecipe, recipeDishCount, setRecipeBase } from "../repo/recipesRepo.js";
 import { listAllPantryItems, addPantryItem, setItemAllergens, setEggSize } from "../repo/pantryRepo.js";
 import { ALLERGENS, allergenLabels } from "../allergens.js";
 import { RECIPE_CATEGORIES, NON_FOOD_CATEGORIES, CATEGORY_GROUPS, UNIT_TYPES, UNIT_TYPE_LABELS } from "../constants.js";
@@ -201,8 +201,12 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
         if (!(total > 0)) return null;
         const r1 = (n) => Math.round(n * 10) / 10;
         if (pctMode === "baker") {
-            const sug = currentBase();
-            const P = computePercentages(items(), sug.ids);
+            let sug = currentBase();
+            let P = computePercentages(items(), sug.ids);
+            if (!(P.baseGrams > 0)) { // הבסיס השמור כבר לא קיים (למשל רכיב נמחק): חוזרים להצעה אוטומטית
+                sug = { ...suggestBaseHeuristic(r.name, items()), source: "auto" };
+                P = computePercentages(items(), sug.ids);
+            }
             if (!(P.baseGrams > 0)) return null;
             const target = scaleGrams && scaleGrams > 0 ? scaleGrams : P.baseGrams;
             const sc = scaleToBase(items(), sug.ids, target);
@@ -337,7 +341,8 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
         overlay.querySelector("#d-edit").onclick = () => { closeModal(); openRecipeModal(r, container); };
         overlay.querySelector("#d-del").onclick = async () => {
             closeModal();
-            if (!(await confirmDialog("למחוק את המתכון?"))) return;
+            const used = await recipeDishCount(r.id);
+            if (!(await confirmDialog(used ? `המתכון משמש ב-${used} מנות. הן לא יימחקו והעלות ששמורה בהן נשארת, אבל המתכון יוסר מהן בפעם הבאה שתערוך אותן.<br><br>למחוק את המתכון?` : "למחוק את המתכון?"))) return;
             await deleteRecipe(r.id);
             toast("נמחק");
             renderRecipesPage(container);

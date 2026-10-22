@@ -42,6 +42,14 @@ function parseInvoicePayload(data) {
     if (Number.isNaN(supplierId)) throw new Error("יש לבחור ספק");
     const invoiceDate = (data.invoice_date || "").trim();
     if (!invoiceDate) throw new Error("יש להזין תאריך");
+    {
+        const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(invoiceDate);
+        const d = m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : null;
+        const valid = d && d.getFullYear() === Number(m[1]) && d.getMonth() === Number(m[2]) - 1 && d.getDate() === Number(m[3]);
+        if (!valid) throw new Error("תאריך לא תקין");
+        if (d.getFullYear() < 2000) throw new Error("תאריך החשבונית ישן מדי - בדוק את השנה");
+        if (d.getTime() > Date.now() + 366 * 86400000) throw new Error("תאריך החשבונית רחוק מדי בעתיד - בדוק את השנה");
+    }
     const documentType = data.document_type || "invoice";
     if (!["invoice", "credit"].includes(documentType)) throw new Error("סוג מסמך לא תקין");
     if (!data.items || data.items.length === 0) throw new Error("יש להוסיף לפחות שורה אחת");
@@ -65,6 +73,7 @@ function parseInvoicePayload(data) {
         if (unitPrice === null) unitPrice = Math.round((lineTotal / qty) * 10000) / 10000;
         if (lineTotal === null) lineTotal = Math.round(qty * unitPrice * 100) / 100;
         if (unitPrice < 0 || lineTotal < 0) throw new Error("מחיר/סכום לא יכולים להיות שליליים");
+        if (unitPrice > 1000000 || lineTotal > 100000000) throw new Error("מחיר/סכום גבוהים מדי - בדוק שלא הוזן מספר שגוי");
         total += lineTotal;
         let pantryItemId = it.pantry_item_id || null;
         if (pantryItemId) pantryItemId = parseInt(pantryItemId, 10);

@@ -49,7 +49,7 @@ export function cleanProduct(p) {
         id: p.id || Date.now(),
         name, recipe_id,
         net_g: num(p.net_g) || 0,
-        shelf_days: Math.round(num(p.shelf_days) || 0),
+        shelf_days: Math.min(3650, Math.round(num(p.shelf_days) || 0)), // עד 10 שנים (מעבר לכך כנראה טעות הקלדה)
         storage: String(p.storage || "").trim(),
         barcode: String(p.barcode || "").trim(),
         sell_price: num(p.sell_price) || 0, // מחיר מכירה ליחידה לפני מע"מ
@@ -74,9 +74,11 @@ export async function deleteProduct(id) {
 
 // תאריך ISO (yyyy-mm-dd) + ימים -> תאריך ISO. עובד לפי התאריך המקומי כדי שלא יזוז ביום.
 export function addDaysIso(iso, days) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(iso)) || !Number.isFinite(Number(days))) return ""; // תאריך/ימים לא תקינים: לא מדפיסים NaN
     const [y, m, d] = String(iso).split("-").map((x) => parseInt(x, 10));
     const dt = new Date(y, (m || 1) - 1, d || 1);
     dt.setDate(dt.getDate() + (Number(days) || 0));
+    if (Number.isNaN(dt.getTime())) return "";
     return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
 }
 export const fmtDateHe = (iso) => String(iso || "").split("-").reverse().join("/");

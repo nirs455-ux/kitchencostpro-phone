@@ -16,6 +16,38 @@ export function toast(msg) {
 
 let currentModalCleanup = null;
 
+// ---- כפתור "חזור" (בטלפון/דפדפן): כשחלון/בורר פתוח, חזור סוגר אותו (עם שאלה אם יש שינויים) ולא עובר מסך מאחורי ----
+// בזמן שיש שכבה פתוחה קיימת רשומה אחת נוספת בהיסטוריה (אותה כתובת). סגירה רגילה מחזירה אותה לאחור, ולחיצה על "חזור" סוגרת את השכבה.
+let layerActive = false;
+let ignorePops = 0;
+const anyLayerOpen = () => !!document.querySelector("#modal-root .modal-overlay, .picker");
+export function layerOpened() {
+    if (layerActive) return;
+    try { history.pushState({ kcpLayer: 1 }, "", location.href); layerActive = true; } catch (e) { /* לא קריטי */ }
+}
+export function layerClosed() {
+    setTimeout(() => { // בדיקה מאוחרת: סגירה ופתיחה רצופות (חלון מוחלף) לא צריכות להזיז את ההיסטוריה
+        if (layerActive && !anyLayerOpen()) { layerActive = false; ignorePops++; try { history.back(); } catch (e) { ignorePops--; } }
+    }, 0);
+}
+// ניווט רגיל (מעבר מסך) כשיש שכבה פתוחה: סוגרים אותה בלי לגעת בהיסטוריה (כבר התקדמה)
+export function dropLayers() {
+    document.querySelectorAll(".picker").forEach((p) => p.remove());
+    const root = document.getElementById("modal-root");
+    if (root) root.innerHTML = "";
+    if (currentModalCleanup) { try { currentModalCleanup(); } catch (e) { /* ignore */ } currentModalCleanup = null; }
+    layerActive = false;
+}
+if (typeof window !== "undefined") window.addEventListener("popstate", () => {
+    if (ignorePops > 0) { ignorePops--; return; }
+    if (!layerActive) return; // חזור רגיל: ניווט בין מסכים
+    layerActive = false; // הרשומה הנוספת כבר נצרכה
+    const picker = document.querySelector(".picker");
+    if (picker) { picker.remove(); if (anyLayerOpen()) layerOpened(); return; }
+    const ov = document.querySelector("#modal-root .modal-overlay");
+    if (ov && !attemptClose(ov)) layerOpened(); // המשתמש ביטל את הסגירה: נשארים בחלון
+});
+
 // page: true = דף מלא (בניית מתכון/מנה): כותרת עליונה, גוף נגלל, וסיכום קבוע בתחתית
 export function openModal(innerHtml, { onClose, page = false } = {}) {
     closeModal();
@@ -30,6 +62,7 @@ export function openModal(innerHtml, { onClose, page = false } = {}) {
     });
     root.appendChild(overlay);
     currentModalCleanup = onClose || null;
+    layerOpened();
     return overlay;
 }
 
@@ -91,6 +124,7 @@ export function closeModal() {
         try { currentModalCleanup(); } catch (e) { /* ignore */ }
         currentModalCleanup = null;
     }
+    layerClosed();
 }
 
 export function confirmDialog(message) {

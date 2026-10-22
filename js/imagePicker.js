@@ -7,11 +7,11 @@ export function openImagePicker({ title, hint, onFile }) {
         <h2>${title} ${hint ? info(hint.replace(/<[^>]+>/g, "")) : ""}</h2>
         <div class="btn-row">
             <button type="button" class="btn btn-accent" id="pick-camera">📷 צלם</button>
-            <button type="button" class="btn btn-secondary" id="pick-gallery">🖼️ גלריה / קבצים</button>
-            <button type="button" class="btn btn-secondary" id="pick-any">📁 כל קובץ</button>
+            <button type="button" class="btn btn-secondary" id="pick-gallery">🖼️ גלריה</button>
         </div>
+        <button type="button" class="btn-link" id="pick-any">📁 מסמך או קובץ אחר (PDF, Word, Excel)</button>
         <input type="file" id="pick-file-camera" accept="image/*" capture="environment" style="display:none">
-        <input type="file" id="pick-file-gallery" accept="${FILE_ACCEPT}" style="display:none">
+        <input type="file" id="pick-file-gallery" accept="image/*" style="display:none">
         <input type="file" id="pick-file-any" style="display:none">
         <div class="modal-actions"><button type="button" class="btn btn-secondary" id="pick-cancel">ביטול</button></div>
     `);

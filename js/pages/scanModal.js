@@ -25,17 +25,18 @@ export async function openScanModal({ supplierAware, onDone, initialFile = null 
         <h2>סריקת חשבונית ${info(`צלם או העלה תמונה של חשבונית - נזהה ממנה ${supplierAware ? "ספק, תאריך ו" : ""}מוצרים אוטומטית.`)}</h2>
         <div id="scan-upload-area">
             <div class="btn-row">
-                <button type="button" class="btn btn-accent" id="btn-pick-camera">📷 צלם חשבונית</button>
-                <button type="button" class="btn btn-secondary" id="btn-pick-gallery">🖼️ גלריה / קבצים</button>
-                <button type="button" class="btn btn-secondary" id="btn-pick-any">📁 כל קובץ</button>
+                <button type="button" class="btn btn-accent" id="btn-pick-camera">📷 צלם</button>
+                <button type="button" class="btn btn-secondary" id="btn-pick-gallery">🖼️ גלריה</button>
             </div>
+            <button type="button" class="btn-link" id="btn-pick-any">📁 מסמך או קובץ אחר (PDF, Word, Excel)</button>
             <input type="file" id="scan-file-camera" accept="image/*" capture="environment" style="display:none">
-            <input type="file" id="scan-file-gallery" accept="${FILE_ACCEPT}" style="display:none">
+            <input type="file" id="scan-file-gallery" accept="image/*" style="display:none">
             <input type="file" id="scan-file-any" style="display:none">
             <div class="error-msg"></div>
         </div>
         <div id="scan-loading" style="display:none;text-align:center;padding:24px;color:#666;">קורא את החשבונית...</div>
         <div id="scan-results" style="display:none;">
+            <div class="hint-warn" id="scan-skipped" style="display:none;"></div>
             ${supplierAware ? `
             <div class="field">
                 <label>ספק ${info("בחירת ספק תשמור זאת גם כחשבונית בדף הספקים, ותעדכן את הקניות בדף המלאי. בלי בחירה - רק המחיר במזווה יתעדכן.")}</label>
@@ -74,6 +75,7 @@ export async function openScanModal({ supplierAware, onDone, initialFile = null 
     overlay.querySelector("#scan-items-box").addEventListener("pointerdown", stopAuto);
 
     let scannedItems = [];
+    let scannedSkipped = 0; // שורות שלא נקראו במלואן
     let scannedFile = null;
     let scannedAttachment = null; // הקובץ שיישמר עם החשבונית (תמונה מכווצת / PDF / המסמך המקורי)
     let printedTotal = null;
@@ -143,6 +145,8 @@ export async function openScanModal({ supplierAware, onDone, initialFile = null 
                 loading.textContent = `השרת עמוס, מנסה שוב (${n}/${total})...`;
             });
             scannedItems = data.items || [];
+            if (!scannedItems.length) throw new Error(data.skipped_lines ? "לא נקראו שורות תקינות מהחשבונית. נסה לצלם שוב (ישר, באור טוב, כל העמוד בתמונה) או הוסף ידנית." : "לא זוהו מוצרים בחשבונית. נסה לצלם שוב (ישר, באור טוב) או הוסף ידנית.");
+            scannedSkipped = data.skipped_lines || 0;
             // מוצר חדש: קטגוריה ויחידה מוצעות אוטומטית (אפשר לשנות)
             for (const it of scannedItems) {
                 if (!it.matched_pantry_item_id) {
@@ -227,6 +231,7 @@ export async function openScanModal({ supplierAware, onDone, initialFile = null 
         overlay.querySelector("#scan-loading").style.display = "none";
         overlay.querySelector("#scan-results").style.display = "block";
         overlay.__dirty = true; // יש תוצאות סריקה שטרם נשמרו
+        { const sk = overlay.querySelector("#scan-skipped"); if (sk) { sk.style.display = scannedSkipped ? "block" : "none"; sk.textContent = scannedSkipped ? `${scannedSkipped} שורות בחשבונית לא נקראו במלואן (חסרה כמות או מחיר) ולכן לא מופיעות. בדוק מול החשבונית והוסף ידנית אם צריך.` : ""; } }
         const box = overlay.querySelector("#scan-items-box");
         box.innerHTML = "";
 

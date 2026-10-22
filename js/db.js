@@ -57,7 +57,7 @@ export function openDB() {
             db.onversionchange = () => { db.close(); dbPromise = null; };
             resolve(db);
         };
-        req.onblocked = () => console.warn("שדרוג מסד הנתונים ממתין - סגור לשוניות אחרות של האפליקציה");
+        req.onblocked = () => { console.warn("שדרוג מסד הנתונים ממתין - סגור לשוניות אחרות של האפליקציה"); try { window.dispatchEvent(new CustomEvent("kcp-db-blocked")); } catch (e) { /* לא קריטי */ } };
         req.onerror = () => reject(req.error);
     });
     return dbPromise;

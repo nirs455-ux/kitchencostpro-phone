@@ -10,6 +10,8 @@ export default {
     "w.exit.label": "Beenden",
     "w1.title": "Willkommen",
     "w1.sub": "Wähle Sprache und Währung, und es kann losgehen. Alles lässt sich später in den Einstellungen ändern.",
+    "w1.producer": "Ich bin auch Hersteller",
+    "w1.producerSub": "Ich verkaufe verpackte Produkte: Etiketten, Allergene und Nährwerte",
     "w1.go": "Los geht's",
 
     "w.s.lang": "Sprache",

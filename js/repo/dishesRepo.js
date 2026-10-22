@@ -12,7 +12,7 @@ export async function listDishesWithItems() {
     return out;
 }
 
-async function resolveDishItems(items) {
+export async function resolveDishItems(items) {
     const resolved = [];
     let totalCost = 0;
     for (const it of items) {
@@ -51,8 +51,10 @@ function parseDishPayload(data) {
     if (!data.items || data.items.length === 0) throw new Error("יש להוסיף לפחות מרכיב אחד");
     const sellingPrice = parseFloat(data.selling_price);
     if (Number.isNaN(sellingPrice) || sellingPrice <= 0) throw new Error("יש להזין מחיר מכירה תקין");
+    if (sellingPrice > 1000000) throw new Error("מחיר המכירה גבוה מדי - בדוק שלא הוזן מספר שגוי");
     let vatPct = parseFloat(data.vat_pct);
     if (Number.isNaN(vatPct)) vatPct = 0;
+    if (vatPct < 0 || vatPct > 100) throw new Error("מע\"מ חייב להיות בין 0 ל-100");
     let targetProfitPct = data.target_profit_pct === "" || data.target_profit_pct == null ? null : parseFloat(data.target_profit_pct);
     if (Number.isNaN(targetProfitPct)) targetProfitPct = null;
     let multiplier = data.multiplier === "" || data.multiplier == null ? null : parseFloat(data.multiplier);
@@ -62,6 +64,12 @@ function parseDishPayload(data) {
 
 export async function saveDish(existingId, data) {
     const clean = parseDishPayload(data);
+    {
+        const key = clean.name.toLowerCase();
+        const prevName = existingId ? String(((await dbGet("dishes", existingId)) || {}).name || "").trim().toLowerCase() : null;
+        const clash = prevName === key ? null : (await dbGetAll("dishes")).find((d) => d.id !== existingId && String(d.name || "").trim().toLowerCase() === key);
+        if (clash) throw new Error("כבר קיימת מנה בשם הזה. שנה את השם או ערוך את הקיימת.");
+    }
     const { resolved, totalCost } = await resolveDishItems(clean.items);
     const pricing = computeDishPricing(totalCost, clean.selling_price, clean.vat_pct);
 

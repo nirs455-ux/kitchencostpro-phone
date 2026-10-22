@@ -1,7 +1,7 @@
 // בורר מרכיבים: חיפוש + קטגוריות + תתי-קטגוריות + "אחרונים". משמש לבניית מתכון ולבניית מנה (ועובד גם עם מאות מוצרים).
 // נפתח כשכבה נפרדת מעל החלון הפתוח (בלי לסגור אותו). מחזיר את הבחירה דרך onPick.
 import { CATEGORY_GROUPS } from "../constants.js";
-import { escapeHtml } from "../ui.js";
+import { escapeHtml, layerOpened, layerClosed } from "../ui.js";
 import { getSetting, setSetting } from "../repo/settingsRepo.js";
 
 const RECENT_KEY = "picker_recent";
@@ -75,7 +75,8 @@ export async function openIngredientPicker({ title = "בחר מרכיב", items,
     const remember = () => { memory = { tab: st.tab, q: st.q, cat: st.cat, sub: st.sub, scroll: lastScroll }; };
     const flat = items.flatMap((i) => [i, ...(i.children || [])]);
 
-    const close = () => layer.remove();
+    layerOpened();
+    const close = () => { layer.remove(); layerClosed(); };
     const visibleItems = () => items.filter((i) => !st.tab || i.tab === st.tab);
 
     // שלב שני: למוצר שיש לו תוצרים מפורקים (בצל לבן -> נקי...) מציגים את האפשרויות. כל השאר נבחר ישר.

@@ -20,6 +20,7 @@ const setOpen = new Set(); // אזורים פתוחים (כברירת מחדל �
 export async function renderSettingsPage(container) {
     const apiKey = (await getSetting("gemini_api_key")) || "";
     const usdaKey = await getUsdaKey();
+    const producerOn = !!((await getSetting("producer_mode")) || (await getSetting("role")) === "producer");
     const lastExport = await getSetting("last_export");
     const currentTheme = (await getSetting("theme")) || "";
     const pinSet = await hasPin();
@@ -80,6 +81,7 @@ export async function renderSettingsPage(container) {
         <div class="px-sec set-sec" data-sec="staff">
             <div class="px-sh"><span class="px-ic" style="background:var(--danger-soft);">🔒</span><b>הרשאות ומצב עובד</b><span class="px-chev">${setOpen.has("staff") ? "▾" : "◂"}</span></div>
             <div class="set-body" ${setOpen.has("staff") ? "" : "hidden"}>
+                <div class="card"><div class="checkbox-field"><input type="checkbox" id="f-producer-mode" ${producerOn ? "checked" : ""}><label for="f-producer-mode"><b>מודול יצרן</b> (מוצרים עם אריזה, מדבקות, אלרגנים וערכים תזונתיים) ${info("מוסיף את כפתור יצרן בתפריט. מתאים למי שמוכר מוצרים באריזה. אפשר להפעיל וליצור בכל זמן, והנתונים נשמרים.")}</label></div></div>
                 <div class="card">
             <div class="card-title">מצב עובד ${info("נעילה בקוד: העובד רואה רק צילום קבלות (נשלחות לבדיקה שלך) וספירת מלאי, בלי מחירים ורווחים. זו נעילה נוחה למניעת בלבול, לא הגנת אבטחה מלאה.")}</div>
             ${pinSet ? `<div class="btn-row"><button class="btn btn-primary btn-small" id="btn-staff-on">🔒 נעל למצב עובד עכשיו</button>
@@ -126,6 +128,12 @@ export async function renderSettingsPage(container) {
             hd.querySelector(".px-chev").textContent = setOpen.has(k) ? "▾" : "◂";
         };
     });
+    container.querySelector("#f-producer-mode").onchange = async (e) => {
+        await setSetting("producer_mode", e.target.checked);
+        if (!e.target.checked && (await getSetting("role")) === "producer") await setSetting("role", "manager");
+        toast(e.target.checked ? "מודול יצרן הופעל" : "מודול יצרן כובה");
+        location.reload();
+    };
     container.querySelector("#btn-demo").onclick = async () => {
         if (!(await confirmDialog("להוסיף נתוני דוגמה (מזווה, מתכונים, מנות, חשבונית ומוצר יצרן)?<br><br>הנתונים הקיימים שלך לא יימחקו, רק יתווספו פריטים חדשים."))) return;
         try { await loadDemoData(); toast("נתוני הדוגמה נטענו"); location.hash = "home"; } catch (e) { toast("לא הצלחתי לטעון: " + e.message); }

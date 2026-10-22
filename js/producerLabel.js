@@ -24,7 +24,8 @@ export function buildLabelHtml(data) {
     const count = Math.max(1, Math.min(500, Math.round(Number(data.count) || 1)));
     const sz = LABEL_SIZES.find((s) => s.key === size) || LABEL_SIZES[1];
     const ing = (label.ingredients || []).map((i) => i.name).join(", ");
-    const expiry = product.shelf_days > 0 ? addDaysIso(productionDate, product.shelf_days) : "";
+    const prodDate = /^\d{4}-\d{2}-\d{2}$/.test(String(productionDate || "")) ? productionDate : new Date().toISOString().slice(0, 10);
+    const expiry = product.shelf_days > 0 ? addDaysIso(prodDate, product.shelf_days) : "";
     const hasNutrition = showNutrition && product.nutrition && NUTRITION_FIELDS.some((f) => product.nutrition[f.key] != null);
 
     const nutrition = hasNutrition ? `<table class="nu"><tr><th colspan="2">ערכים תזונתיים ל-100 גרם</th></tr>${NUTRITION_FIELDS.filter((f) => product.nutrition[f.key] != null).map((f) => `<tr><td>${esc(f.label)}</td><td>${esc(product.nutrition[f.key])}</td></tr>`).join("")}</table>` : "";
@@ -35,7 +36,7 @@ export function buildLabelHtml(data) {
         ${ing ? `<div><b>רכיבים:</b> ${esc(ing)}.</div>` : ""}
         ${label.allergens && label.allergens.length ? `<div class="al"><b>מכיל: ${esc(label.allergens.join(", "))}</b></div>` : ""}
         ${product.net_g > 0 ? `<div><b>משקל נטו:</b> ${esc(netText(product.net_g))}</div>` : ""}
-        <div class="dt"><span><b>ייצור:</b> ${esc(fmtDateHe(productionDate))}</span>${expiry ? `<span><b>לשימוש עד:</b> ${esc(fmtDateHe(expiry))}</span>` : ""}</div>
+        <div class="dt"><span><b>ייצור:</b> ${esc(fmtDateHe(prodDate))}</span>${expiry ? `<span><b>לשימוש עד:</b> ${esc(fmtDateHe(expiry))}</span>` : ""}</div>
         ${product.storage ? `<div>${esc(product.storage)}</div>` : ""}
         ${nutrition}
         ${bizLine ? `<div class="bz">${esc(bizLine)}</div>` : ""}

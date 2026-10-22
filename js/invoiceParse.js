@@ -41,6 +41,7 @@ const round = (x, d) => Math.round(x * 10 ** d) / 10 ** d;
 // מאחד שורות מבצע/הנחה לתוך המוצר שמעליהן (שלא יהפכו למוצרים נפרדים). שורת הנחה בלי מוצר לפניה נזרקת.
 export function mergeDiscountLines(items) {
     const merged = [];
+    let skipped = 0; // שורות בלי כמות או מחיר (לא נקראו במלואן)
     for (const it of items || []) {
         if (!it || typeof it !== "object" || Array.isArray(it)) continue;
         const name = String(it.name ?? "").trim();
@@ -57,7 +58,7 @@ export function mergeDiscountLines(items) {
             }
             continue;
         }
-        if (qty === null || price === null) continue;
+        if (qty === null || price === null) { skipped++; continue; }
         const cat = String(it.category_guess ?? "").trim();
         const unit = String(it.unit_guess ?? "").trim();
         merged.push({
@@ -72,6 +73,7 @@ export function mergeDiscountLines(items) {
             m.unit_price = round(Math.max(m.quantity * m.unit_price - m.discount_applied, 0) / m.quantity, 4);
         }
     }
+    merged.skipped = skipped;
     return merged;
 }
 

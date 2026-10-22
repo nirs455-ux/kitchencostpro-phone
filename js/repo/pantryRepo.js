@@ -36,6 +36,30 @@ function validateBase(data) {
 }
 
 // מוסיף מוצר עצמאי חדש (מקביל ל-POST /api/items).
+// קלט מספרי: פסיק עשרוני נתמך; מחזיר NaN אם לא מספר תקין. מחיר חייב להיות 0 עד מיליון, משקל ליחידה חיובי.
+const numIn = (v) => { const n = parseFloat(String(v ?? "").trim().replace(",", ".")); return Number.isFinite(n) ? n : NaN; };
+function checkPrice(v) {
+    const n = numIn(v);
+    if (Number.isNaN(n)) throw new Error("מחיר לא תקין");
+    if (n < 0) throw new Error("מחיר לא יכול להיות שלילי");
+    if (n > 1000000) throw new Error("המחיר גבוה מדי - בדוק שלא הוזן מספר שגוי");
+    return n;
+}
+function checkUnitAmount(v) {
+    const n = numIn(v);
+    if (Number.isNaN(n)) throw new Error("יש להזין משקל/נפח ליחידה");
+    if (n <= 0) throw new Error("משקל/נפח ליחידה חייב להיות גדול מ-0");
+    if (n > 1000000) throw new Error("משקל/נפח ליחידה גבוה מדי - בדוק את היחידות (ק\"ג, לא גרם)");
+    return n;
+}
+
+// שם כפול ברמה העליונה (בלי הבדל רישיות/רווחים). excludeId = המוצר שעורכים כרגע
+async function assertUniqueName(name, excludeId = null) {
+    const key = name.trim().toLowerCase();
+    const clash = (await dbGetAll("pantryItems")).find((r) => !r.parent_id && r.id !== excludeId && r.name.trim().toLowerCase() === key);
+    if (clash) throw new Error("כבר קיים מוצר בשם הזה במזווה. בחר אותו מהרשימה או שנה את השם.");
+}
+
 export async function addPantryItem(data) {
     const name = (data.name || "").trim();
     const { weightBefore, weightAfter, yieldPct, isFrozen } = validateBase(data);
@@ -43,6 +67,7 @@ export async function addPantryItem(data) {
     if (!name || !(data.category in CATEGORY_GROUPS) || !UNIT_TYPES.includes(data.unit_type)) {
         throw new Error("נתונים חסרים או שגויים");
     }
+    await assertUniqueName(name);
     const allowedSubs = CATEGORY_GROUPS[data.category];
     let subcategory = (data.subcategory || "").trim() || null;
     if (subcategory && allowedSubs.length && !allowedSubs.includes(subcategory)) {
@@ -50,14 +75,10 @@ export async function addPantryItem(data) {
     }
     if (!allowedSubs.length || !subcategory) subcategory = null;
 
-    const price = parseFloat(data.price);
-    if (Number.isNaN(price)) throw new Error("מחיר לא תקין");
+    const price = checkPrice(data.price);
 
     let unitAmount = null;
-    if (data.unit_type === "unit") {
-        unitAmount = parseFloat(data.unit_amount);
-        if (Number.isNaN(unitAmount)) throw new Error("יש להזין משקל/נפח ליחידה");
-    }
+    if (data.unit_type === "unit") unitAmount = checkUnitAmount(data.unit_amount);
 
     const row = {
         name, category: data.category, subcategory, unit_type: data.unit_type, unit_amount: unitAmount,
@@ -108,14 +129,11 @@ export async function updatePantryItem(id, data) {
     if (!(data.category in CATEGORY_GROUPS) || !UNIT_TYPES.includes(data.unit_type)) {
         throw new Error("נתונים חסרים או שגויים");
     }
-    const price = parseFloat(data.price);
-    if (Number.isNaN(price)) throw new Error("מחיר לא תקין");
+    if (name.toLowerCase() !== String(existing.name || "").trim().toLowerCase()) await assertUniqueName(name, id); // רק אם שינו שם (כפילויות ישנות לא חוסמות עריכת מחיר)
+    const price = checkPrice(data.price);
 
     let unitAmount = null;
-    if (data.unit_type === "unit") {
-        unitAmount = parseFloat(data.unit_amount);
-        if (Number.isNaN(unitAmount)) throw new Error("יש להזין משקל/נפח ליחידה");
-    }
+    if (data.unit_type === "unit") unitAmount = checkUnitAmount(data.unit_amount);
 
     let newSubcategory = existing.subcategory;
     const allowedSubs = CATEGORY_GROUPS[data.category];

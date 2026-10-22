@@ -21,11 +21,13 @@ import { consumeSharedFile } from "./share.js";
 import { isStaffMode, openUnlockDialog, guardSettings, hasPin, settingsUnlocked } from "./staff.js";
 import { initLang, getLang, langDir } from "./i18n.js";
 import { initDomTranslate } from "./domTranslate.js";
+import { recalcAllCosts, startAutoRecalc, ensureCostsFresh } from "./repo/recalc.js";
 import { initStatusIcons, renderStatusIcons } from "./statusIcons.js";
 import { installErrorHandlers } from "./errorLog.js";
 import { openScanModal } from "./pages/scanModal.js";
 import { scanRecipeFile } from "./pages/recipesPage.js";
-import { openModal, closeModal } from "./ui.js";
+import { openModal, closeModal, dropLayers, toastAction } from "./ui.js";
+import { openDB } from "./db.js";
 
 const PAGES = {
     home: { title: "בית", render: renderHomePage, info: "מסך הבית: סריקה מהירה, ומה שדורש תשומת לב עכשיו." },
@@ -56,6 +58,7 @@ const pageTitle = document.getElementById("page-title");
 const navButtons = document.querySelectorAll("#bottom-nav button");
 
 async function navigate(pageKey) {
+    await ensureCostsFresh(); // שינוי מחיר במזווה שעדיין מחושב מחדש במתכונים/מנות: ממתינים כדי שלא יוצג מספר ישן
     if (!PAGES[pageKey]) pageKey = "home";
     // הגדרות מוגנות בקוד מנהל (אם הוגדר). יצרן לא רואה מנות.
     if (pageKey === "settings" && (await hasPin()) && !settingsUnlocked()) {
@@ -91,6 +94,7 @@ navButtons.forEach((btn) => {
 });
 
 window.addEventListener("hashchange", () => {
+    dropLayers(); // מעבר מסך (תפריט/קישור) סוגר חלון או בורר שנשארו פתוחים
     const key = location.hash.replace("#", "");
     if (key === "share") return;
     if (PAGES[key]) navigate(key);
@@ -109,11 +113,35 @@ if (isStaffMode()) {
 }
 document.getElementById("page-title").addEventListener("click", () => navigate("home"));
 
+// מסד הנתונים לא נפתח (גלישה פרטית, אחסון חסום/מלא, תקלה בדפדפן): מסך הסבר במקום מסך ריק
+const showFatal = (title, text) => {
+    const d = document.createElement("div");
+    d.style.cssText = "position:fixed;inset:0;z-index:200;background:var(--bg,#fff);color:var(--text,#111);display:flex;flex-direction:column;justify-content:center;padding:28px;text-align:start;line-height:1.7";
+    d.innerHTML = '<h2 style="margin:0 0 10px"></h2><p style="margin:0 0 16px"></p><button type="button" class="btn btn-primary">נסה שוב</button>';
+    d.querySelector("h2").textContent = title;
+    d.querySelector("p").textContent = text;
+    d.querySelector("button").onclick = () => location.reload();
+    document.body.appendChild(d);
+};
+try { await openDB(); } catch (e) {
+    showFatal("לא ניתן לפתוח את האחסון של האפליקציה", "האפליקציה שומרת את הנתונים בדפדפן, והדפדפן לא מאפשר את זה עכשיו. הסיבות הנפוצות: גלישה פרטית (Incognito), אחסון מלא בטלפון, או הגדרה שחוסמת נתוני אתרים. פתח בחלון רגיל, פנה מקום בטלפון, ונסה שוב.");
+    throw e;
+}
+window.addEventListener("kcp-db-blocked", () => toastAction("האפליקציה פתוחה גם בלשונית אחרת", "רענן", () => location.reload(), 60000));
 await initLocale(); // סמל מטבע וכו' לפני שהמסכים מצוירים
+await recalcAllCosts().catch(() => {}); // ריפוי: עלויות שנשארו ישנות מגרסאות קודמות מתעדכנות לפי המזווה הנוכחי
+startAutoRecalc(); // מכאן כל שינוי במזווה מעדכן מתכונים ומנות לבד
 await initLang(); // שפת האשף והסיור
 await initDomTranslate(getLang(), langDir()); // תרגום כל הממשק (עברית = בלי שינוי)
 appRole = (await getSetting("role")) || "manager"; // manager | cook | producer
-if (appRole === "producer") { const pb = document.querySelector('#bottom-nav [data-page="producer"]'); if (pb && !isStaffMode()) pb.style.display = ""; }
+// כפתור "יצרן" בתפריט: מופיע כשמודול היצרן פעיל (גם אחרי שינוי באשף/בהגדרות, בלי טעינה מחדש)
+const refreshProducerNav = async () => {
+    const on = appRole === "producer" || !!(await getSetting("producer_mode"));
+    const pb = document.querySelector('#bottom-nav [data-page="producer"]');
+    if (pb) pb.style.display = on && !isStaffMode() ? "" : "none";
+};
+await refreshProducerNav();
+window.addEventListener("kcp-nav-refresh", refreshProducerNav);
 await initCloud().catch(() => {}); // גיבוי אוטומטי לענן (אם מחובר)
 navigate(location.hash.replace("#", "") === "share" ? "home" : (location.hash.replace("#", "") || "home"));
 
@@ -175,5 +203,11 @@ maybeShowBackupBanner();
 if ("serviceWorker" in navigator) {
     window.addEventListener("load", () => {
         navigator.serviceWorker.register("service-worker.js").catch(() => {});
+    });
+    // גרסה חדשה הותקנה והשתלטה בזמן שהאפליקציה פתוחה: הקוד שבזיכרון עדיין ישן עד רענון, ולכן מציעים לרענן (בלי זה נשארים על גרסה ישנה)
+    let hadController = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+        if (hadController) toastAction("יצאה גרסה חדשה", "רענן", () => location.reload(), 60000);
+        hadController = true;
     });
 }
