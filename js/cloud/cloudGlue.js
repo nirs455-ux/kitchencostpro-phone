@@ -1,7 +1,7 @@
 // חיבור הגיבוי לענן לדפדפן: התחברות Google (GIS), מסד הנתונים המקומי, תזמון גיבוי אוטומטי וסטטוס למסכים.
 import { createDrive, DriveAuthError } from "./driveApi.js";
 import { createCloud, CloudConflict } from "./cloudCore.js";
-import { STORES, dbGetAll, dbPut, dbClearAll, onDbChange } from "../db.js";
+import { STORES, dbGetAll, dbReplaceAll, onDbChange } from "../db.js";
 import { getSetting, setSetting } from "../repo/settingsRepo.js";
 import { APP_VERSION } from "../constants.js";
 import { GOOGLE_CLIENT_ID } from "./config.js";
@@ -86,14 +86,15 @@ let restoring = false;
 async function setStores(stores) {
     // מוודאים שהכול תקין לפני שמוחקים (unpack כבר בדק מבנה); שומרים הגדרות מקומיות
     const keep = (await dbGetAll("settings")).filter((r) => LOCAL_ONLY(r.key));
+    const prepared = {};
+    for (const [name, rows] of Object.entries(stores)) {
+        if (!STORES[name] || !Array.isArray(rows)) continue;
+        prepared[name] = rows.filter((row) => !(name === "settings" && LOCAL_ONLY(row.key)));
+    }
+    prepared.settings = (prepared.settings || []).concat(keep);
     restoring = true;
     try {
-        await dbClearAll();
-        for (const [name, rows] of Object.entries(stores)) {
-            if (!STORES[name]) continue;
-            for (const row of rows) if (!(name === "settings" && LOCAL_ONLY(row.key))) await dbPut(name, row);
-        }
-        for (const r of keep) await dbPut("settings", r);
+        await dbReplaceAll(prepared); // אטומי: כשל באמצע לא משאיר מסד חצי-ריק
     } finally { restoring = false; }
 }
 
