@@ -1,5 +1,6 @@
 // לוגיקת ספקים/חשבוניות - תרגום מדויק של add_supplier/delete_supplier/_parse_invoice_payload/add_invoice/update_invoice/delete_invoice.
 import { dbGetAll, dbGet, dbPut, dbDelete, dbGetByIndex, dbDeleteWhere } from "../db.js";
+import { expandToParents } from "./subRecipes.js";
 
 export async function listSuppliers() {
     const rows = await dbGetAll("suppliers");
@@ -204,7 +205,8 @@ async function priceSeries() {
 
 // מנות שמושפעות משינוי מחיר של מוצר מזווה (ישירות, או דרך מתכון שמשתמש בו)
 export async function dishesAffectedByPantryItem(pantryItemId) {
-    const recipeIds = new Set((await dbGetAll("recipeItems")).filter((r) => r.pantry_item_id === pantryItemId).map((r) => r.recipe_id));
+    const allRecipeItems = await dbGetAll("recipeItems");
+    const recipeIds = expandToParents(new Set(allRecipeItems.filter((r) => r.pantry_item_id === pantryItemId).map((r) => r.recipe_id)), allRecipeItems); // כולל מתכונים שמשתמשים בהם כתת-מתכון
     const dishIds = new Set();
     for (const di of await dbGetAll("dishItems")) {
         if ((di.source_type === "pantry" && di.source_id === pantryItemId) || (di.source_type === "recipe" && recipeIds.has(di.source_id))) dishIds.add(di.dish_id);

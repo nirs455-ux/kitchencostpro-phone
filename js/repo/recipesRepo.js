@@ -4,23 +4,66 @@ import { RECIPE_CATEGORIES } from "../constants.js";
 import { pricePerGram, itemCost as calcItemCost, recipeCostPerGram, effectivePrice } from "../formulas.js";
 import { ensureEggDefaults } from "./pantryRepo.js";
 import { isEggProduct, eggSizeOf, allocateEggCosts } from "../eggs.js";
+import { isSubRow, includesRecipe, expandToParents, flattenRecipeItems } from "./subRecipes.js";
 
+// r.direct_items = השורות כפי שנשמרו (כולל תת-מתכונים). r.items = אותן שורות פרושות למוצרי מזווה בלבד (לתווית, אלרגנים, תזונה, אחוזים ומחולל).
 export async function listRecipesWithItems() {
     const recipes = await dbGetAll("recipes");
-    const out = [];
-    for (const r of recipes) {
-        const items = await dbGetByIndex("recipeItems", "recipe_id", r.id);
-        out.push({ ...r, items });
-    }
-    return out;
+    const allItems = await dbGetAll("recipeItems");
+    const byRecipe = new Map();
+    for (const row of allItems) { if (!byRecipe.has(row.recipe_id)) byRecipe.set(row.recipe_id, []); byRecipe.get(row.recipe_id).push(row); }
+    const recipeById = new Map(recipes.map((r) => [r.id, r]));
+    const itemsOf = (id) => byRecipe.get(id) || [];
+    return recipes.map((r) => {
+        const direct = itemsOf(r.id).map((row) => (isSubRow(row) && !recipeById.has(row.sub_recipe_id) ? { ...row, sub_missing: true } : row));
+        const hasSub = direct.some(isSubRow);
+        return { ...r, direct_items: direct, has_sub: hasSub, items: hasSub ? flattenRecipeItems(direct, recipeById, itemsOf) : direct };
+    });
 }
 
-export async function resolveRecipeItems(items) {
+// מתכונים שאפשר להוסיף כתת-מתכון: מוכנים (לא טיוטה), לא המתכון עצמו ולא מתכון שכבר כולל אותו (מעגל)
+export async function listSubRecipeOptions(selfId = null) {
+    const recipes = await dbGetAll("recipes");
+    const allItems = selfId ? await dbGetAll("recipeItems") : [];
+    return recipes
+        .filter((r) => r.status !== "draft" && r.id !== selfId && !(selfId && includesRecipe(r.id, selfId, allItems)))
+        .map((r) => ({ id: r.id, name: r.name, category: r.category, cost_per_gram: r.cost_per_gram, final_weight: r.final_weight }));
+}
+
+// בכמה מתכונים אחרים המתכון משמש כתת-מתכון (ישירות או בעומק)
+export async function recipeParentCount(id) {
+    const parents = expandToParents([id], await dbGetAll("recipeItems"));
+    parents.delete(id);
+    return parents.size;
+}
+
+// selfId: המתכון שנשמר כרגע (כדי לחסום מעגל: מתכון שמכיל את עצמו)
+export async function resolveRecipeItems(items, { selfId = null } = {}) {
     const resolved = [];
     const eggRows = [];
     let totalCost = 0;
     let rawWeight = 0;
+    let allRecipeItems = null;
     for (const it of items) {
+        if (it.sub_recipe_id != null && it.sub_recipe_id !== "") {
+            const subId = parseInt(it.sub_recipe_id, 10);
+            const q = parseFloat(it.quantity_g);
+            if (Number.isNaN(subId) || Number.isNaN(q)) throw new Error("מרכיב עם נתונים לא תקינים");
+            if (q <= 0) throw new Error("כמות חייבת להיות גדולה מ-0");
+            const sub = await dbGet("recipes", subId);
+            if (!sub) throw new Error("תת-מתכון לא נמצא");
+            if (selfId != null) {
+                if (!allRecipeItems) allRecipeItems = await dbGetAll("recipeItems");
+                if (includesRecipe(subId, selfId, allRecipeItems)) throw new Error(`אי אפשר להוסיף את '${sub.name}' למתכון הזה: הוא כולל אותו בעצמו (מעגל).`);
+            }
+            if (sub.status === "draft") throw new Error(`'${sub.name}' עדיין טיוטה (חסרים רכיבים). השלם אותו לפני שימוש כתת-מתכון.`);
+            const spg = sub.cost_per_gram || 0;
+            const scost = calcItemCost(spg, q);
+            totalCost += scost;
+            rawWeight += q;
+            resolved.push({ pantry_item_id: null, sub_recipe_id: subId, ingredient_name: sub.name, quantity_g: q, price_per_gram: spg, item_cost: scost });
+            continue;
+        }
         const pantryId = parseInt(it.pantry_item_id, 10);
         const qty = parseFloat(it.quantity_g);
         if (Number.isNaN(pantryId) || Number.isNaN(qty)) throw new Error("מרכיב עם נתונים לא תקינים");
@@ -77,7 +120,7 @@ export async function saveRecipe(existingId, data) {
         if (clash) throw new Error("כבר קיים מתכון בשם הזה. שנה את השם או ערוך את הקיים.");
     }
 
-    const { resolved, totalCost, rawWeight } = await resolveRecipeItems(items);
+    const { resolved, totalCost, rawWeight } = await resolveRecipeItems(items, { selfId: existingId });
     const { finalWeight, isAutoWeight } = computeWeight(data.final_weight, rawWeight);
     const costPerGram = recipeCostPerGram(totalCost, finalWeight);
 
@@ -117,6 +160,7 @@ export async function recipeDishCount(id) {
 }
 
 export async function deleteRecipe(id) {
+    // מתכון שנמחק ומשמש כתת-מתכון: השורה אצל המתכון המשתמש נשארת כ"נמחק" (אדום) עם העלות האחרונה
     await dbDeleteWhere("recipeItems", "recipe_id", id);
     await dbDelete("recipes", id);
 }

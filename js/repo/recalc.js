@@ -2,6 +2,7 @@
 // העלויות נשארו ישנות. כאן מחשבים מחדש את כל המתכונים (לפי המזווה הנוכחי) ואז את כל המנות (שתלויות בהם ובמזווה).
 // רכיב שנמחק מהמזווה נשאר עם העלות האחרונה שלו (אי אפשר לחשב), ומסומן ghost. כותבים למסד רק מה ששינה ערך.
 import { dbGetAll, dbGet, dbPut, dbGetByIndex, onDbChange } from "../db.js";
+import { isSubRow } from "./subRecipes.js";
 import { recipeCostPerGram, computeDishPricing } from "../formulas.js";
 import { resolveRecipeItems } from "./recipesRepo.js";
 import { resolveDishItems } from "./dishesRepo.js";
@@ -9,16 +10,35 @@ import { resolveDishItems } from "./dishesRepo.js";
 const r2 = (n) => Math.round(n * 100) / 100;
 const differs = (a, b) => Math.abs((Number(a) || 0) - (Number(b) || 0)) > 1e-9;
 
+// תת-מתכונים: מחשבים קודם את תת-המתכון ואז את מי שמשתמש בו (סדר טופולוגי; מעגל לא תוקע כי כל מתכון מבוקר פעם אחת)
+async function recipesInDependencyOrder() {
+    const recipes = await dbGetAll("recipes");
+    const allItems = await dbGetAll("recipeItems");
+    const byId = new Map(recipes.map((r) => [r.id, r]));
+    const subsOf = new Map();
+    for (const row of allItems) if (isSubRow(row)) { if (!subsOf.has(row.recipe_id)) subsOf.set(row.recipe_id, []); subsOf.get(row.recipe_id).push(row.sub_recipe_id); }
+    const seen = new Set();
+    const order = [];
+    const visit = (id) => {
+        if (seen.has(id) || !byId.has(id)) return;
+        seen.add(id);
+        for (const s of subsOf.get(id) || []) visit(s);
+        order.push(byId.get(id));
+    };
+    for (const r of recipes) visit(r.id);
+    return order;
+}
+
 async function recalcRecipes() {
     let changed = 0;
-    for (const recipe of await dbGetAll("recipes")) {
+    for (const recipe of await recipesInDependencyOrder()) {
         const rows = await dbGetByIndex("recipeItems", "recipe_id", recipe.id);
         if (!rows.length) continue;
         const live = [], ghosts = [];
-        for (const r of rows) ((await dbGet("pantryItems", r.pantry_item_id)) ? live : ghosts).push(r);
+        for (const r of rows) ((await dbGet(isSubRow(r) ? "recipes" : "pantryItems", isSubRow(r) ? r.sub_recipe_id : r.pantry_item_id)) ? live : ghosts).push(r);
         let resolved = { resolved: [], totalCost: 0, rawWeight: 0 };
         try {
-            if (live.length) resolved = await resolveRecipeItems(live.map((r) => ({ pantry_item_id: r.pantry_item_id, quantity_g: r.quantity_g, egg_part: r.egg_part })));
+            if (live.length) resolved = await resolveRecipeItems(live.map((r) => ({ pantry_item_id: r.pantry_item_id, sub_recipe_id: r.sub_recipe_id, quantity_g: r.quantity_g, egg_part: r.egg_part })), { selfId: recipe.id });
         } catch (e) { continue; } // למשל מוצר ביחידות שאיבד משקל ליחידה: משאירים כמו שהיה
         const ghostCost = ghosts.reduce((n, r) => n + (Number(r.item_cost) || 0), 0);
         const ghostGrams = ghosts.reduce((n, r) => n + (Number(r.quantity_g) || 0), 0);
@@ -109,5 +129,5 @@ export async function ensureCostsFresh() {
 export function startAutoRecalc() {
     if (started) return;
     started = true;
-    onDbChange((store) => { if (store === "pantryItems") schedule(); });
+    onDbChange((store) => { if (store === "pantryItems" || store === "recipes") schedule(); }); // שינוי במתכון מעדכן גם מתכונים ומנות שמשתמשים בו
 }

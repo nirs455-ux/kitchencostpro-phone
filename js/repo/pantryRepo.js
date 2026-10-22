@@ -4,6 +4,7 @@ import { dbGetAll, dbGet, dbPut, dbDelete, dbGetByIndex } from "../db.js";
 import { CATEGORY_GROUPS, UNIT_TYPES } from "../constants.js";
 import { computeYieldPct } from "../formulas.js";
 import { EGG_SIZES, guessEggSize } from "../eggs.js";
+import { expandToParents } from "./subRecipes.js";
 
 export async function listAllPantryItems() {
     return dbGetAll("pantryItems");
@@ -189,7 +190,8 @@ export async function getDeleteInfo(id) {
     if (!item) throw new Error("מוצר לא נמצא");
     const children = await getChildren(id);
     const ids = new Set([id, ...children.map((c) => c.id)]);
-    const recipeIds = new Set((await dbGetAll("recipeItems")).filter((r) => ids.has(r.pantry_item_id)).map((r) => r.recipe_id));
+    const allRecipeItems = await dbGetAll("recipeItems");
+    const recipeIds = expandToParents(new Set(allRecipeItems.filter((r) => ids.has(r.pantry_item_id)).map((r) => r.recipe_id)), allRecipeItems); // כולל מתכונים שמשתמשים בהם כתת-מתכון
     const dishIds = new Set((await dbGetAll("dishItems")).filter((d) => d.source_type === "pantry" && ids.has(d.source_id)).map((d) => d.dish_id));
     return {
         id, name: item.name, is_child: !!item.parent_id,
