@@ -4,11 +4,14 @@ import { dbGetAll } from "../db.js";
 import { listRecipesWithItems } from "../repo/recipesRepo.js";
 import { getBusiness, saveBusiness, listProducts, saveProduct, deleteProduct, NUTRITION_FIELDS, DEFAULT_STORAGE } from "../repo/producerRepo.js";
 import { buildLabel } from "../recipeLabel.js";
+import { getLabelNames } from "../repo/labelNamesRepo.js";
 import { buildLabelHtml, LABEL_SIZES, netText } from "../producerLabel.js";
 import { textToGrams, gramsToKgText } from "../qty.js";
 import { getNutritionDb } from "../repo/nutritionRepo.js";
 import { computeNutrition } from "../nutrition.js";
-import { listRow } from "./listKit.js";
+import { listRow, groupsEl } from "./listKit.js";
+import { openIngredientPicker, orderCategories } from "./ingredientPicker.js";
+import { listPackaging, savePackagingItem, deletePackagingItem, PACK_CATEGORIES, PACK_ICONS } from "../repo/packagingRepo.js";
 import { productEconomics } from "../producerCost.js";
 
 const todayIso = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
@@ -17,14 +20,16 @@ const todayIso = () => { const d = new Date(); return `${d.getFullYear()}-${Stri
 export function requestNewProductFor(recipeId) { try { sessionStorage.setItem("kcp_producer_recipe", String(recipeId)); } catch (e) { /* לא קריטי */ } }
 
 export async function renderProducerPage(container) {
-    const [biz, products, recipes, pantry] = await Promise.all([getBusiness(), listProducts(), listRecipesWithItems(), dbGetAll("pantryItems")]);
+    const [biz, products, recipes, pantry, packs] = await Promise.all([getBusiness(), listProducts(), listRecipesWithItems(), dbGetAll("pantryItems"), listPackaging()]);
     const pantryById = new Map(pantry.map((x) => [x.id, x]));
-    const econ = (p) => productEconomics({ recipe: recipes.find((r) => r.id === p.recipe_id), product: p, pantryById });
+    const packById = new Map(packs.map((x) => [x.id, x]));
+    const econ = (p) => productEconomics({ recipe: recipes.find((r) => r.id === p.recipe_id), product: p, pantryById, packById });
     const recipeName = (id) => (recipes.find((r) => r.id === id) || {}).name || "מתכון שנמחק";
     const rerender = () => renderProducerPage(container);
 
     container.innerHTML = `
         <div id="pr-biz"></div>
+        <div id="pr-packs"></div>
         <button type="button" class="btn btn-primary btn-big btn-block" id="pr-add" style="margin:10px 0;">＋ מוצר חדש</button>
         <div class="card-title" style="margin:8px 2px 6px;">המוצרים שלי ${info("כל מוצר מבוסס על מתכון: הרכיבים והאלרגנים נלקחים ממנו אוטומטית, ואתה מוסיף משקל, חיי מדף, אחסון וערכים תזונתיים. מכאן מדפיסים מדבקות.")}</div>
         <div id="pr-list"></div>
@@ -32,7 +37,8 @@ export async function renderProducerPage(container) {
 
     const bizRow = listRow({ ic: "🏢", tint: "var(--accent-soft)", name: "פרטי העסק", meta: biz.name ? escapeHtml([biz.name, biz.address, biz.phone].filter(Boolean).join(" · ")) : "עוד לא הוגדרו - יופיעו בתחתית המדבקה", end: "עריכה", onClick: () => openBusinessModal(biz, rerender) });
     container.querySelector("#pr-biz").appendChild(bizRow);
-    container.querySelector("#pr-add").onclick = () => openProductModal(null, recipes, rerender, null, pantry);
+    container.querySelector("#pr-packs").appendChild(listRow({ ic: "📦", tint: "var(--warn-soft)", name: "אריזות", meta: packs.length ? escapeHtml(packs.length === 1 ? "אריזה אחת ברשימה" : packs.length + " אריזות ברשימה") : "צנצנות, מכסים, קופסאות, שקיות, מדבקות - עוד לא הוגדרו", end: "ניהול", onClick: () => openPackagingModal(rerender) }));
+    container.querySelector("#pr-add").onclick = () => openProductModal(null, recipes, rerender, null, pantry, packs);
 
     const list = container.querySelector("#pr-list");
     if (!products.length) list.innerHTML = '<div class="empty-state">עוד אין מוצרים.<br>לחץ על "מוצר חדש" ובחר מתכון.</div>';
@@ -40,13 +46,13 @@ export async function renderProducerPage(container) {
         const e = econ(p);
         const meta = [recipeName(p.recipe_id), p.net_g > 0 ? netText(p.net_g) : "", p.shelf_days > 0 ? `${p.shelf_days} ימי מדף` : ""].filter(Boolean).map(escapeHtml).join(" · ");
         const end = e.totalCost > 0 ? `${money(e.totalCost)}<small>עלות ליחידה</small>` : "מדבקה";
-        list.appendChild(listRow({ ic: "🏷", tint: "var(--brand-soft)", name: p.name, meta, end, onClick: () => openProductSheet(p, recipes, rerender, pantry, e) }));
+        list.appendChild(listRow({ ic: "🏷", tint: "var(--brand-soft)", name: p.name, meta, end, onClick: () => openProductSheet(p, recipes, rerender, pantry, e, packs) }));
     }
 
     // הגיע ממסך מתכון: פותחים יצירת מוצר למתכון הזה
     let want = null;
     try { want = sessionStorage.getItem("kcp_producer_recipe"); sessionStorage.removeItem("kcp_producer_recipe"); } catch (e) { /* לא קריטי */ }
-    if (want) openProductModal(null, recipes, rerender, Number(want), pantry);
+    if (want) openProductModal(null, recipes, rerender, Number(want), pantry, packs);
 }
 
 function openBusinessModal(biz, onSaved) {
@@ -64,8 +70,9 @@ function openBusinessModal(biz, onSaved) {
     });
 }
 
-function openProductModal(existing, recipes, onSaved, presetRecipeId = null, pantry = []) {
-    const packItems = pantry.filter((x) => !x.parent_id).sort((a, b) => a.name.localeCompare(b.name, "he"));
+function openProductModal(existing, recipes, onSaved, presetRecipeId = null, pantry = [], packs = []) {
+    packs = [...packs];
+    const pantryName = (id) => ((pantry.find((x) => x.id === id) || {}).name) || "פריט שנמחק";
     const packRows = ((existing && existing.packaging) || []).map((x) => ({ ...x }));
     const nut = (existing && existing.nutrition) || {};
     const preset = presetRecipeId ? recipes.find((r) => r.id === presetRecipeId) : null;
@@ -82,6 +89,7 @@ function openProductModal(existing, recipes, onSaved, presetRecipeId = null, pan
         <div class="card-title" style="margin:10px 0 4px;">אריזה ${info("מוסיפים את האריזה של היחידה הנמכרת: צנצנת, מכסה, קופסה, מדבקה, שקית. האריזה יכולה להגיע לשליש מעלות המוצר, ולכן היא נכללת בעלות הכוללת ובמחיר. מוצר ביחידות: כמה יחידות למוצר אחד. מוצר במשקל או בנפח: כמה ק\"ג או ליטר, למשל 0.01 הוא 10 גרם.")}</div>
         <div id="p-pack"></div>
         <button type="button" class="btn btn-secondary btn-small" id="p-pack-add" style="margin-bottom:10px;">＋ הוסף אריזה</button>
+        <div class="hint" style="margin:-4px 0 10px;">האריזות מנוהלות ברשימה נפרדת (בדף היצרן, "אריזות").</div>
         <div class="field"><label>מחיר מכירה ליחידה (${curLabel()}, לפני מע"מ)</label><input type="text" inputmode="decimal" id="p-sell" value="${existing && existing.sell_price ? existing.sell_price : ""}"></div>
         <details class="pg-more"><summary>ערכים תזונתיים ל-100 גרם (לא חובה)</summary>
             <div class="hint">אם משאירים ריק, הערכים יחושבו אוטומטית מהמתכון (לשונית "תזונה" במתכון). מזינים כאן רק אם יש בדיקה מעבדה או תווית מוכנה.</div>
@@ -94,18 +102,27 @@ function openProductModal(existing, recipes, onSaved, presetRecipeId = null, pan
     const drawPack = () => {
         packBox.innerHTML = "";
         packRows.forEach((r, i) => {
-            const it = packItems.find((x) => x.id === r.pantry_item_id);
+            const legacy = r.pack_id == null && r.pantry_item_id; // אריזה מהמזווה (פורמט ישן)
+            const item = r.pack_id ? packs.find((x) => x.id === r.pack_id) : null;
+            const label = legacy ? `${pantryName(r.pantry_item_id)} (מהמזווה)` : item ? `${item.name} · ${money(item.price)}` : r.pack_id ? "אריזה שנמחקה" : "בחר אריזה...";
             const row = h(`<div class="item-row-inputs"><div class="top-line">
-                <select data-pi="${i}" style="flex:2;"><option value="">בחר אריזה...</option>${packItems.map((x) => `<option value="${x.id}" ${x.id === r.pantry_item_id ? "selected" : ""}>${escapeHtml(x.name)}</option>`).join("")}</select>
-                <input type="text" inputmode="decimal" data-pq="${i}" value="${r.qty || ""}" placeholder="${it && it.unit_type !== "unit" ? "ק\"ג/ליטר" : "יחידות"}" style="width:80px;">
+                <button type="button" class="pick-btn ${item || legacy ? "" : "pk-empty"}" data-pi="${i}" style="flex:2;">${escapeHtml(label)}</button>
+                <input type="text" inputmode="decimal" data-pq="${i}" value="${r.qty || ""}" placeholder="יחידות" style="width:80px;">
                 <button type="button" class="remove-row-btn" data-pr="${i}">✕</button></div></div>`);
-            row.querySelector("[data-pi]").onchange = (e) => { r.pantry_item_id = Number(e.target.value) || 0; drawPack(); };
+            row.querySelector("[data-pi]").onclick = () => {
+                if (!packs.length) { toast("עוד אין אריזות. הגדר אותן בדף היצרן, בשורה \"אריזות\"."); return; }
+                openIngredientPicker({
+                    title: "בחר אריזה",
+                    items: packs.map((x) => ({ key: "k" + x.id, id: x.id, name: x.name, category: x.category, subcategory: "", hint: money(x.price) + " ליחידה" })),
+                    onPick: (it) => { delete r.pantry_item_id; r.pack_id = it.id; drawPack(); },
+                });
+            };
             row.querySelector("[data-pq]").oninput = (e) => { r.qty = parseFloat(String(e.target.value).replace(",", ".")) || 0; };
             row.querySelector("[data-pr]").onclick = () => { packRows.splice(i, 1); drawPack(); };
             packBox.appendChild(row);
         });
     };
-    ov.querySelector("#p-pack-add").onclick = () => { packRows.push({ pantry_item_id: 0, qty: 1 }); drawPack(); };
+    ov.querySelector("#p-pack-add").onclick = () => { packRows.push({ pack_id: 0, qty: 1 }); drawPack(); };
     drawPack();
     ov.querySelector("#p-recipe").onchange = (e) => { const r = recipes.find((x) => String(x.id) === e.target.value); if (r && !nameEl.value.trim()) nameEl.value = r.name; };
     ov.querySelector("#p-cancel").onclick = () => attemptClose(ov);
@@ -124,7 +141,7 @@ function openProductModal(existing, recipes, onSaved, presetRecipeId = null, pan
     });
 }
 
-function openProductSheet(p, recipes, onSaved, pantry = [], e = null) {
+function openProductSheet(p, recipes, onSaved, pantry = [], e = null, packs = []) {
     const row = (k, v, big = false) => `<div class="pr-row${big ? " pr-big" : ""}"><span>${k}</span><b>${v}</b></div>`;
     const econHtml = e && e.totalCost > 0 ? `<div class="pr-box">
         ${row("עלות התוכן (מהמתכון)", money(e.contentCost))}
@@ -138,7 +155,7 @@ function openProductSheet(p, recipes, onSaved, pantry = [], e = null) {
         <div class="sh-actions"><button type="button" class="btn btn-primary" id="s-print">🖨 מדבקות</button><button type="button" class="btn btn-secondary" id="s-edit">עריכה</button></div>
         <div class="sh-actions" style="margin-top:8px;"><button type="button" class="btn btn-danger" id="s-del">מחיקה</button><button type="button" class="btn btn-secondary" id="s-close">סגור</button></div>`);
     ov.querySelector("#s-close").onclick = closeModal;
-    ov.querySelector("#s-edit").onclick = () => { closeModal(); openProductModal(p, recipes, onSaved, null, pantry); };
+    ov.querySelector("#s-edit").onclick = () => { closeModal(); openProductModal(p, recipes, onSaved, null, pantry, packs); };
     ov.querySelector("#s-print").onclick = () => { closeModal(); openPrintModal(p, recipes); };
     ov.querySelector("#s-del").onclick = async () => {
         closeModal();
@@ -153,7 +170,7 @@ async function openPrintModal(p, recipes) {
     const pantry = await dbGetAll("pantryItems");
     const byId = new Map(pantry.map((x) => [x.id, x]));
     const business = await getBusiness();
-    const label = buildLabel({ items: recipe.items.map((i) => ({ pantry_item_id: i.pantry_item_id, ingredient_name: i.ingredient_name, quantity_g: i.quantity_g })), pantryById: byId });
+    const label = buildLabel({ items: recipe.items.map((i) => ({ pantry_item_id: i.pantry_item_id, ingredient_name: i.ingredient_name, quantity_g: i.quantity_g })), pantryById: byId, labelNames: await getLabelNames() });
     const missing = recipe.draft_ingredients || [];
     // ערכים תזונתיים: ידניים (אם הוזנו במוצר) או מחושבים מהמתכון
     const N = computeNutrition({ items: recipe.items, byId, nutritionById: await getNutritionDb(), weightG: recipe.final_weight > 0 && !recipe.is_auto_weight ? recipe.final_weight : 0 });
@@ -200,5 +217,51 @@ async function openPrintModal(p, recipes) {
         w.document.write(html(state.count));
         w.document.close(); w.focus();
         setTimeout(() => w.print(), 400);
+    };
+}
+
+// ---------- רשימת האריזות של היצרן: קבוצות סגורות לפי קטגוריה, כמו שאר האפליקציה ----------
+const packOpen = new Set();
+
+async function openPackagingModal(onChanged) {
+    const draw = async () => {
+        const list = await listPackaging();
+        const groups = orderCategories([...PACK_CATEGORIES, ...list.map((x) => x.category)]).filter((c) => list.some((x) => x.category === c)).map((c) => ({
+            key: "pk:" + c, title: c, ic: PACK_ICONS[c] || "📎", tint: "var(--warn-soft)",
+            rows: list.filter((x) => x.category === c).sort((a, b) => a.name.localeCompare(b.name, "he")).map((x) => listRow({ ic: PACK_ICONS[c] || "📎", tint: "var(--warn-soft)", name: x.name, meta: "ליחידה", end: money(x.price), onClick: () => openPackagingForm(x, draw) })),
+        }));
+        const ov = openModal(`
+            <h2>אריזות ${info("רשימת האריזות שלך: צנצנות, מכסים, קופסאות, שקיות, מדבקות. מחיר ליחידה אחת. בכל מוצר בוחרים אילו אריזות הוא כולל, והעלות נכנסת לעלות המוצר.")}</h2>
+            <button type="button" class="btn btn-primary btn-block" id="pk-add" style="margin-bottom:10px;">＋ אריזה חדשה</button>
+            <div id="pk-groups">${list.length ? "" : '<div class="empty-state">עוד אין אריזות.<br>לחץ על "אריזה חדשה" והוסף את הראשונה.</div>'}</div>
+            <div class="modal-actions"><button type="button" class="btn btn-secondary" id="pk-close">סגור</button></div>`);
+        if (list.length) ov.querySelector("#pk-groups").appendChild(groupsEl(groups, packOpen, false, (k) => { if (packOpen.has(k)) packOpen.delete(k); else packOpen.add(k); draw(); }));
+        ov.querySelector("#pk-add").onclick = () => openPackagingForm(null, draw);
+        ov.querySelector("#pk-close").onclick = () => { closeModal(); if (onChanged) onChanged(); };
+    };
+    await draw();
+}
+
+// existing = אריזה לעריכה או null. onDone(saved|null) אחרי שמירה/מחיקה (כאשר חוזרים לרשימה)
+function openPackagingForm(existing, onDone) {
+    const ov = openModal(`
+        <h2>${existing ? "עריכת אריזה" : "אריזה חדשה"}</h2>
+        <div class="field"><label>שם האריזה</label><input type="text" id="pf-name" value="${existing ? escapeHtml(existing.name) : ""}" placeholder="למשל צנצנת 350 גרם"></div>
+        <div class="field"><label>קטגוריה</label><select id="pf-cat">${PACK_CATEGORIES.map((c) => `<option value="${c}" ${existing && existing.category === c ? "selected" : ""}>${c}</option>`).join("")}</select></div>
+        <div class="field"><label>מחיר ליחידה אחת (${curLabel()})</label><input type="text" inputmode="decimal" id="pf-price" value="${existing ? existing.price : ""}"></div>
+        <div class="error-msg"></div>
+        <div class="modal-actions" style="flex-wrap:wrap;">${existing ? '<button type="button" class="btn btn-danger" id="pf-del">מחיקה</button>' : ""}<button type="button" class="btn btn-secondary" id="pf-cancel">ביטול</button><button type="button" class="btn btn-primary" id="pf-save">שמירה</button></div>`);
+    ov.querySelector("#pf-cancel").onclick = () => { closeModal(); if (onDone) onDone(null); };
+    ov.querySelector("#pf-save").onclick = busy(async () => {
+        try {
+            const saved = await savePackagingItem({ id: existing ? existing.id : null, name: ov.querySelector("#pf-name").value, category: ov.querySelector("#pf-cat").value, price: ov.querySelector("#pf-price").value });
+            closeModal(); toast("נשמר"); if (onDone) onDone(saved);
+        } catch (e) { const el = ov.querySelector(".error-msg"); el.textContent = e.message; el.style.display = "block"; }
+    });
+    const del = ov.querySelector("#pf-del");
+    if (del) del.onclick = async () => {
+        closeModal();
+        if (!(await confirmDialog(`למחוק את האריזה "${escapeHtml(existing.name)}"? מוצרים שמשתמשים בה יפסיקו לכלול אותה בעלות.`))) { if (onDone) onDone(null); return; }
+        await deletePackagingItem(existing.id); toast("נמחקה"); if (onDone) onDone(null);
     };
 }

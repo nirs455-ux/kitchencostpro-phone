@@ -25,10 +25,10 @@ export async function openScanModal({ supplierAware, onDone, initialFile = null 
         <h2>סריקת חשבונית ${info(`צלם או העלה תמונה של חשבונית - נזהה ממנה ${supplierAware ? "ספק, תאריך ו" : ""}מוצרים אוטומטית.`)}</h2>
         <div id="scan-upload-area">
             <div class="btn-row">
-                <button type="button" class="btn btn-accent" id="btn-pick-camera">📷 צלם</button>
+                <button type="button" class="btn btn-accent" id="btn-pick-camera">צלם</button>
                 <button type="button" class="btn btn-secondary" id="btn-pick-gallery">🖼️ גלריה</button>
             </div>
-            <button type="button" class="btn-link" id="btn-pick-any">📁 מסמך או קובץ אחר (PDF, Word, Excel)</button>
+            <button type="button" class="btn btn-secondary btn-block" id="btn-pick-any" style="margin-top:8px;">📁 קבצים (Drive, OneDrive, PDF, Word, Excel)</button>
             <input type="file" id="scan-file-camera" accept="image/*" capture="environment" style="display:none">
             <input type="file" id="scan-file-gallery" accept="image/*" style="display:none">
             <input type="file" id="scan-file-any" style="display:none">

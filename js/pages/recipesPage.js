@@ -1,7 +1,9 @@
 // ספר מתכונים: מתכון נשמר גם כשחסרים רכיבים (טיוטה שאפשר להשלים אחר כך), המסמך המקורי נשמר איתו,
 // ויש תצוגת פרטים עם רשימת רכיבים לתווית והצהרת אלרגנים.
 import { listRecipesWithItems, saveRecipe, deleteRecipe, recipeDishCount, recipeParentCount, listSubRecipeOptions, setRecipeBase } from "../repo/recipesRepo.js";
-import { listAllPantryItems, addPantryItem, setItemAllergens, setEggSize } from "../repo/pantryRepo.js";
+import { listAllPantryItems, addPantryItem, setItemAllergens, clearItemAllergens, setEggSize } from "../repo/pantryRepo.js";
+import { getLabelNames, setLabelName } from "../repo/labelNamesRepo.js";
+import { resolveAllergens } from "../allergenResolve.js";
 import { ALLERGENS, allergenLabels } from "../allergens.js";
 import { RECIPE_CATEGORIES, NON_FOOD_CATEGORIES, CATEGORY_GROUPS, UNIT_TYPES, UNIT_TYPE_LABELS } from "../constants.js";
 import { pricePerGram, itemCost as calcItemCost, effectivePrice } from "../formulas.js";
@@ -164,6 +166,7 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
     const rows = await dbGetAll("pantryItems");
     const byId = new Map(rows.map((p) => [p.id, p]));
     const nutriDb = await getNutritionDb();
+    const labelNames = await getLabelNames(); // "שם בתווית" לכל מוצר (שום שלם 4 יחידות -> שום)
     let servingG = 0; // גודל מנה לתצוגה (לא נשמר)
     const missing = r.draft_ingredients || [];
     let tab = r.status === "draft" && startTab === "gen" ? "recipe" : startTab;
@@ -200,8 +203,10 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
             const src = row.parent_id ? byId.get(row.parent_id) || row : row;
             if (seen.has(src.id)) continue;
             seen.add(src.id);
-            const text = !Array.isArray(src.allergens) ? "לא הוגדרו" : src.allergens.length ? escapeHtml(allergenLabels(src.allergens).join(", ")) : "ללא אלרגנים" + (src.allergens_auto ? " (הצעה)" : "");
-            out.push({ id: src.id, name: src.name, text: Array.isArray(src.allergens) && src.allergens.length && src.allergens_auto ? text + " (הצעה)" : text });
+            const res = resolveAllergens(src, byId, labelNames);
+            const text = allergenStatusHtml(res);
+            if (out.some((o) => o.name === res.name && o.text === text)) continue; // אותו שם נקי ואותו מצב (למשל שום וגם שום שלם 4 יחידות): שורה אחת
+            out.push({ id: src.id, name: res.name, text });
         }
         return out;
     };
@@ -234,7 +239,7 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
         const prevModal = document.querySelector("#modal-root .modal");
         const keepTop = prevModal && lastDrawnTab === tab ? prevModal.scrollTop : 0;
         lastDrawnTab = tab;
-        const label = buildLabel({ items: r.items, pantryById: byId, showPercent });
+        const label = buildLabel({ items: r.items, pantryById: byId, showPercent, labelNames });
         const labelText = label.text + (missing.length ? `\n(הרשימה כוללת רק רכיבים שכבר במזווה. חסרים ${missing.length} רכיבים: ${missing.map((m) => m.name).join(", ")})` : "");
 
         let body = "";
@@ -464,7 +469,7 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
 
         // ---- לשונית רכיבים ואלרגנים ----
         overlay.querySelectorAll("[data-al-edit]").forEach((b) => {
-            b.onclick = () => openAllergenModal(byId.get(Number(b.dataset.alEdit)), (updated) => { byId.set(updated.id, updated); draw(); });
+            b.onclick = () => openAllergenModal(byId.get(Number(b.dataset.alEdit)), byId, labelNames, (updated) => { byId.set(updated.id, updated); draw(); });
         });
         const dPct = overlay.querySelector("#d-pct");
         if (dPct) dPct.onchange = (e) => { showPercent = e.target.checked; draw(); };
@@ -481,13 +486,29 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
 }
 
 // עריכת אלרגנים של מוצר (נפתח מתוך המתכון). onSaved מקבל את שורת המוצר המעודכנת.
-function openAllergenModal(row, onSaved) {
-    let sel = new Set(Array.isArray(row.allergens) ? row.allergens : []);
+// טקסט מצב אלרגנים של מוצר (HTML): ידוע / ללא / לפחות / לא ידוע. אין ניחוש: מה שלא ידוע מסומן כך באדום.
+function allergenStatusHtml(res) {
+    const names = escapeHtml(allergenLabels(res.keys).join(", "));
+    const src = res.source === "manual" ? "הוגדר" : "מהמאגר";
+    if (res.status === "free") return `ללא אלרגנים (${src})`;
+    if (res.status === "known") return `${names} (${src})`;
+    if (res.status === "partial") return `<span style="color:var(--danger);">לפחות: ${names}. ייתכנו אלרגנים נוספים - צלם תווית</span>`;
+    const likely = res.likely && res.likely.length ? ` (בדרך כלל: ${escapeHtml(allergenLabels(res.likely).join(", "))})` : "";
+    return `<span style="color:var(--danger);">לא ידוע${likely} - צלם תווית או הגדר</span>`;
+}
+
+function openAllergenModal(row, byId, labelNames, onSaved) {
+    const res = resolveAllergens(row, byId, labelNames);
+    let sel = new Set(res.status === "unknown" ? [] : res.keys);
     const overlay = openModal(`
-        <h2>אלרגנים - ${escapeHtml(row.name)}</h2>
+        <h2>אלרגנים - ${escapeHtml(res.name)}</h2>
+        <div class="hint" style="margin-bottom:6px;">מצב נוכחי: ${allergenStatusHtml(res)}</div>
+        <div class="field"><label>שם בתווית ${info("השם שיופיע ברשימת הרכיבים בתווית ובמדבקה. למשל המוצר במזווה נקרא 'שום שלם 4 יחידות', ובתווית רוצים 'שום'. ריק = שם נקי אוטומטי.")}</label><input type="text" id="al-label-name" value="${escapeHtml(labelNames[row.id] || "")}" placeholder="${escapeHtml(res.name)}"></div>
+        <div class="card-title" style="margin:8px 0 4px;">מה המוצר מכיל? (סמן רק מה שידוע בוודאות, מהתווית)</div>
         <div class="chips" id="al-chips"></div>
-        <div class="hint">${Array.isArray(row.allergens) && !row.allergens_auto ? "" : "הוצע אוטומטית לפי השם - בדוק בתווית היצרן ואשר"}</div>
-        <div class="modal-actions"><button type="button" class="btn btn-secondary" id="al-cancel">ביטול</button><button type="button" class="btn btn-primary" id="al-save">שמירה</button></div>`);
+        <div class="hint">אם לא סימנת כלום ולחצת שמירה - המוצר יוגדר "ללא אלרגנים". אם אתה לא יודע, בחר "השאר לא ידוע" או צלם את התווית.</div>
+        <div class="error-msg"></div>
+        <div class="modal-actions" style="flex-wrap:wrap;"><button type="button" class="btn btn-secondary" id="al-cancel">ביטול</button><button type="button" class="btn btn-secondary" id="al-unknown">השאר לא ידוע</button><button type="button" class="btn btn-primary" id="al-save">שמירה</button></div>`);
     const box = overlay.querySelector("#al-chips");
     const draw = () => {
         box.innerHTML = ALLERGENS.map((a) => `<button type="button" class="chip ${sel.has(a.key) ? "active" : ""}" data-al="${a.key}">${a.label}</button>`).join("");
@@ -495,10 +516,24 @@ function openAllergenModal(row, onSaved) {
     };
     draw();
     overlay.querySelector("#al-cancel").onclick = closeModal;
+    const saveLabelName = async () => {
+        const all = await setLabelName(row.id, overlay.querySelector("#al-label-name").value);
+        for (const k of Object.keys(labelNames)) delete labelNames[k];
+        Object.assign(labelNames, all); // מעדכן את המפה שהמסך משתמש בה
+    };
     overlay.querySelector("#al-save").onclick = busy(async () => {
+        if (sel.size === 0 && !(await confirmDialog('לא סימנת אף אלרגן. לשמור את המוצר כ"ללא אלרגנים"? אם אינך בטוח, בטל ובחר "השאר לא ידוע" או צלם את התווית.'))) return;
         const updated = await setItemAllergens(row.id, [...sel]);
+        await saveLabelName();
         closeModal();
         toast("נשמר");
+        onSaved(updated);
+    });
+    overlay.querySelector("#al-unknown").onclick = busy(async () => {
+        const updated = await clearItemAllergens(row.id);
+        await saveLabelName();
+        closeModal();
+        toast("סומן כלא ידוע");
         onSaved(updated);
     });
 }

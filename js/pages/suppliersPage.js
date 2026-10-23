@@ -350,7 +350,7 @@ function openInvoiceModal(existing, suppliers, pantryItems, container) {
         <div class="field" style="margin-top:10px;">
             <label>תמונת החשבונית (אופציונלי)</label>
             <div class="btn-row">
-                <button type="button" class="btn btn-accent btn-small" id="btn-img-pick">📷 צלם / בחר תמונה</button>
+                <button type="button" class="btn btn-accent btn-small" id="btn-img-pick">🖼 הוסף תמונה</button>
                 <button type="button" class="btn btn-secondary btn-small" id="btn-img-view" style="display:none;">🖼 הצג</button>
                 <button type="button" class="btn btn-danger btn-small" id="btn-img-remove" style="display:none;">הסר</button>
             </div>
