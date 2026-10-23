@@ -10,6 +10,7 @@ import { restoreInvoice } from "../repo/suppliersRepo.js";
 import { dbGet, dbPut, dbDelete } from "../db.js";
 import { h, openModal, closeModal, confirmDialog, toast, escapeHtml, money, info, busy, attemptClose, toastAction, cur } from "../ui.js";
 import { openScanModal } from "./scanModal.js";
+import { openOrderModal } from "./orderModal.js";
 import { listRow, groupsEl } from "./listKit.js";
 import { compressImage, showImageFullscreen } from "../imageUtil.js";
 
@@ -254,11 +255,13 @@ export async function renderSuppliersPage(container) {
                 const overlay = openModal(`
                     <h2>${escapeHtml(s.name)}</h2>
                     <div class="modal-actions" style="flex-wrap:wrap;">
-                        <button type="button" class="btn btn-primary" id="s-show">הצג חשבוניות</button>
+                        <button type="button" class="btn btn-primary" id="s-order">📝 הזמנה</button>
+                        <button type="button" class="btn btn-secondary" id="s-show">הצג חשבוניות</button>
                         <button type="button" class="btn btn-danger" id="s-del">מחק ספק</button>
                     </div>
                     <div class="modal-actions"><button type="button" class="btn btn-secondary" id="s-close">סגור</button></div>`);
                 overlay.querySelector("#s-close").onclick = closeModal;
+                overlay.querySelector("#s-order").onclick = () => { closeModal(); openOrderModal(s, rerender); };
                 overlay.querySelector("#s-show").onclick = () => { closeModal(); uiFilter = { q: "", mode: "all", month: "", supplier: String(s.id) }; uiTab = "invoices"; rerender(); };
                 overlay.querySelector("#s-del").onclick = async () => {
                     try {

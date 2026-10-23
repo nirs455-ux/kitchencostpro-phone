@@ -15,6 +15,10 @@ import { getFilter } from "../filters.js";
 import { assignAutoSubs, subOf } from "../autoGroups.js";
 import { effectivePrice } from "../formulas.js";
 import { buildInventoryView } from "../repo/inventoryRepo.js";
+import { openPriceHistory } from "./priceHistoryModal.js";
+import { openLabelScan } from "./labelModal.js";
+import { getLabelInfo } from "../repo/nutritionRepo.js";
+import { allergenLabels } from "../allergens.js";
 
 // מזווה = שלוש לשוניות: מוצרים | ספירת מלאי | עיבוד וניצולת. מצב עובד רואה רק ספירת מלאי.
 const TABS = [["products", "מוצרים"], ["inventory", "ספירה"], ["processing", "עיבוד"], ["waste", "פחת"]];
@@ -151,6 +155,8 @@ async function openProductSheet(it, children, container, root) {
     const eff = effectivePrice(it.price, it.yield_pct, it.is_frozen);
     let stock = null;
     try { stock = (await buildInventoryView()).find((x) => x.id === it.id); } catch (e) { /* לא קריטי */ }
+    let labelInfo = null;
+    try { labelInfo = (await getLabelInfo())[it.id] || null; } catch (e) { /* לא קריטי */ }
     const row = (k, v) => `<div class="sh-row"><span class="muted">${k}</span><span>${v}</span></div>`;
     const overlay = openModal(`
         <div class="sh-head"><span class="px-ic" style="background:${tint};">${ic}</span><div><div class="sh-name">${escapeHtml(it.name)}</div><div class="muted">${escapeHtml(it.category)}${subOf(it) ? " / " + escapeHtml(subOf(it)) : ""}${it.is_frozen ? " · ❄ קפוא" : ""}</div></div></div>
@@ -158,13 +164,19 @@ async function openProductSheet(it, children, container, root) {
         ${Math.abs(eff - Number(it.price)) > 0.004 ? row("מחיר אמיתי (אחרי ניצולת)", `${cur()}${eff.toFixed(2)} (${Number(it.yield_pct).toFixed(0)}%)`) : ""}
         ${it.unit_type === "unit" ? row("משקל ליחידה", it.unit_amount ? `${gramsToKgText(it.unit_amount)} ק"ג` : '<span style="color:var(--danger);">חסר</span>') : ""}
         ${stock ? row("מלאי תיאורטי", `${+Number(stock.theoretical_quantity).toFixed(3)} ${unitWord(it)}`) : ""}
-        <div class="sh-actions">
+        ${labelInfo && labelInfo.ingredients ? row("רכיבים (מהתווית)", escapeHtml(labelInfo.ingredients.length > 160 ? labelInfo.ingredients.slice(0, 160) + "…" : labelInfo.ingredients)) : ""}
+        ${labelInfo && labelInfo.may_contain && labelInfo.may_contain.length ? row("עלול להכיל עקבות", escapeHtml(allergenLabels(labelInfo.may_contain).join(", "))) : ""}
+        <div class="sh-actions" style="flex-wrap:wrap;">
+            <button type="button" class="btn btn-secondary" id="sh-hist">📈 היסטוריית מחירים</button>
+            <button type="button" class="btn btn-secondary" id="sh-label">📷 צלם תווית</button>
             <button type="button" class="btn btn-secondary" id="sh-edit">עריכה</button>
             <button type="button" class="btn btn-secondary" id="sh-proc">עיבוד</button>
             <button type="button" class="btn btn-danger" id="sh-del">מחיקה</button>
         </div>
         <button type="button" class="btn btn-secondary btn-block" id="sh-close" style="margin-top:8px;">סגור</button>`);
     overlay.querySelector("#sh-close").onclick = closeModal;
+    overlay.querySelector("#sh-hist").onclick = () => { closeModal(); openPriceHistory(it); };
+    overlay.querySelector("#sh-label").onclick = () => { closeModal(); openLabelScan({ item: it, onDone: () => renderPantryProducts(container) }); };
     overlay.querySelector("#sh-edit").onclick = () => { closeModal(); openPantryModal(it, container); };
     overlay.querySelector("#sh-proc").onclick = () => { closeModal(); collapseAll(); expandProduct(it.id); const f = getFilter("processing"); f.category = it.category; f.subcategory = ""; currentTab = "processing"; renderPantryPage(root); };
     overlay.querySelector("#sh-del").onclick = async () => {

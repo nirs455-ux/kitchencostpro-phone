@@ -26,6 +26,7 @@ import { assignAutoSubs, subOf } from "../autoGroups.js";
 import { UNITS, convertUnits, factorFor, scaleRecipe, fmtQty } from "../generator.js";
 import { recipeEggSummary, eggSummaryText, allocateEggCosts, isEggProduct, eggSizeOf, partGrams, eggBreakdown, EGG_SIZES, EGG_PARTS, EGG_PART_LABEL } from "../eggs.js";
 import { showImageFullscreen } from "../imageUtil.js";
+import { whatsappUrl, recipeShareText, categoryShareText } from "../shareText.js";
 
 let recipeFilter = "all"; // all | ready | draft
 
@@ -63,7 +64,7 @@ export async function renderRecipesPage(container) {
     let q = "";
 
     container.innerHTML = `
-        <div class="btn-row mgr-only"><button class="btn btn-accent" id="btn-scan-recipe">📷 סרוק מתכון (תמונה / קובץ)</button></div>
+        <div class="btn-row mgr-only"><button class="btn btn-accent" id="btn-scan-recipe">📷 סרוק מתכון (תמונה / קובץ)</button>${recipes.length ? '<button class="btn btn-secondary" id="btn-share-cat">💬 שתף קטגוריה</button>' : ""}</div>
         ${recipes.length ? `<div class="px-top"><input type="search" id="rc-q" placeholder="חיפוש מתכון..." autocomplete="off"></div>` : ""}
         ${recipes.length ? `<div class="fchips mgr-only">
             <button type="button" class="chip ${recipeFilter === "all" ? "active" : ""}" data-rf="all">הכול (${recipes.length})</button>
@@ -91,6 +92,16 @@ export async function renderRecipesPage(container) {
     if (qEl) qEl.oninput = () => { q = qEl.value; draw(); };
     draw();
     container.querySelector("#btn-add").onclick = () => openRecipeModal(null, container);
+    const shareCat = container.querySelector("#btn-share-cat");
+    if (shareCat) shareCat.onclick = () => {
+        const cats = orderCategories(recipes.filter((r) => r.status !== "draft").map((r) => r.category));
+        if (!cats.length) { toast("אין מתכונים מוכנים לשיתוף"); return; }
+        const ov = openModal(`<h2>שיתוף קטגוריה בוואטסאפ</h2><div class="hint" style="margin-bottom:8px;">נשלחים כל המתכונים המוכנים בקטגוריה, בלי עלויות.</div>
+            <div class="pk-chips" style="flex-wrap:wrap;">${cats.map((c) => `<button type="button" class="chip" data-sc="${escapeHtml(c)}">${escapeHtml(c)} (${recipes.filter((r) => r.status !== "draft" && r.category === c).length})</button>`).join("")}</div>
+            <div class="modal-actions"><button type="button" class="btn btn-secondary" id="sc-close">סגור</button></div>`);
+        ov.querySelector("#sc-close").onclick = closeModal;
+        ov.querySelectorAll("[data-sc]").forEach((b) => { b.onclick = () => { const c = b.dataset.sc; window.open(whatsappUrl(categoryShareText(c, recipes.filter((r) => r.status !== "draft" && r.category === c))), "_blank", "noopener"); }; });
+    };
     if (takeFlag("recipe-new") && !isStaffMode()) openRecipeModal(null, container); // נלחץ "מתכון חדש" בבית
     container.querySelector("#btn-scan-recipe").onclick = () => openImagePicker({
         title: "סריקת מתכון",
@@ -239,7 +250,7 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
             ${r.direct_items.some((i) => !exists(i)) ? `<div class="hint-warn">רכיב נמחק. העלות שלו נשארת כפי שהייתה בפעם האחרונה ואינה מתעדכנת. ערוך את המתכון והחלף אותו.</div>` : ""}
             ${eggNotes.map((e) => `<div class="hint-warn" style="background:var(--brand-soft);color:var(--text);">${escapeHtml(eggSummaryText(e))}</div>`).join("")}
             ${r.method ? `<div class="card-title" style="margin:12px 0 4px;">הוראות הכנה</div><div style="white-space:pre-wrap;font-size:14px;">${escapeHtml(r.method)}</div>` : ""}
-            <div class="btn-row"><button type="button" class="btn btn-secondary btn-small" id="d-print-recipe">🖨 הדפס מתכון</button><button type="button" class="btn btn-secondary btn-small mgr-only" id="d-make-product">🏷 מוצר ומדבקה</button>${r.source_file ? '<button type="button" class="btn btn-accent btn-small" id="d-source">📎 המסמך המקורי</button>' : ""}</div>`;
+            <div class="btn-row"><button type="button" class="btn btn-secondary btn-small" id="d-print-recipe">🖨 הדפס מתכון</button><button type="button" class="btn btn-secondary btn-small" id="d-wa-recipe">💬 שלח בוואטסאפ</button><button type="button" class="btn btn-secondary btn-small mgr-only" id="d-make-product">🏷 מוצר ומדבקה</button>${r.source_file ? '<button type="button" class="btn btn-accent btn-small" id="d-source">📎 המסמך המקורי</button>' : ""}</div>`;
         } else if (tab === "percent") {
             const pv = pctView();
             body = pv ? `
@@ -358,6 +369,8 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
             missing.forEach((m) => lines.push({ name: m.name, qty: originalText(m) || "" }));
             printRecipe(r, lines, fmtQty(r.items.reduce((n, i) => n + (Number(i.quantity_g) || 0), 0)));
         };
+        const waBtn = overlay.querySelector("#d-wa-recipe");
+        if (waBtn) waBtn.onclick = () => { window.open(whatsappUrl(recipeShareText(r)), "_blank", "noopener"); };
         const mkp = overlay.querySelector("#d-make-product");
         if (mkp) mkp.onclick = () => { requestNewProductFor(r.id); closeModal(); location.hash = "producer"; };
         const src = overlay.querySelector("#d-source");

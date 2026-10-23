@@ -4,8 +4,9 @@ import { getSetting } from "../repo/settingsRepo.js";
 import { getAgentKey } from "../agent.js";
 import { getNutritionDb, saveNutrition, removeNutrition, getUsdaKey, toEnglishFoodName, searchUsda, lookupBarcode } from "../repo/nutritionRepo.js";
 import { NUTRIENTS } from "../nutrition.js";
+import { openLabelScan } from "./labelModal.js";
 
-const SRC_LABEL = { usda: "USDA", off: "Open Food Facts", manual: "הזנה ידנית" };
+const SRC_LABEL = { usda: "USDA", off: "Open Food Facts", manual: "הזנה ידנית", label: "תווית יצרן" };
 
 const summary = (p) => ["kcal", "protein", "fat", "carbs"].filter((k) => p[k] != null).map((k) => `${NUTRIENTS.find((n) => n.key === k).short} ${+Number(p[k]).toFixed(1)}`).join(" · ");
 
@@ -20,7 +21,9 @@ export async function openNutritionLookup({ name, pantryId, onSaved, onDone }) {
         <div class="field" style="margin:0 0 6px;"><input type="text" id="nu-q" value="${escapeHtml(name)}" placeholder="שם המוצר"></div>
         <button type="button" class="btn btn-secondary btn-small" id="nu-search">🔍 חפש</button>
         <div id="nu-results" style="margin-top:8px;"></div>
-        <div class="card-title" style="margin:14px 0 4px;">מוצר ארוז: חיפוש לפי ברקוד</div>
+        <div class="card-title" style="margin:14px 0 4px;">מוצר ארוז: צילום התווית</div>
+        <button type="button" class="btn btn-secondary btn-small" id="nu-label">📷 צלם תווית (ערכים ואלרגנים)</button>
+        <div class="card-title" style="margin:14px 0 4px;">או חיפוש לפי ברקוד</div>
         <div class="cv-row"><input type="text" inputmode="numeric" id="nu-bc" placeholder="ברקוד" style="font-size:16px;font-weight:400;"><button type="button" class="btn btn-secondary btn-small" id="nu-bc-go">חפש</button></div>
         <div id="nu-bc-res" style="margin-top:8px;"></div>
         <details class="pg-more" ${cur && cur._source === "manual" ? "open" : ""}><summary>הזנה ידנית (ל-100 גרם)</summary>
@@ -41,6 +44,7 @@ export async function openNutritionLookup({ name, pantryId, onSaved, onDone }) {
     };
 
     ov.querySelector("#nu-close").onclick = () => { closeModal(); if (onDone) onDone(); };
+    ov.querySelector("#nu-label").onclick = () => { closeModal(); openLabelScan({ item: { id: pantryId, name }, onDone: () => { if (onDone) onDone(); } }); };
     const del = ov.querySelector("#nu-del");
     if (del) del.onclick = async () => { const newDb = await removeNutrition(pantryId); closeModal(); toast("הוסר"); if (onSaved) onSaved(newDb); if (onDone) onDone(); };
 
