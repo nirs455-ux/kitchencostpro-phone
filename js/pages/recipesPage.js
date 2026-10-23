@@ -25,7 +25,7 @@ import { openNutritionLookup } from "./nutritionModal.js";
 import { getNutritionDb } from "../repo/nutritionRepo.js";
 import { computeNutrition, perServing, NUTRIENTS } from "../nutrition.js";
 import { assignAutoSubs, subOf } from "../autoGroups.js";
-import { UNITS, convertUnits, factorFor, scaleRecipe, fmtQty } from "../generator.js";
+import { factorFor, scaleRecipe, fmtQty } from "../generator.js";
 import { recipeEggSummary, eggSummaryText, allocateEggCosts, isEggProduct, eggSizeOf, partGrams, eggBreakdown, EGG_SIZES, EGG_PARTS, EGG_PART_LABEL } from "../eggs.js";
 import { showImageFullscreen } from "../imageUtil.js";
 import { whatsappUrl, recipeShareText, categoryShareText } from "../shareText.js";
@@ -174,8 +174,6 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
     let lastDrawnTab = null; // כדי לשמור את מיקום הגלילה כשמציירים מחדש באותה לשונית
     let scaleGrams = null; // כמות בסיס מבוקשת (להגדלה)
     let gen = { mode: "factor", value: 2, round: true }; // מחולל: הגדלה/הקטנה
-    let conv = { qty: "", unit: "cup", to: "g", name: "" }; // מחולל: המרת יחידות
-    let eggc = { pid: "", part: "white", qty: "", unit: "g" }; // מחולל: המרת ביצים
     const nameOf = (i) => (byId.get(i.pantry_item_id) || {}).name || i.ingredient_name;
     const exists = (i) => (i.sub_recipe_id != null ? !i.sub_missing : byId.has(i.pantry_item_id)); // האם הרכיב (מוצר או תת-מתכון) עדיין קיים
     const eggNotes = recipeEggSummary(r.items, rows);
@@ -294,7 +292,6 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
             const curWeight = r.items.reduce((n, i) => n + (Number(i.quantity_g) || 0), 0);
             const f = factorFor({ mode: gen.mode, value: gen.value, currentWeight: curWeight });
             const sc = f ? scaleRecipe(r.items, f, rows, { round: gen.round }) : null;
-            const names = [...new Set(r.items.map((i) => nameOf(i)))];
             body = `
             <div class="card">
                 <div class="card-title">הגדלה / הקטנה ${info("מכפילים את כל המתכון. עיגול נוח מעגל כמויות קטנות לערכים שקל לשקול (ביצים לא מעוגלות, כי הן נספרות בנפרד). העלות מחושבת מחדש, כולל מספר הביצים לשבירה.")}</div>
@@ -315,15 +312,7 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
                 <button type="button" class="btn btn-secondary btn-small" id="g-copy">📋 העתק</button>
                 <button type="button" class="btn btn-secondary btn-small" id="g-print">🖨 הדפס</button>
                 <button type="button" class="btn btn-primary btn-small mgr-only" id="g-save">💾 שמור כמתכון חדש</button>
-            </div>` : '<div class="hint-warn">הזן מקדם או משקל גדולים מ-0.</div>'}
-            <div class="card" style="margin-top:14px;">
-                <div class="card-title">ממיר יחידות ${info("כמו ממיר מטבעות: כותבים כמות, בוחרים מאיזו יחידה ולאיזו, והתוצאה מתעדכנת מיד. משקל למשקל ונפח לנפח מדויקים. בין נפח למשקל (כוס קמח לגרם) ההמרה היא הערכה לפי החומר, אז כותבים את שם החומר.")}</div>
-                <div class="cv-row"><input type="text" inputmode="decimal" id="cv-qty" value="${escapeHtml(conv.qty)}" placeholder="0"><select id="cv-from">${UNITS.map((u) => `<option value="${u.key}" ${u.key === conv.unit ? "selected" : ""}>${u.label}</option>`).join("")}</select></div>
-                <div class="cv-swap"><button type="button" class="btn btn-secondary btn-small" id="cv-swap">⇅</button></div>
-                <div class="cv-row"><input type="text" id="cv-out" readonly placeholder="0"><select id="cv-to">${UNITS.map((u) => `<option value="${u.key}" ${u.key === conv.to ? "selected" : ""}>${u.label}</option>`).join("")}</select></div>
-                <div class="field" id="cv-name-wrap" style="margin-top:8px;"><label>חומר (נדרש בין נפח למשקל)</label><input type="text" id="cv-name" list="c-names" value="${escapeHtml(conv.name)}" placeholder="למשל קמח, סוכר, חמאה"><datalist id="c-names">${names.map((n) => `<option value="${escapeHtml(n)}">`).join("")}</datalist></div>
-                <div class="hint" id="cv-note"></div>
-            </div>`;
+            </div>` : '<div class="hint-warn">הזן מקדם או משקל גדולים מ-0.</div>'}`;
         } else {
             body = `
             <div class="card-title" style="margin:6px 0 4px;">רשימת רכיבים לתווית ${info("רכיבים לפי משקל יורד, והצהרת אלרגנים מצטברת מהרכיבים. זו טיוטה לעזר - האחריות לתיוג ולתקנות היא של בעל העסק. רכיב שלא הוגדרו לו אלרגנים מסומן כ'לא הוגדר' ולא כ'ללא אלרגנים'.")}</div>
@@ -429,24 +418,6 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
         bind("#g-mode", "onchange", (e) => { gen.mode = e.target.value; gen.value = gen.mode === "weight" ? Math.round(r.items.reduce((n, i) => n + (Number(i.quantity_g) || 0), 0) * 2) : 2; draw(); });
         bind("#g-val", "onchange", (e) => { gen.value = gen.mode === "weight" ? textToGrams(e.target.value) : parseFloat(String(e.target.value).replace(",", ".")); draw(); });
         bind("#g-round", "onchange", (e) => { gen.round = e.target.checked; draw(); });
-        // ממיר יחידות חי: מעדכן את התוצאה בלי ציור מחדש (כדי לא לאבד פוקוס בזמן הקלדה)
-        {
-            const q = overlay.querySelector("#cv-qty"), from = overlay.querySelector("#cv-from"), to = overlay.querySelector("#cv-to"), nm = overlay.querySelector("#cv-name"), out = overlay.querySelector("#cv-out"), note = overlay.querySelector("#cv-note"), wrap = overlay.querySelector("#cv-name-wrap");
-            if (q) {
-                const kind = (k) => (UNITS.find((u) => u.key === k) || {}).weight ? "w" : "v";
-                const upd = () => {
-                    conv.qty = q.value; conv.unit = from.value; conv.to = to.value; conv.name = nm.value;
-                    wrap.style.display = kind(from.value) === kind(to.value) ? "none" : "";
-                    const res = convertUnits({ qty: String(q.value).replace(",", "."), from: from.value, to: to.value, name: nm.value });
-                    out.value = res ? String(res.value) : "";
-                    note.textContent = res && res.note ? res.note : "";
-                };
-                [q, nm].forEach((el) => el.addEventListener("input", upd));
-                [from, to].forEach((el) => el.addEventListener("change", upd));
-                overlay.querySelector("#cv-swap").onclick = () => { const t = from.value; from.value = to.value; to.value = t; upd(); };
-                upd();
-            }
-        }
         if (tab === "gen") {
             const f = factorFor({ mode: gen.mode, value: gen.value, currentWeight: r.items.reduce((n, i) => n + (Number(i.quantity_g) || 0), 0) });
             const sc = f ? scaleRecipe(r.items, f, rows, { round: gen.round }) : null;

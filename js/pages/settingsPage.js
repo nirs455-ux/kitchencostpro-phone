@@ -1,6 +1,6 @@
 import { getSetting, setSetting } from "../repo/settingsRepo.js";
 import { downloadExport, downloadSafetyCopy, inspectBackup, importAndReplace } from "../export.js";
-import { toast, confirmDialog, info } from "../ui.js";
+import { toast, confirmDialog, info, openModal, closeModal } from "../ui.js";
 import { APP_VERSION, THEMES } from "../constants.js";
 import { chooseTheme } from "../theme.js";
 import { hasPin, openSetPinDialog, enterStaffMode, removePin } from "../staff.js";
@@ -103,9 +103,8 @@ export async function renderSettingsPage(container) {
             <button class="btn btn-secondary btn-small" id="btn-trash-open">🗑 פתח פח (${trashCount})</button>
         </div>
                 <div class="card">
-            <div class="card-title">דוח תקלה ${info("אם משהו לא עובד: לחץ להעתקת דוח קצר (גרסה, מכשיר והתקלות האחרונות), והדבק אותו בהודעה אליי.")}</div>
-            <div class="btn-row"><button class="btn btn-secondary btn-small" id="btn-report-copy">📋 העתק דוח תקלה</button>
-                <button class="btn btn-secondary btn-small" id="btn-report-clear">נקה יומן</button></div>
+            <div class="card-title">דיווח על תקלה ${info("אם משהו לא עובד: לחץ, כתוב כמה מילים על מה קרה, ושתף את הדוח (וואטסאפ, מייל ועוד) או העתק אותו. הדוח לא נשלח אוטומטית לשום מקום ולא כולל חשבוניות או מחירים: רק גרסה, סוג מכשיר, כמה נתונים יש, והתקלות האחרונות.")}</div>
+            <div class="btn-row"><button class="btn btn-secondary btn-small" id="btn-report-open">📝 דווח על תקלה</button></div>
         </div>
             </div>
         </div>
@@ -169,16 +168,41 @@ export async function renderSettingsPage(container) {
     const offBtn = container.querySelector("#btn-staff-off");
     if (offBtn) offBtn.onclick = async () => { if (await confirmDialog("לבטל את הנעילה והקוד?")) { await removePin(); toast("הנעילה בוטלה"); renderSettingsPage(container); } };
     container.querySelector("#btn-trash-open").onclick = () => openTrashModal(() => renderSettingsPage(container));
-    container.querySelector("#btn-report-copy").onclick = async () => {
-        const text = await buildReport();
-        try { await navigator.clipboard.writeText(text); toast("הדוח הועתק - הדבק אותו בהודעה"); }
-        catch (e) {
-            const ta = document.createElement("textarea"); ta.value = text; document.body.appendChild(ta); ta.select();
-            try { document.execCommand("copy"); toast("הדוח הועתק"); } catch (e2) { toast("לא הצלחתי להעתיק"); }
-            ta.remove();
-        }
+    container.querySelector("#btn-report-open").onclick = async () => {
+        const ov = openModal(`
+            <h2>דיווח על תקלה</h2>
+            <div class="hint" style="margin-bottom:6px;">הדוח לא נשלח אוטומטית. כאן אתה רואה בדיוק מה בו, יכול להוסיף כמה מילים, ואז לשתף אותו או להעתיק. הוא לא כולל חשבוניות או מחירים.</div>
+            <div class="field"><label>מה קרה? (לא חובה, אבל עוזר מאוד)</label><textarea id="rp-note" rows="3" style="width:100%;" placeholder="באיזה מסך היית, מה לחצת, ומה ציפית שיקרה"></textarea></div>
+            <div class="card-title" style="margin:8px 0 4px;">הדוח</div>
+            <pre id="rp-text" class="card" style="white-space:pre-wrap;font-size:12px;max-height:200px;overflow:auto;direction:ltr;text-align:left;margin:0 0 8px;"></pre>
+            <div class="modal-actions" style="flex-wrap:wrap;">
+                <button type="button" class="btn btn-secondary" id="rp-clear">נקה יומן</button>
+                <button type="button" class="btn btn-secondary" id="rp-copy">📋 העתק</button>
+                <button type="button" class="btn btn-primary" id="rp-share">📤 שתף</button>
+            </div>
+            <button type="button" class="btn btn-secondary btn-block" id="rp-close" style="margin-top:8px;">סגור</button>`);
+        const noteEl = ov.querySelector("#rp-note"), box = ov.querySelector("#rp-text");
+        const refresh = async () => { box.textContent = await buildReport(noteEl.value); };
+        noteEl.addEventListener("input", refresh);
+        await refresh();
+        const copy = async () => {
+            const text = await buildReport(noteEl.value);
+            try { await navigator.clipboard.writeText(text); toast("הדוח הועתק - הדבק אותו בהודעה"); }
+            catch (e) {
+                const ta = document.createElement("textarea"); ta.value = text; document.body.appendChild(ta); ta.select();
+                try { document.execCommand("copy"); toast("הדוח הועתק"); } catch (e2) { toast("לא הצלחתי להעתיק"); }
+                ta.remove();
+            }
+        };
+        ov.querySelector("#rp-copy").onclick = copy;
+        ov.querySelector("#rp-share").onclick = async () => {
+            const text = await buildReport(noteEl.value);
+            if (navigator.share) { try { await navigator.share({ title: "דוח תקלה - KitchenCostPro", text }); } catch (e) { /* בוטל */ } }
+            else await copy();
+        };
+        ov.querySelector("#rp-clear").onclick = async () => { clearErrorLog(); toast("היומן נוקה"); await refresh(); };
+        ov.querySelector("#rp-close").onclick = closeModal;
     };
-    container.querySelector("#btn-report-clear").onclick = () => { clearErrorLog(); toast("היומן נוקה"); };
 
     container.querySelector("#f-autosave").onchange = async (e) => { await setSetting("scan_autosave", e.target.checked); toast("נשמר"); };
 
