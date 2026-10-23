@@ -8,7 +8,6 @@ import { saveInvoice } from "./suppliersRepo.js";
 import { getSetting, setSetting } from "./settingsRepo.js";
 import { compressImage } from "../imageUtil.js";
 import { prepareParts } from "../filePrep.js";
-import { suggestAllergens } from "../allergens.js";
 import { buildBasePrompt, parseBaseAnswer } from "../bakers.js";
 import { NON_FOOD_CATEGORIES } from "../constants.js";
 import { RECIPE_SCAN_PROMPT, buildRecipeDraft } from "../recipeParse.js";
@@ -217,7 +216,7 @@ export async function applyScannedInvoice({ items, supplierId, invoiceDate, imag
             pantryItemId = await dbPut("pantryItems", {
                 name: p.name, category: p.category, subcategory: null, unit_type: p.unitType, unit_amount: p.unitAmount,
                 price: p.pantryPrice, yield_pct: 100, weight_before: null, weight_after: null,
-                is_frozen: isFrozen, parent_id: null, allergens: suggestAllergens(p.name), allergens_auto: true,
+                is_frozen: isFrozen, parent_id: null,
             });
             createdByName.set(p.name.toLowerCase(), pantryItemId);
         }
@@ -335,7 +334,6 @@ export async function createPantryItemFromInvoice({ name, category, unitType, un
     return dbPut("pantryItems", {
         name, category, subcategory: null, unit_type: unitType, unit_amount: amount,
         price, yield_pct: 100, weight_before: null, weight_after: null, is_frozen: 0, parent_id: null,
-        allergens: suggestAllergens(name), allergens_auto: true,
     });
 }
 

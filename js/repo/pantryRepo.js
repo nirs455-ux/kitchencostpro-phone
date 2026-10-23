@@ -1,5 +1,4 @@
 // לוגיקת מזווה - תרגום מדויק של _validate_payload / add_item / update_item / update_item_yield / delete_item מ-main.py.
-import { suggestAllergens } from "../allergens.js";
 import { dbGetAll, dbGet, dbPut, dbDelete, dbGetByIndex } from "../db.js";
 import { CATEGORY_GROUPS, UNIT_TYPES } from "../constants.js";
 import { computeYieldPct } from "../formulas.js";
@@ -87,9 +86,8 @@ export async function addPantryItem(data) {
         price, yield_pct: yieldPct, weight_before: weightBefore, weight_after: weightAfter,
         is_frozen: isFrozen ? 1 : 0, parent_id: null,
         ...(data.unit_type === "unit" && EGG_SIZES[data.egg_size] ? { egg_size: data.egg_size } : {}),
-        // אלרגנים: מהטופס אם הוגדרו, אחרת הצעה לפי שם (מסומנת כאוטומטית עד שהמשתמש מאשר)
-        allergens: Array.isArray(data.allergens) ? data.allergens : suggestAllergens(name),
-        allergens_auto: !Array.isArray(data.allergens),
+        // אלרגנים: רק אם הוגדרו במפורש. אחרת השדה לא קיים = "לא ידוע" (המאגר מכריע בזמן התצוגה). אין ניחוש לפי שם.
+        ...(Array.isArray(data.allergens) ? { allergens: data.allergens, allergens_auto: false } : {}),
     };
     const id = await dbPut("pantryItems", row);
     return id;
@@ -255,6 +253,18 @@ export async function setEggSize(id, size, { force = false } = {}) {
 }
 
 // קובע אלרגנים למוצר (מאושר ידנית). תוצר מפורק יורש מחומר הגלם, לכן שומרים תמיד על מוצר ברמה העליונה.
+// מחזיר את המוצר ל"לא ידוע" (מוחק הגדרה ידנית): המאגר יכריע אם הוא מכיר את הרכיב
+export async function clearItemAllergens(id) {
+    const row = await dbGet("pantryItems", id);
+    if (!row) throw new Error("מוצר לא נמצא");
+    const target = row.parent_id ? await dbGet("pantryItems", row.parent_id) : row;
+    if (!target) throw new Error("מוצר לא נמצא");
+    delete target.allergens;
+    delete target.allergens_auto;
+    await dbPut("pantryItems", target);
+    return target;
+}
+
 export async function setItemAllergens(id, keys) {
     const row = await dbGet("pantryItems", id);
     if (!row) throw new Error("מוצר לא נמצא");
