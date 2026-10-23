@@ -4,15 +4,25 @@ import { effectivePrice } from "./formulas.js";
 
 const r2 = (n) => Math.round(n * 100) / 100;
 
-// packaging: [{ pantry_item_id, qty }], pantryById: Map/obj של שורות מזווה
-export function packagingCost(packaging, pantryById) {
-    const get = (id) => (pantryById instanceof Map ? pantryById.get(id) : pantryById[id]);
+// packaging: [{ pack_id, qty }] (רשימת האריזות של היצרן, מחיר ליחידה) או בפורמט הישן [{ pantry_item_id, qty }] (מהמזווה)
+// packById: Map/obj של אריזות היצרן. pantryById: Map/obj של שורות מזווה (לתאימות לאחור)
+export function packagingCost(packaging, pantryById = {}, packById = {}) {
+    const get = (m, id) => (m instanceof Map ? m.get(id) : m && m[id]);
     const lines = [];
     let total = 0;
     for (const p of packaging || []) {
-        const row = get(p.pantry_item_id);
         const qty = Number(p.qty) || 0;
-        if (!row || !(qty > 0)) continue;
+        if (!(qty > 0)) continue;
+        if (p.pack_id != null) {
+            const item = get(packById, p.pack_id);
+            if (!item) continue;
+            const cost = (Number(item.price) || 0) * qty;
+            total += cost;
+            lines.push({ name: item.name, qty, unit_type: "unit", cost: r2(cost) });
+            continue;
+        }
+        const row = get(pantryById, p.pantry_item_id);
+        if (!row) continue;
         const unitPrice = effectivePrice(row.price, row.yield_pct, row.is_frozen);
         const cost = unitPrice * qty;
         total += cost;
@@ -22,9 +32,9 @@ export function packagingCost(packaging, pantryById) {
 }
 
 // recipe: { cost_per_gram }, product: { net_g, packaging, sell_price }, vatPct: מע"מ (ברירת מחדל 18)
-export function productEconomics({ recipe, product, pantryById, vatPct = 18 }) {
+export function productEconomics({ recipe, product, pantryById, packById = {}, vatPct = 18 }) {
     const contentCost = recipe && product.net_g > 0 ? (Number(recipe.cost_per_gram) || 0) * product.net_g : 0;
-    const pack = packagingCost(product.packaging, pantryById);
+    const pack = packagingCost(product.packaging, pantryById, packById);
     const totalCost = contentCost + pack.total;
     const sell = Number(product.sell_price) || 0; // לפני מע"מ
     const out = {

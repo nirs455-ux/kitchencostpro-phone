@@ -6,10 +6,10 @@ export function openImagePicker({ title, hint, onFile }) {
     const overlay = openModal(`
         <h2>${title} ${hint ? info(hint.replace(/<[^>]+>/g, "")) : ""}</h2>
         <div class="btn-row">
-            <button type="button" class="btn btn-accent" id="pick-camera">📷 צלם</button>
+            <button type="button" class="btn btn-accent" id="pick-camera">צלם</button>
             <button type="button" class="btn btn-secondary" id="pick-gallery">🖼️ גלריה</button>
         </div>
-        <button type="button" class="btn-link" id="pick-any">📁 מסמך או קובץ אחר (PDF, Word, Excel)</button>
+        <button type="button" class="btn btn-secondary btn-block" id="pick-any" style="margin-top:8px;">📁 קבצים (Drive, OneDrive, PDF, Word, Excel)</button>
         <input type="file" id="pick-file-camera" accept="image/*" capture="environment" style="display:none">
         <input type="file" id="pick-file-gallery" accept="image/*" style="display:none">
         <input type="file" id="pick-file-any" style="display:none">
