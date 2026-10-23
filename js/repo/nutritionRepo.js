@@ -29,6 +29,19 @@ export async function removeNutrition(pantryId) {
     return db;
 }
 
+// פרטי תווית של מוצר מוכן (רכיבים כפי שהודפסו + "עלול להכיל"). נשמר בהגדרות, מחוץ לטבלת המזווה.
+const LABEL_KEY = "label_info";
+export async function getLabelInfo() {
+    const v = await getSetting(LABEL_KEY);
+    return v && typeof v === "object" ? v : {};
+}
+export async function saveLabelInfo(pantryId, { ingredients = "", mayContain = [], net_g = null } = {}) {
+    const all = await getLabelInfo();
+    all[pantryId] = { ingredients: String(ingredients || "").trim(), may_contain: Array.isArray(mayContain) ? mayContain : [], net_g: Number(net_g) > 0 ? Number(net_g) : null, _at: new Date().toISOString().slice(0, 10) };
+    await setSetting(LABEL_KEY, all);
+    return all[pantryId];
+}
+
 export async function getUsdaKey() { return (await getSetting(USDA_KEY)) || ""; }
 export async function setUsdaKey(k) { await setSetting(USDA_KEY, String(k || "").trim()); }
 

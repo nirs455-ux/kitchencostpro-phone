@@ -203,6 +203,42 @@ async function priceSeries() {
     return series;
 }
 
+// היסטוריית מחירים של מוצר מזווה: כל קנייה (מחיר ליחידת מזווה) עם תאריך וספק, מהישן לחדש. זיכויים וחשבוניות בפח לא נספרים.
+export async function priceHistory(pantryItemId) {
+    const series = (await priceSeries()).get(pantryItemId) || [];
+    if (!series.length) return [];
+    const suppliers = Object.fromEntries((await dbGetAll("suppliers")).map((s) => [s.id, s.name]));
+    const invoices = Object.fromEntries((await dbGetAll("invoices")).map((i) => [i.id, i]));
+    return series.map((p) => ({ ...p, supplier: suppliers[(invoices[p.invoice_id] || {}).supplier_id] || "" }));
+}
+
+// מוצרים שנקנו מספק (לפי החשבוניות): לבניית הזמנה. מסודר לפי תדירות קנייה, ואז לפי שם.
+export async function listSupplierProducts(supplierId) {
+    const invoices = (await dbGetAll("invoices")).filter((i) => i.supplier_id === supplierId && !i.deleted_at && i.document_type !== "credit");
+    const byId = new Map(invoices.map((i) => [i.id, i]));
+    const groups = new Map();
+    for (const it of await dbGetAll("invoiceItems")) {
+        const inv = byId.get(it.invoice_id);
+        if (!inv) continue;
+        const key = it.pantry_item_id ? `p${it.pantry_item_id}` : `n${String(it.product_name || "").trim().toLowerCase()}`;
+        if (key === "n") continue;
+        const g = groups.get(key) || { key, pantry_item_id: it.pantry_item_id || null, name: String(it.product_name || "").trim(), count: 0, last_date: "", last_qty: null, last_price: null };
+        g.count++;
+        if ((inv.invoice_date || "") >= g.last_date) { g.last_date = inv.invoice_date || ""; g.last_qty = it.quantity; g.last_price = it.unit_price; if (it.product_name) g.name = String(it.product_name).trim(); }
+        groups.set(key, g);
+    }
+    return [...groups.values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, "he"));
+}
+
+// טלפון הספק (לשליחת הזמנה בוואטסאפ). ריק = מסירת הטלפון.
+export async function setSupplierPhone(id, phone) {
+    const s = await dbGet("suppliers", id);
+    if (!s) throw new Error("ספק לא נמצא");
+    const clean = String(phone || "").trim();
+    if (clean && !/^[\d+\-\s()]{7,20}$/.test(clean)) throw new Error("מספר טלפון לא תקין");
+    await dbPut("suppliers", { ...s, phone: clean });
+}
+
 // מנות שמושפעות משינוי מחיר של מוצר מזווה (ישירות, או דרך מתכון שמשתמש בו)
 export async function dishesAffectedByPantryItem(pantryItemId) {
     const allRecipeItems = await dbGetAll("recipeItems");

@@ -13,6 +13,7 @@ import { buildBasePrompt, parseBaseAnswer } from "../bakers.js";
 import { NON_FOOD_CATEGORIES } from "../constants.js";
 import { RECIPE_SCAN_PROMPT, buildRecipeDraft } from "../recipeParse.js";
 import { INVOICE_SCAN_PROMPT, mergeDiscountLines, computeStockFactor, toFloat } from "../invoiceParse.js";
+import { LABEL_SCAN_PROMPT, parseLabelAnswer } from "../labelParse.js";
 
 function fileToBase64(file) {
     return new Promise((resolve, reject) => {
@@ -279,6 +280,41 @@ export async function scanRecipeImage(apiKey, file) {
     const draft = buildRecipeDraft(parsed, pantry);
     // המקור נשמר עם המתכון ("מתכון כפי שהוא"): הקובץ המקורי (תמונה מכווצת / PDF / מסמך), ואם הוא מסמך טקסט - גם הטקסט שחולץ
     draft.source_file = prepared.attachment || null;
+    return draft;
+}
+
+// סריקת תווית יצרן: מחזיר טיוטה (שם, רכיבים, אלרגנים, ערכים תזונתיים ל-100 גרם). שום דבר לא נשמר.
+export async function scanLabelImage(apiKey, file) {
+    if (!apiKey) throw new Error("לא הוגדר מפתח API של Gemini. הזן אותו במסך ההגדרות.");
+    const prepared = await prepareParts(file, "טקסט התווית");
+    let response;
+    try {
+        response = await geminiFetch(apiKey, { contents: [{ parts: [{ text: LABEL_SCAN_PROMPT }, ...prepared.parts] }] });
+    } catch (e) {
+        throw new Error("אין חיבור לאינטרנט או שהשרת לא זמין. נסה שוב בעוד רגע.");
+    }
+    if (!response.ok) {
+        if (await agentDown(response)) throw new Error(AGENT_DOWN_MSG);
+        if (response.status === 413) throw new Error("התמונה גדולה מדי. צלם שוב קרוב יותר לתווית.");
+        if (response.status === 402) throw new Error("הגעת למגבלה היומית של הסוכן. אפשר להמשיך מחר, או להזין מפתח Gemini אישי בהגדרות.");
+        if (response.status === 503 || response.status === 429) throw new Error("שרת הקריאה של Google עמוס כרגע. נסה שוב בעוד רגע.");
+        const text = await response.text();
+        throw new Error(`שגיאה מה-API (${response.status}): ${text.slice(0, 200)}`);
+    }
+    let parsed;
+    try {
+        const result = await response.json();
+        let text = result.candidates[0].content.parts[0].text.trim();
+        if (text.startsWith("```")) {
+            text = text.split("```")[1];
+            if (text.startsWith("json")) text = text.slice(4);
+        }
+        parsed = JSON.parse(text.trim());
+    } catch (e) {
+        throw new Error(unreadableMessage(e));
+    }
+    const draft = parseLabelAnswer(parsed);
+    if (draft.empty) throw new Error("לא הצלחתי לקרוא נתונים מהתווית. צלם שוב: קרוב, ישר, באור טוב, כשהטבלה התזונתית ורשימת הרכיבים בפריים.");
     return draft;
 }
 
