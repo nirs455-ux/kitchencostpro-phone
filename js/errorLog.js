@@ -27,13 +27,16 @@ export function installErrorHandlers() {
 }
 
 // טקסט שאפשר להדביק ולשלוח: גרסה, מכשיר, גדלי נתונים, והתקלות האחרונות
-export async function buildReport() {
+// note = כמה מילים מהמשתמש על מה קרה (לא חובה)
+export async function buildReport(note = "") {
     const counts = [];
     for (const s of ["pantryItems", "recipes", "dishes", "suppliers", "invoices", "invoiceItems"]) {
         try { counts.push(`${s}=${(await dbGetAll(s)).length}`); } catch (e) { counts.push(`${s}=?`); }
     }
     const errs = read();
+    const what = String(note || "").trim().slice(0, 600);
     return [
+        ...(what ? [`מה קרה: ${what}`, ""] : []),
         `KitchenCostPro ${APP_VERSION}`,
         `מכשיר: ${navigator.userAgent}`,
         `מסך: ${window.innerWidth}x${window.innerHeight}`,
