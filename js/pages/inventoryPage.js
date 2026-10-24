@@ -48,7 +48,7 @@ export async function renderInventoryPage(container) {
                 const pkgNote = f ? ` · אריזה = ${+Number(f).toFixed(3)} ${it.unit_type === "liter" ? "ל'" : 'ק"ג'}` : "";
                 const row = h(`<div class="inv-item" data-name="${escapeHtml(normalize(it.name + " " + cat + " " + sub))}">
                     <div class="inv-info"><div class="px-name">${escapeHtml(it.name)}</div>
-                        <div class="px-meta">קודם: ${it.last_count_date ? `${cv(it.last_counted_quantity)} (${it.last_count_date.split("-").reverse().join("/")})` : "טרם נספר"} · קניות: ${cv(it.purchased_since)} · תיאורטי: <b>${cv(it.theoretical_quantity)}</b> ${uw}${pkgNote}</div>
+                        <div class="px-meta">קודם: ${it.last_count_date ? `${cv(it.last_counted_quantity)} (${it.last_count_date.split("-").reverse().join("/")})` : "טרם נספר"} · קניות: ${cv(it.purchased_since)}${it.sold_since || it.waste_since ? ` · נצרך: ${cv(it.sold_since + it.waste_since)}` : ""} · תיאורטי: <b>${cv(it.theoretical_quantity)}</b> ${uw}${pkgNote}</div>
                         <div class="muted" id="variance-${it.id}"></div></div>
                     <input type="text" inputmode="decimal" class="count-input" id="count-${it.id}" data-theoretical="${cv(it.theoretical_quantity)}" data-factor="${f || 1}" placeholder="${f ? "אריזות" : "ספרתי"}">
                 </div>`);

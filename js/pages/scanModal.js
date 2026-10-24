@@ -12,6 +12,9 @@ import { logError } from "../errorLog.js";
 import { priceChanges } from "../repo/suppliersRepo.js";
 import { showPriceChangesDialog } from "./priceAlerts.js";
 
+// שורה שנראית כמו מבצע/הנחה: שם עם "מבצע"/"הנחה"/"3 ב-50", או כמות/מחיר שליליים. רק לשורות כאלה מוצג כפתור "זו שורת מבצע".
+const promoLike = (it) => /מבצע|הנחה|\d\s*ב[-־\s]*\d/.test(String(it.name || "")) || parseFloat(it.unit_price) < 0 || parseFloat(it.quantity) < 0;
+
 function todayLocal() {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -49,7 +52,8 @@ export async function openScanModal({ supplierAware, onDone, initialFile = null 
                 <div class="hint-warn" id="scan-no-supplier" style="display:none;">לא נבחר ספק - החשבונית לא תישמר בדף הספקים, רק המזווה יתעדכן.</div>
             </div>
             <div class="field"><label>תאריך</label><input type="date" id="scan-date" value="${todayLocal()}"></div>
-            <div class="checkbox-field"><input type="checkbox" id="scan-petty"><label for="scan-petty">קופה קטנה (עובד קנה וקיבל החזר במזומן)</label></div>
+            <button type="button" class="btn-link" id="scan-petty-show">＋ זו קופה קטנה (עובד קנה והוחזר לו במזומן)</button>
+            <div class="checkbox-field" id="scan-petty-wrap" style="display:none;"><input type="checkbox" id="scan-petty"><label for="scan-petty">קופה קטנה (עובד קנה וקיבל החזר במזומן)</label></div>
             <div class="field" id="scan-purchaser-wrap" style="display:none;"><input type="text" id="scan-purchaser" placeholder="מי רכש (אופציונלי)"></div>
             ` : ""}
             <div id="scan-summary" style="margin-bottom:8px;"></div>
@@ -81,6 +85,8 @@ export async function openScanModal({ supplierAware, onDone, initialFile = null 
     let scannedFile = null;
     let scannedAttachment = null; // הקובץ שיישמר עם החשבונית (תמונה מכווצת / PDF / המסמך המקורי)
     let printedTotal = null;
+    const pettyShow = overlay.querySelector("#scan-petty-show");
+    if (pettyShow) pettyShow.onclick = () => { pettyShow.style.display = "none"; overlay.querySelector("#scan-petty-wrap").style.display = "flex"; overlay.querySelector("#scan-petty").checked = true; overlay.querySelector("#scan-purchaser-wrap").style.display = "block"; };
     const pettyBox = overlay.querySelector("#scan-petty");
     if (pettyBox) pettyBox.addEventListener("change", () => { overlay.querySelector("#scan-purchaser-wrap").style.display = pettyBox.checked ? "block" : "none"; });
     if (supplierAware) {
@@ -305,7 +311,7 @@ export async function openScanModal({ supplierAware, onDone, initialFile = null 
                     <div class="top-line">
                         <strong>שורה ${idx + 1}</strong>
                         <div class="btn-row">
-                            ${idx > 0 ? `<button type="button" class="btn btn-accent btn-small" data-promo="${idx}">🏷 זו שורת מבצע - הפחת מהמוצר שמעל</button>` : ""}
+                            ${idx > 0 && promoLike(it) ? `<button type="button" class="btn btn-accent btn-small" data-promo="${idx}">🏷 זו שורת מבצע - הפחת מהמוצר שמעל</button>` : ""}
                             <button type="button" class="btn btn-secondary btn-small" data-remove="${idx}">✕ הסר שורה</button>
                         </div>
                     </div>

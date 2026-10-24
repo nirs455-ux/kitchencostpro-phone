@@ -6,6 +6,7 @@ import { pricePerGram, itemCost as calcItemCost, computeDishPricing } from "../f
 import { textToGrams, gramsToKgText, describeQty, qtyWarning } from "../qty.js";
 import { bindPickerButton, refreshPickerButton, resetPickerMemory } from "./ingredientPicker.js";
 import { listRow, matchesDeep } from "./listKit.js";
+import { renderSalesTab, renderGapTab } from "./salesPage.js";
 import { assignAutoSubs, subOf } from "../autoGroups.js";
 import { h, openModal, closeModal, confirmDialog, toast, escapeHtml, money, info, busy, attemptClose, cur, curLabel } from "../ui.js";
 
@@ -30,11 +31,25 @@ function ppgFor(src) {
     return src.source_type === "recipe" ? src.recipeCostPerGram : pricePerGram(src.ppgSource);
 }
 
+// לשוניות הדף: מנות | מכירות | דוח פער
+let dishTab = "dishes";
+const DISH_TABS = [["dishes", "מנות"], ["sales", "מכירות"], ["gap", "דוח פער"]];
+const segHtml = () => `<div class="seg" id="ds-seg">${DISH_TABS.map(([k, l]) => `<button type="button" data-tab="${k}" class="${k === dishTab ? "active" : ""}">${l}</button>`).join("")}</div>`;
+function wireSeg(container) { container.querySelectorAll("#ds-seg [data-tab]").forEach((b) => { b.onclick = () => { dishTab = b.dataset.tab; renderDishesPage(container); }; }); }
+
 export async function renderDishesPage(container) {
+    if (dishTab !== "dishes") {
+        container.innerHTML = `${segHtml()}<div id="ds-sub"></div>`;
+        wireSeg(container);
+        const sub = container.querySelector("#ds-sub");
+        if (dishTab === "sales") await renderSalesTab(sub); else await renderGapTab(sub);
+        return;
+    }
     const dishes = await listDishesWithItems();
     dishes.sort((a, b) => a.name.localeCompare(b.name, "he"));
     let q = "";
-    container.innerHTML = `${dishes.length ? `<div class="px-top"><input type="search" id="ds-q" placeholder="חיפוש מנה..." autocomplete="off"></div>` : ""}<div id="dishes-list"></div><button class="fab-add" id="btn-add">+</button>`;
+    container.innerHTML = `${segHtml()}${dishes.length ? `<div class="px-top"><input type="search" id="ds-q" placeholder="חיפוש מנה..." autocomplete="off"></div>` : ""}<div id="dishes-list"></div><button class="fab-add" id="btn-add">+</button>`;
+    wireSeg(container);
     const list = container.querySelector("#dishes-list");
     const draw = () => {
         list.innerHTML = "";

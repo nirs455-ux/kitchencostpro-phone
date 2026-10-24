@@ -330,7 +330,8 @@ function openInvoiceModal(existing, suppliers, pantryItems, container) {
             </div>
         </div>
         <div class="card" style="background:var(--brand-soft);">
-            <div class="checkbox-field"><input type="checkbox" id="f-petty" ${existing && existing.petty_cash ? "checked" : ""}>
+            ${existing && existing.petty_cash ? "" : '<button type="button" class="btn-link" id="f-petty-show">＋ זו קופה קטנה (עובד קנה והוחזר לו במזומן)</button>'}
+            <div class="checkbox-field" id="f-petty-wrap" style="${existing && existing.petty_cash ? "" : "display:none;"}"><input type="checkbox" id="f-petty" ${existing && existing.petty_cash ? "checked" : ""}>
                 <label for="f-petty">קופה קטנה ${info("עובד קנה בדרך וקיבל החזר במזומן, והביא קבלה. אפשר לסמן מי רכש ואם הוחזר לו.")}</label></div>
             <div id="petty-fields" style="display:none;">
                 <div class="field"><label>מי רכש (אופציונלי)</label><input type="text" id="f-purchaser" value="${existing ? escapeHtml(existing.purchaser || "") : ""}" placeholder="שם העובד"></div>
@@ -605,6 +606,8 @@ function openInvoiceModal(existing, suppliers, pantryItems, container) {
     };
     loadRepeatOptions();
 
+    const pettyShowBtn = overlay.querySelector("#f-petty-show");
+    if (pettyShowBtn) pettyShowBtn.onclick = () => { pettyShowBtn.style.display = "none"; overlay.querySelector("#f-petty-wrap").style.display = "flex"; overlay.querySelector("#f-petty").checked = true; overlay.querySelector("#petty-fields").style.display = "block"; };
     const pettyBox = overlay.querySelector("#f-petty");
     const syncPetty = () => { overlay.querySelector("#petty-fields").style.display = pettyBox.checked ? "block" : "none"; };
     pettyBox.addEventListener("change", syncPetty);
