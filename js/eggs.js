@@ -42,6 +42,8 @@ export function eggsNeeded({ whiteG = 0, yolkG = 0, white, yolk, eggPrice = 0 })
 
 export const EGG_PARTS = [["whole", "שלמה"], ["white", "חלבון"], ["yolk", "חלמון"]];
 export const EGG_PART_LABEL = Object.fromEntries(EGG_PARTS);
+// שמות לתצוגה בממשק: "חלבון" לבד הוא גם רכיב תזונה (Protein), ולכן בתצוגה כותבים "חלבון ביצה" כדי שהתרגום יהיה נכון (Egg white)
+export const EGG_PART_UI = { whole: "שלמה", white: "חלבון ביצה", yolk: "חלמון" };
 
 // מוצר ביצה במזווה: ברמה העליונה, ביחידות, ובשם יש "ביצ"
 export function isEggProduct(row) {
