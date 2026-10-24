@@ -65,7 +65,8 @@ export function cleanNutrition(v) {
 
 // items: [{ pantry_item_id, ingredient_name, quantity_g }], byId: Map של מוצרי מזווה, nutritionById: { [id]: per100 },
 // weightG: המשקל שאליו מחלקים (משקל סופי אחרי בישול, או סכום הרכיבים הגולמי אם לא הוגדר)
-export function computeNutrition({ items, byId, nutritionById, weightG }) {
+// nameFn(src): שם להצגה (למשל שם נקי של חומר גלם). ברירת מחדל: שם המוצר במזווה
+export function computeNutrition({ items, byId, nutritionById, weightG, nameFn = null }) {
     const get = (id) => (byId instanceof Map ? byId.get(id) : byId[id]);
     const rowsMap = new Map();
     let rawG = 0;
@@ -75,7 +76,7 @@ export function computeNutrition({ items, byId, nutritionById, weightG }) {
         const row = get(it.pantry_item_id);
         const src = row && row.parent_id ? get(row.parent_id) || row : row; // תוצר מפורק יורש מחומר הגלם
         const id = src ? src.id : it.pantry_item_id;
-        const name = (src && src.name) || it.ingredient_name || "";
+        const name = (src && (nameFn ? nameFn(src) : src.name)) || it.ingredient_name || "";
         const val = nutritionById && nutritionById[id] ? nutritionById[id] : null;
         const cur = rowsMap.get(id) || { id, name, grams: 0, per100: val };
         cur.grams += grams;
@@ -108,4 +109,25 @@ export function perServing(per100, servingG) {
     const out = {};
     for (const nu of NUTRIENTS) out[nu.key] = s > 0 ? round(((Number(per100[nu.key]) || 0) * s) / 100, nu.dec) : 0;
     return out;
+}
+
+// ---- דירוג תוצאות חיפוש USDA: גולמי וגנרי קודם, מעובד (שימורים, מיובש, רוטב...) בסוף ----
+const NEGATIVE = ["canned", "dried", "dehydrated", "powder", "sauce", "cooked", "fried", "frozen", "pickled", "juice", "baby food", "babyfood", "restaurant", "fast food", "salad", "soup", "snack", "candies", "candy", "dessert", "flavored", "sweetened", "roasted", "boiled", "with added", "seasoning", "mix", "paste", "puree", "jam", "jelly", "chips", "oil-roasted", "dry-roasted", "microwave"];
+export function rankUsdaFoods(foods, queryEn) {
+    const q = String(queryEn || "").toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter(Boolean);
+    const qText = q.join(" ");
+    const scored = (foods || []).map((f, idx) => {
+        const d = String(f.name || "").toLowerCase();
+        const words = new Set(d.replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter(Boolean));
+        const matched = q.filter((w) => words.has(w) || [...words].some((x) => x.startsWith(w) && w.length > 3)).length;
+        let score = q.length ? (10 * matched) / q.length : 0;
+        if (q.length && d.startsWith(q[0])) score += 3;
+        const asksProcessed = NEGATIVE.some((n) => qText.includes(n)); // אם ביקשת "powder"/"dried" וכד' - לא מעדיפים גולמי
+        if (/\braw\b/.test(d) && !asksProcessed) score += 5;
+        for (const n of NEGATIVE) if (d.includes(n) && !qText.includes(n)) score -= 4;
+        score -= d.length * 0.03;
+        if (f.type === "Foundation") score += 2; else if (f.type === "SR Legacy") score += 1;
+        return { f, score, idx };
+    });
+    return scored.sort((a, b) => b.score - a.score || a.idx - b.idx).map((x) => x.f);
 }

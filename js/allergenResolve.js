@@ -51,3 +51,10 @@ export function resolveAllergens(row, byId, labelNames = {}) {
     if (hit) return { ...hit, source: "kb", name };
     return { status: "unknown", keys: [], likely: [], source: null, name };
 }
+
+// מילים שמעידות על מוצר מעובד (לא חומר גלם): ערכי מאגר חומרי גלם לא מתאימים לו, וכדאי ליצור אותו כמתכון (למשל שום מטוגן = שום + שמן)
+const COOKING_WORDS = ["מטוגן", "מטוגנת", "מטוגנים", "צלוי", "צלויה", "צלויים", "קלוי", "קלויה", "קלויים", "אפוי", "אפויה", "מבושל", "מבושלת", "מבושלים", "כבוש", "כבושה", "כבושים", "מעושן", "מעושנת", "מעושנים", "מוחמץ", "מוחמצים", "מסוכר", "מקורמל", "מקורמלת", "מוקרם", "שרוף", "מבעבע", "בציפוי", "ברוטב", "בשמן"];
+export function preparedWord(name) {
+    const words = String(name || "").toLowerCase().replace(/["'`׳״]/g, "").split(/[\s,()\-–/]+/).filter(Boolean);
+    return COOKING_WORDS.find((w) => words.includes(w)) || "";
+}
