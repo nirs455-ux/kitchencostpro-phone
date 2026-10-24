@@ -2,7 +2,7 @@
 // אבל עצמאי לגמרי - שתי הגרסאות לא מסונכרנות זו עם זו (ראה ייצוא/ייבוא).
 
 const DB_NAME = "kitchencostpro";
-const DB_VERSION = 3; // 2: נוסף מאגר scanQueue (תור סריקות שממתינות לעיבוד). 3: נוסף wasteLogs (פחת / זריקות)
+const DB_VERSION = 4; // 2: נוסף מאגר scanQueue (תור סריקות שממתינות לעיבוד). 3: נוסף wasteLogs (פחת / זריקות). 4: נוסף salesLines (דוח מכירות)
 
 const STORES = {
     pantryItems: "id",
@@ -15,6 +15,7 @@ const STORES = {
     invoiceItems: "id",
     inventoryCounts: "id",
     wasteLogs: "id",
+    salesLines: "id", // שורות דוח מכירות: { report_date, source_type: dish|recipe, source_id, source_name, quantity, line_type }
     settings: "key",
 };
 
@@ -50,6 +51,7 @@ export function openDB() {
             ensureIndex("invoiceItems", "pantry_item_id");
             ensureIndex("inventoryCounts", "pantry_item_id");
             ensureIndex("pantryItems", "parent_id");
+            ensureIndex("salesLines", "report_date");
         };
         req.onsuccess = () => {
             const db = req.result;
