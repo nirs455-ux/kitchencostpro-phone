@@ -1,5 +1,7 @@
 // לוגיקת ספירת מלאי - תרגום מדויק של inventory_page / save_inventory_counts.
 import { dbGetAll, dbGet, dbPut, dbGetByIndex } from "../db.js";
+import { loadSalesCtx } from "./salesRepo.js";
+import { consumptionEvents, consumedBetween, theoreticalStock } from "../salesCalc.js";
 
 async function lastCountFor(pantryItemId) {
     const rows = await dbGetByIndex("inventoryCounts", "pantry_item_id", pantryItemId);
@@ -26,6 +28,12 @@ async function purchasedSince(pantryItemId, sinceDate) {
 
 export async function buildInventoryView() {
     const all = await dbGetAll("pantryItems");
+    // צריכה תיאורטית מדוח המכירות ומהפחת (פירוק מנות ומתכונים לחומרי גלם). בלי מכירות/פחת התוצאה זהה לקודם.
+    let events = [];
+    try {
+        const ctx = await loadSalesCtx();
+        events = consumptionEvents(await dbGetAll("salesLines"), await dbGetAll("wasteLogs"), ctx);
+    } catch (e) { events = []; }
     const topLevel = all.filter((it) => !it.parent_id).sort((a, b) => a.category.localeCompare(b.category, "he") || a.name.localeCompare(b.name, "he"));
 
     const out = [];
@@ -34,11 +42,13 @@ export async function buildInventoryView() {
         const lastCountedQuantity = last ? last.counted_quantity : 0;
         const lastCountDate = last ? last.count_date : null;
         const purchased = await purchasedSince(p.id, lastCountDate);
-        const theoretical = Math.round((lastCountedQuantity + purchased) * 1000) / 1000;
+        const soldConsumed = consumedBetween(events, p.id, lastCountDate || "", "", ["sale"]);
+        const wasted = consumedBetween(events, p.id, lastCountDate || "", "", ["waste"]);
+        const theoretical = theoreticalStock({ lastCounted: lastCountedQuantity, purchased, soldConsumed, wasted });
         out.push({
             id: p.id, name: p.name, category: p.category, subcategory: p.subcategory || "", unit_type: p.unit_type, pkg_size: p.pkg_size || 0,
             last_count_date: lastCountDate, last_counted_quantity: lastCountedQuantity,
-            purchased_since: purchased, theoretical_quantity: theoretical,
+            purchased_since: purchased, sold_since: soldConsumed, waste_since: wasted, theoretical_quantity: theoretical,
         });
     }
     return out;
