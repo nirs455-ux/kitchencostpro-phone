@@ -153,6 +153,25 @@ export async function saveRecipe(existingId, data) {
     return recipeId;
 }
 
+// מחליף בכל שורות המתכון את מוצר המזווה pantryItemId בתת-מתכון subId (אותה כמות בגרמים). שאר המתכון נשמר כמו שהוא.
+export async function replaceIngredientWithSubRecipe(recipeId, pantryItemId, subId) {
+    const recipe = await dbGet("recipes", recipeId);
+    if (!recipe) throw new Error("מתכון לא נמצא");
+    const rows = await dbGetByIndex("recipeItems", "recipe_id", recipeId);
+    let replaced = 0;
+    const items = rows.map((row) => {
+        if (row.sub_recipe_id != null) return { sub_recipe_id: row.sub_recipe_id, quantity_g: row.quantity_g };
+        if (row.pantry_item_id === pantryItemId) { replaced++; return { sub_recipe_id: subId, quantity_g: row.quantity_g }; }
+        return { pantry_item_id: row.pantry_item_id, quantity_g: row.quantity_g, ...(row.egg_part ? { egg_part: row.egg_part } : {}) };
+    });
+    if (!replaced) throw new Error("הרכיב לא נמצא במתכון");
+    await saveRecipe(recipeId, {
+        name: recipe.name, category: recipe.category, items, draft_ingredients: recipe.draft_ingredients || [], method: recipe.method || "",
+        final_weight: recipe.is_auto_weight ? "" : String(recipe.final_weight),
+    });
+    return replaced;
+}
+
 // כמה מנות משתמשות במתכון (להתראה לפני מחיקה)
 export async function recipeDishCount(id) {
     const rows = (await dbGetAll("dishItems")).filter((d) => d.source_type === "recipe" && d.source_id === id);
