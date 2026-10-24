@@ -22,6 +22,42 @@ export async function saveNutrition(pantryId, per100, { source = "manual", label
     return db;
 }
 
+// זיכרון בחירות לפי שם נקי של חומר גלם: בחרת פעם התאמה ל"פלפל צילי אדום" - מוצר אחר עם אותו שם נקי יקבל אותה אוטומטית.
+// נשמרות רק בחירות ממאגר USDA (חומר גלם גנרי), לא ערכים של מוצר ארוז ספציפי.
+const CHOICES_KEY = "nutrition_choices";
+export const normName = (s) => String(s || "").toLowerCase().replace(/["'`׳״]/g, "").replace(/\s+/g, " ").trim();
+
+export async function getNutritionChoices() {
+    const v = await getSetting(CHOICES_KEY);
+    return v && typeof v === "object" ? v : {};
+}
+export async function rememberChoice(cleanName, per100, label = "") {
+    const key = normName(cleanName);
+    if (!key) return;
+    const clean = cleanNutrition(per100);
+    if (!Object.keys(clean).length) return;
+    const all = await getNutritionChoices();
+    all[key] = { ...clean, _label: label, _at: new Date().toISOString().slice(0, 10) };
+    await setSetting(CHOICES_KEY, all);
+}
+
+// מקבל שורות מזווה (חומרי גלם) ופונקציית שם נקי; ממלא ערכים למי שחסר ויש עבורו בחירה שנזכרה. מחזיר את מסד הערכים המעודכן.
+export async function applyRememberedNutrition(rows, nameFn) {
+    const db = await getNutritionDb();
+    const choices = await getNutritionChoices();
+    let changed = false;
+    for (const row of rows) {
+        if (!row || (db[row.id] && Object.keys(db[row.id]).some((k) => !k.startsWith("_")))) continue;
+        const c = choices[normName(nameFn(row))];
+        if (!c) continue;
+        const { _label, _at, ...vals } = c;
+        db[row.id] = { ...vals, _source: "remembered", _label, _at: new Date().toISOString().slice(0, 10) };
+        changed = true;
+    }
+    if (changed) await setSetting(DB_KEY, db);
+    return db;
+}
+
 export async function removeNutrition(pantryId) {
     const db = await getNutritionDb();
     delete db[pantryId];
@@ -64,7 +100,7 @@ export async function searchUsda(query, apiKey = "") {
     const q = String(query || "").trim();
     if (!q) return { foods: [], error: "" };
     try {
-        const url = `https://api.nal.usda.gov/fdc/v1/foods/search?api_key=${encodeURIComponent(apiKey || "DEMO_KEY")}&query=${encodeURIComponent(q)}&dataType=Foundation,SR%20Legacy&pageSize=8`;
+        const url = `https://api.nal.usda.gov/fdc/v1/foods/search?api_key=${encodeURIComponent(apiKey || "DEMO_KEY")}&query=${encodeURIComponent(q)}&dataType=Foundation,SR%20Legacy&pageSize=25`;
         const res = await fetch(url);
         if (res.status === 429) return { foods: [], error: "חרגת ממגבלת החיפוש של USDA. הוסף מפתח אישי בהגדרות או נסה מאוחר יותר." };
         if (res.status === 403) return { foods: [], error: "מפתח USDA לא תקין. בדוק אותו בהגדרות." };
