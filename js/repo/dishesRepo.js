@@ -12,7 +12,8 @@ export async function listDishesWithItems() {
     return out;
 }
 
-export async function resolveDishItems(items) {
+// cache (לא חובה): { pantry: Map, recipes: Map } שנטענו פעם אחת (חישוב מחדש של הכול)
+export async function resolveDishItems(items, { cache = null } = {}) {
     const resolved = [];
     let totalCost = 0;
     for (const it of items) {
@@ -24,13 +25,13 @@ export async function resolveDishItems(items) {
 
         let ppg, sourceName;
         if (sourceType === "pantry") {
-            const row = await dbGet("pantryItems", sourceId);
+            const row = cache ? cache.pantry.get(sourceId) : await dbGet("pantryItems", sourceId);
             if (!row) throw new Error("מרכיב לא נמצא במזווה");
             if (row.unit_type === "unit" && !row.unit_amount) throw new Error(`'${row.name}' חסר משקל ליחידה - השלם אותו במזווה לפני השימוש במנה`);
             ppg = pricePerGram(row);
             sourceName = row.name;
         } else if (sourceType === "recipe") {
-            const row = await dbGet("recipes", sourceId);
+            const row = cache ? cache.recipes.get(sourceId) : await dbGet("recipes", sourceId);
             if (!row) throw new Error("מתכון לא נמצא");
             if (row.status === "draft") throw new Error(`המתכון '${row.name}' עדיין טיוטה (חסרים רכיבים). השלם אותו בדף המתכונים לפני שימוש במנה.`);
             ppg = row.cost_per_gram;

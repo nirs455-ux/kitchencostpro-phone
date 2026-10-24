@@ -1,7 +1,7 @@
 // חישוב עלויות מחדש: עלות מתכון ומנה נשמרת בעת השמירה, ולכן כששינו מחיר/ניצולת/קפוא של מוצר במזווה (ידנית או דרך חשבונית)
 // העלויות נשארו ישנות. כאן מחשבים מחדש את כל המתכונים (לפי המזווה הנוכחי) ואז את כל המנות (שתלויות בהם ובמזווה).
 // רכיב שנמחק מהמזווה נשאר עם העלות האחרונה שלו (אי אפשר לחשב), ומסומן ghost. כותבים למסד רק מה ששינה ערך.
-import { dbGetAll, dbGet, dbPut, dbGetByIndex, onDbChange } from "../db.js";
+import { dbGetAll, dbPut, onDbChange } from "../db.js";
 import { isSubRow } from "./subRecipes.js";
 import { recipeCostPerGram, computeDishPricing } from "../formulas.js";
 import { resolveRecipeItems } from "./recipesRepo.js";
@@ -29,16 +29,25 @@ async function recipesInDependencyOrder() {
     return order;
 }
 
-async function recalcRecipes() {
+// טוענים מוצרים, מתכונים ושורות פעם אחת (במקום קריאה למסד לכל רכיב): חישוב מחדש של מאות מתכונים הופך מכמה שניות לחלקיק שנייה.
+async function loadCache() {
+    const [pantry, recipes, recipeItems] = await Promise.all([dbGetAll("pantryItems"), dbGetAll("recipes"), dbGetAll("recipeItems")]);
+    const byRecipe = new Map();
+    for (const row of recipeItems) { if (!byRecipe.has(row.recipe_id)) byRecipe.set(row.recipe_id, []); byRecipe.get(row.recipe_id).push(row); }
+    return { pantry: new Map(pantry.map((p) => [p.id, p])), recipes: new Map(recipes.map((r) => [r.id, r])), recipeItems, byRecipe };
+}
+
+async function recalcRecipes(cache) {
     let changed = 0;
-    for (const recipe of await recipesInDependencyOrder()) {
-        const rows = await dbGetByIndex("recipeItems", "recipe_id", recipe.id);
+    for (const recipeStale of await recipesInDependencyOrder()) {
+        const recipe = cache.recipes.get(recipeStale.id) || recipeStale;
+        const rows = cache.byRecipe.get(recipe.id) || [];
         if (!rows.length) continue;
         const live = [], ghosts = [];
-        for (const r of rows) ((await dbGet(isSubRow(r) ? "recipes" : "pantryItems", isSubRow(r) ? r.sub_recipe_id : r.pantry_item_id)) ? live : ghosts).push(r);
+        for (const r of rows) ((isSubRow(r) ? cache.recipes.get(r.sub_recipe_id) : cache.pantry.get(r.pantry_item_id)) ? live : ghosts).push(r);
         let resolved = { resolved: [], totalCost: 0, rawWeight: 0 };
         try {
-            if (live.length) resolved = await resolveRecipeItems(live.map((r) => ({ pantry_item_id: r.pantry_item_id, sub_recipe_id: r.sub_recipe_id, quantity_g: r.quantity_g, egg_part: r.egg_part })), { selfId: recipe.id });
+            if (live.length) resolved = await resolveRecipeItems(live.map((r) => ({ pantry_item_id: r.pantry_item_id, sub_recipe_id: r.sub_recipe_id, quantity_g: r.quantity_g, egg_part: r.egg_part })), { selfId: recipe.id, cache });
         } catch (e) { continue; } // למשל מוצר ביחידות שאיבד משקל ליחידה: משאירים כמו שהיה
         const ghostCost = ghosts.reduce((n, r) => n + (Number(r.item_cost) || 0), 0);
         const ghostGrams = ghosts.reduce((n, r) => n + (Number(r.quantity_g) || 0), 0);
@@ -56,26 +65,30 @@ async function recalcRecipes() {
             }
         }
         if (rowChanged || differs(recipe.total_cost, newTotal) || differs(recipe.cost_per_gram, cpg) || differs(recipe.final_weight, finalWeight)) {
-            await dbPut("recipes", { ...recipe, total_cost: newTotal, cost_per_gram: cpg, final_weight: finalWeight });
+            const updated = { ...recipe, total_cost: newTotal, cost_per_gram: cpg, final_weight: finalWeight };
+            await dbPut("recipes", updated);
+            cache.recipes.set(recipe.id, updated); // תת-מתכון מחושב לפני מי שמשתמש בו: המתכון המשתמש רואה את העלות המעודכנת
             changed++;
         }
     }
     return changed;
 }
 
-async function recalcDishes() {
+async function recalcDishes(cache) {
     let changed = 0;
+    const byDish = new Map();
+    for (const row of await dbGetAll("dishItems")) { if (!byDish.has(row.dish_id)) byDish.set(row.dish_id, []); byDish.get(row.dish_id).push(row); }
     for (const dish of await dbGetAll("dishes")) {
-        const rows = await dbGetByIndex("dishItems", "dish_id", dish.id);
+        const rows = byDish.get(dish.id) || [];
         if (!rows.length) continue;
         const live = [], ghosts = [];
         for (const r of rows) {
-            const src = await dbGet(r.source_type === "recipe" ? "recipes" : "pantryItems", r.source_id);
+            const src = r.source_type === "recipe" ? cache.recipes.get(r.source_id) : cache.pantry.get(r.source_id);
             (src ? live : ghosts).push(r);
         }
         let resolved = { resolved: [], totalCost: 0 };
         try {
-            if (live.length) resolved = await resolveDishItems(live.map((r) => ({ source_type: r.source_type, source_id: r.source_id, quantity_g: r.quantity_g })));
+            if (live.length) resolved = await resolveDishItems(live.map((r) => ({ source_type: r.source_type, source_id: r.source_id, quantity_g: r.quantity_g })), { cache });
         } catch (e) { continue; } // מתכון שחזר להיות טיוטה וכו': משאירים
         const total = resolved.totalCost + ghosts.reduce((n, r) => n + (Number(r.item_cost) || 0), 0);
         const pricing = computeDishPricing(total, dish.selling_price, dish.vat_pct);
@@ -97,8 +110,9 @@ async function recalcDishes() {
 
 // מחשב מחדש הכול. מחזיר כמה מתכונים ומנות השתנו.
 export async function recalcAllCosts() {
-    const recipes = await recalcRecipes();
-    const dishes = await recalcDishes();
+    const cache = await loadCache();
+    const recipes = await recalcRecipes(cache);
+    const dishes = await recalcDishes(cache);
     return { recipes, dishes };
 }
 

@@ -38,7 +38,10 @@ export async function recipeParentCount(id) {
 }
 
 // selfId: המתכון שנשמר כרגע (כדי לחסום מעגל: מתכון שמכיל את עצמו)
-export async function resolveRecipeItems(items, { selfId = null } = {}) {
+// cache (לא חובה): { pantry: Map, recipes: Map, recipeItems: [] } שנטענו פעם אחת (חישוב מחדש של הכול). בלעדיו קוראים מהמסד לכל רכיב.
+export async function resolveRecipeItems(items, { selfId = null, cache = null } = {}) {
+    const getRecipe = async (id) => (cache ? cache.recipes.get(id) : await dbGet("recipes", id));
+    const getPantry = async (id) => (cache ? cache.pantry.get(id) : await dbGet("pantryItems", id));
     const resolved = [];
     const eggRows = [];
     let totalCost = 0;
@@ -50,10 +53,10 @@ export async function resolveRecipeItems(items, { selfId = null } = {}) {
             const q = parseFloat(it.quantity_g);
             if (Number.isNaN(subId) || Number.isNaN(q)) throw new Error("מרכיב עם נתונים לא תקינים");
             if (q <= 0) throw new Error("כמות חייבת להיות גדולה מ-0");
-            const sub = await dbGet("recipes", subId);
+            const sub = await getRecipe(subId);
             if (!sub) throw new Error("תת-מתכון לא נמצא");
             if (selfId != null) {
-                if (!allRecipeItems) allRecipeItems = await dbGetAll("recipeItems");
+                if (!allRecipeItems) allRecipeItems = cache ? cache.recipeItems : await dbGetAll("recipeItems");
                 if (includesRecipe(subId, selfId, allRecipeItems)) throw new Error(`אי אפשר להוסיף את '${sub.name}' למתכון הזה: הוא כולל אותו בעצמו (מעגל).`);
             }
             if (sub.status === "draft") throw new Error(`'${sub.name}' עדיין טיוטה (חסרים רכיבים). השלם אותו לפני שימוש כתת-מתכון.`);
@@ -68,7 +71,7 @@ export async function resolveRecipeItems(items, { selfId = null } = {}) {
         const qty = parseFloat(it.quantity_g);
         if (Number.isNaN(pantryId) || Number.isNaN(qty)) throw new Error("מרכיב עם נתונים לא תקינים");
         if (qty <= 0) throw new Error("כמות חייבת להיות גדולה מ-0");
-        let row = await dbGet("pantryItems", pantryId);
+        let row = await getPantry(pantryId);
         if (!row) throw new Error("מרכיב לא נמצא במזווה");
         const eggPart = ["whole", "white", "yolk"].includes(it.egg_part) && isEggProduct(row) ? it.egg_part : null;
         if (eggPart) row = await ensureEggDefaults(row); // גודל ומשקל ללא קליפה אוטומטיים אם חסרים

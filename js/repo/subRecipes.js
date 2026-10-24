@@ -35,7 +35,8 @@ export function includesRecipe(recipeId, targetId, allItems) {
 }
 
 // פורש רשימת רכיבים לרמת מוצרי המזווה בלבד: שורת תת-מתכון הופכת לרכיבים שלו, בכמות יחסית לכמות שבשימוש.
-// recipeById: Map מזהה -> מתכון, itemsOf(recipeId): שורות ה-recipeItems שלו. שורה של מתכון שנמחק (או מעגל) נשמטת.
+// recipeById: Map מזהה -> מתכון, itemsOf(recipeId): שורות ה-recipeItems שלו.
+// תת-מתכון שנמחק לא נעלם: הוא נשאר כרכיב "רפאים" בלי מוצר מזווה (pantry_item_id: null), כדי שהתווית תסמן אותו כ"לא ידוע" ולא תשמיט אותו בשקט (אלרגנים!). מעגל או עומק יתר נשמטים.
 export function flattenRecipeItems(direct, recipeById, itemsOf, factor = 1, depth = 0, trail = new Set()) {
     const out = [];
     for (const it of direct) {
@@ -44,7 +45,8 @@ export function flattenRecipeItems(direct, recipeById, itemsOf, factor = 1, dept
             continue;
         }
         const sub = recipeById.get(it.sub_recipe_id);
-        if (!sub || depth >= MAX_SUB_DEPTH || trail.has(sub.id)) continue;
+        if (!sub) { out.push({ ...it, sub_recipe_id: null, pantry_item_id: null, quantity_g: (Number(it.quantity_g) || 0) * factor, item_cost: (Number(it.item_cost) || 0) * factor }); continue; }
+        if (depth >= MAX_SUB_DEPTH || trail.has(sub.id)) continue;
         const subRows = itemsOf(sub.id);
         const raw = subRows.reduce((n, r) => n + (Number(r.quantity_g) || 0), 0);
         const fw = Number(sub.final_weight) > 0 ? Number(sub.final_weight) : raw;
