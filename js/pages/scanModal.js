@@ -6,7 +6,7 @@ import { CATEGORY_GROUPS, UNIT_TYPES, UNIT_TYPE_LABELS } from "../constants.js";
 import { h, openModal, closeModal, toast, escapeHtml, info, busy, attemptClose, cur } from "../ui.js";
 import { compressImage } from "../imageUtil.js";
 import { addToQueue } from "../repo/scanQueue.js";
-import { FILE_ACCEPT } from "../filePrep.js";
+import { FILE_ACCEPT, DOC_ACCEPT } from "../filePrep.js";
 import { logError } from "../errorLog.js";
 import { priceChanges } from "../repo/suppliersRepo.js";
 import { showPriceChangesDialog } from "./priceAlerts.js";
@@ -28,10 +28,10 @@ export async function openScanModal({ supplierAware, onDone, initialFile = null 
                 <button type="button" class="btn btn-accent" id="btn-pick-camera">צלם</button>
                 <button type="button" class="btn btn-secondary" id="btn-pick-gallery">🖼️ גלריה</button>
             </div>
-            <button type="button" class="btn btn-secondary btn-block" id="btn-pick-any" style="margin-top:8px;">📁 קבצים (Drive, OneDrive, PDF, Word, Excel)</button>
+            <button type="button" class="btn btn-secondary btn-block" id="btn-pick-any" style="margin-top:8px;">📁 קבצים: Drive, OneDrive (PDF, Word, Excel)</button>
             <input type="file" id="scan-file-camera" accept="image/*" capture="environment" style="display:none">
             <input type="file" id="scan-file-gallery" accept="image/*" style="display:none">
-            <input type="file" id="scan-file-any" style="display:none">
+            <input type="file" id="scan-file-any" accept="${DOC_ACCEPT}" style="display:none">
             <div class="error-msg"></div>
         </div>
         <div id="scan-loading" style="display:none;text-align:center;padding:24px;color:#666;">קורא את החשבונית...</div>
