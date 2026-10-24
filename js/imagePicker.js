@@ -1,6 +1,6 @@
 // בורר תמונה/קובץ: מצלמה בתוך האפליקציה (עם חזרה לקלט capture אם לא זמינה) וגלריה/קבצים.
 import { openModal, closeModal, info } from "./ui.js";
-import { FILE_ACCEPT } from "./filePrep.js";
+import { DOC_ACCEPT } from "./filePrep.js";
 
 export function openImagePicker({ title, hint, onFile }) {
     const overlay = openModal(`
@@ -9,10 +9,10 @@ export function openImagePicker({ title, hint, onFile }) {
             <button type="button" class="btn btn-accent" id="pick-camera">צלם</button>
             <button type="button" class="btn btn-secondary" id="pick-gallery">🖼️ גלריה</button>
         </div>
-        <button type="button" class="btn btn-secondary btn-block" id="pick-any" style="margin-top:8px;">📁 קבצים (Drive, OneDrive, PDF, Word, Excel)</button>
+        <button type="button" class="btn btn-secondary btn-block" id="pick-any" style="margin-top:8px;">📁 קבצים: Drive, OneDrive (PDF, Word, Excel)</button>
         <input type="file" id="pick-file-camera" accept="image/*" capture="environment" style="display:none">
         <input type="file" id="pick-file-gallery" accept="image/*" style="display:none">
-        <input type="file" id="pick-file-any" style="display:none">
+        <input type="file" id="pick-file-any" accept="${DOC_ACCEPT}" style="display:none">
         <div class="modal-actions"><button type="button" class="btn btn-secondary" id="pick-cancel">ביטול</button></div>
     `);
 

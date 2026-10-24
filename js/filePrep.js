@@ -6,6 +6,9 @@ import { compressImage } from "./imageUtil.js";
 const MAX_INLINE_BYTES = 18 * 1024 * 1024; // מגבלת הבקשה ל-Gemini (כ-20MB כולל קידוד)
 const MAX_TEXT_CHARS = 40000;
 
+// סוגי מסמכים בלבד (בלי תמונות): כפתור "קבצים" פותח ישר את מנהל הקבצים של הטלפון (עם Google Drive ו-OneDrive), בלי חלון הביניים של תמונה/וידאו/קבצים. תמונות נבחרות מ"גלריה".
+export const DOC_ACCEPT = [".pdf", ".doc", ".docx", ".rtf", ".odt", ".txt", ".csv", ".xls", ".xlsx", ".ods", ".ppt", ".pptx", "application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "text/plain", "text/csv"].join(",");
+
 // רשימת הסוגים שבוחרי הקבצים יציעו (וגם "כל קובץ" לטלפונים שמסננים לא טוב)
 export const FILE_ACCEPT = [
     "image/*", ".heic", ".heif", ".pdf", ".doc", ".docx", ".rtf", ".odt", ".txt", ".md", ".csv", ".html", ".htm",
