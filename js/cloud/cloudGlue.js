@@ -72,6 +72,9 @@ async function withInteractive(fn) {
     try { return await fn(); } finally { allowInteractive = false; }
 }
 
+// טוקן Drive לבורר הקבצים (נקרא מתוך לחיצה של המשתמש, ולכן מותר להציג חלון התחברות)
+export async function getDriveAccessToken() { return withInteractive(() => getToken()); }
+
 // ---- אדפטרים למסד המקומי ----
 async function getStores() {
     const out = {};
