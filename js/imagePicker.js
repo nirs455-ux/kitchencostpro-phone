@@ -1,6 +1,7 @@
 // בורר תמונה/קובץ: מצלמה בתוך האפליקציה (עם חזרה לקלט capture אם לא זמינה) וגלריה/קבצים.
 import { openModal, closeModal, info } from "./ui.js";
 import { DOC_ACCEPT } from "./filePrep.js";
+import { driveButtonHtml, pickFromDrive, warmDrivePicker } from "./cloud/drivePicker.js";
 
 export function openImagePicker({ title, hint, onFile }) {
     const overlay = openModal(`
@@ -9,7 +10,8 @@ export function openImagePicker({ title, hint, onFile }) {
             <button type="button" class="btn btn-accent" id="pick-camera">צלם</button>
             <button type="button" class="btn btn-secondary" id="pick-gallery">🖼️ גלריה</button>
         </div>
-        <button type="button" class="btn btn-secondary btn-block" id="pick-any" style="margin-top:8px;">📁 קבצים: Drive, OneDrive (PDF, Word, Excel)</button>
+        <button type="button" class="btn btn-secondary btn-block" id="pick-any" style="margin-top:8px;">📁 קבצים (PDF, Word, Excel, OneDrive)</button>
+        ${driveButtonHtml("pick-drive")}
         <input type="file" id="pick-file-camera" accept="image/*" capture="environment" style="display:none">
         <input type="file" id="pick-file-gallery" accept="image/*" style="display:none">
         <input type="file" id="pick-file-any" accept="${DOC_ACCEPT}" style="display:none">
@@ -22,6 +24,17 @@ export function openImagePicker({ title, hint, onFile }) {
         onFile(file);
     };
     overlay.querySelector("#pick-cancel").onclick = closeModal;
+    const driveBtn = overlay.querySelector("#pick-drive");
+    if (driveBtn) {
+        warmDrivePicker();
+        driveBtn.onclick = async () => {
+            try {
+                driveBtn.disabled = true;
+                const file = await pickFromDrive();
+                if (file) choose(file); else driveBtn.disabled = false;
+            } catch (e) { driveBtn.disabled = false; const note = document.createElement("div"); note.className = "error-msg"; note.style.display = "block"; note.textContent = e.message; driveBtn.after(note); }
+        };
+    }
     overlay.querySelector("#pick-gallery").onclick = () => overlay.querySelector("#pick-file-gallery").click();
     overlay.querySelector("#pick-file-camera").addEventListener("change", (e) => choose(e.target.files[0]));
     overlay.querySelector("#pick-file-gallery").addEventListener("change", (e) => choose(e.target.files[0]));
