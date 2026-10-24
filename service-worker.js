@@ -1,4 +1,4 @@
-const CACHE_NAME = "kcp-v71";
+const CACHE_NAME = "kcp-v72";
 const ASSETS = [
     "./",
     "./index.html",
