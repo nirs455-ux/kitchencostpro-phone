@@ -7,6 +7,7 @@ import { h, openModal, closeModal, toast, escapeHtml, info, busy, attemptClose, 
 import { compressImage } from "../imageUtil.js";
 import { addToQueue } from "../repo/scanQueue.js";
 import { FILE_ACCEPT, DOC_ACCEPT } from "../filePrep.js";
+import { driveButtonHtml, pickFromDrive, warmDrivePicker } from "../cloud/drivePicker.js";
 import { logError } from "../errorLog.js";
 import { priceChanges } from "../repo/suppliersRepo.js";
 import { showPriceChangesDialog } from "./priceAlerts.js";
@@ -28,7 +29,8 @@ export async function openScanModal({ supplierAware, onDone, initialFile = null 
                 <button type="button" class="btn btn-accent" id="btn-pick-camera">צלם</button>
                 <button type="button" class="btn btn-secondary" id="btn-pick-gallery">🖼️ גלריה</button>
             </div>
-            <button type="button" class="btn btn-secondary btn-block" id="btn-pick-any" style="margin-top:8px;">📁 קבצים: Drive, OneDrive (PDF, Word, Excel)</button>
+            <button type="button" class="btn btn-secondary btn-block" id="btn-pick-any" style="margin-top:8px;">📁 קבצים (PDF, Word, Excel, OneDrive)</button>
+            ${driveButtonHtml("btn-pick-drive")}
             <input type="file" id="scan-file-camera" accept="image/*" capture="environment" style="display:none">
             <input type="file" id="scan-file-gallery" accept="image/*" style="display:none">
             <input type="file" id="scan-file-any" accept="${DOC_ACCEPT}" style="display:none">
@@ -206,6 +208,19 @@ export async function openScanModal({ supplierAware, onDone, initialFile = null 
     overlay.querySelector("#scan-file-camera").addEventListener("change", onFileChosen);
     overlay.querySelector("#scan-file-gallery").addEventListener("change", onFileChosen);
     overlay.querySelector("#scan-file-any").addEventListener("change", onFileChosen);
+    const driveBtn = overlay.querySelector("#btn-pick-drive");
+    if (driveBtn) {
+        warmDrivePicker();
+        driveBtn.onclick = async () => {
+            const errEl = overlay.querySelector("#scan-upload-area .error-msg");
+            try {
+                driveBtn.disabled = true;
+                const file = await pickFromDrive();
+                driveBtn.disabled = false;
+                if (file) processFile(file);
+            } catch (e) { driveBtn.disabled = false; if (errEl) { errEl.textContent = e.message; errEl.style.display = "block"; } }
+        };
+    }
 
     // שומר את מה שהוקלד בשדות לפני ציור מחדש (כדי שלחיצה על "כן/לא" לא תמחק עריכות)
     function captureInputs() {
