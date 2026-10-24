@@ -1,4 +1,4 @@
-const CACHE_NAME = "kcp-v69";
+const CACHE_NAME = "kcp-v71";
 const ASSETS = [
     "./",
     "./index.html",
@@ -70,6 +70,7 @@ const ASSETS = [
     "./js/cloud/driveApi.js",
     "./js/cloud/cloudCore.js",
     "./js/cloud/cloudGlue.js",
+    "./js/cloud/drivePicker.js",
     "./js/cloud/cloudUi.js",
     "./js/generator.js",
     "./js/recipeLabel.js",

@@ -22,6 +22,7 @@
 
 <h2>גיבוי ל-Google Drive (אופציונלי)</h2>
 <p>אם תבחר להתחבר עם חשבון Google, האפליקציה תבקש הרשאה אחת בלבד: <b>גישה לקבצים שהאפליקציה עצמה יצרה ב-Drive שלך</b> (הרשאת drive.file). האפליקציה יוצרת תיקייה וקובצי גיבוי משלה, שאתה רואה ב-Drive, ושומרת וקוראת רק אותם. היא <b>לא</b> רואה ולא ניגשת לשאר הקבצים שלך ב-Drive, ולא ניגשת לאימייל, אנשי קשר או כל מידע אחר בחשבון.</p>
+<p>אם תבחר קובץ מה-Drive שלך כדי לסרוק אותו (כפתור "Google Drive" בבחירת קובץ), הבורר של Google נותן לאפליקציה גישה <b>רק לקובץ שבחרת</b>. הקובץ יורד למכשיר שלך ועובר סריקה כמו כל קובץ אחר.</p>
 <p>את הגיבוי אפשר למחוק בכל עת ישירות מ-Google Drive, או לבטל את ההרשאה בעמוד <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>.</p>
 
 <h2>סריקת חשבוניות ובינה מלאכותית (אופציונלי)</h2>
@@ -55,7 +56,7 @@
 <h2>Where your data is stored</h2>
 <p>All data you enter (products, prices, recipes, dishes, invoices, suppliers, photos) is stored <b>only on your own device</b>, in the browser's storage. We do not run a server that stores your data and we have no access to it.</p>
 <h2>Google Drive backup (optional)</h2>
-<p>If you choose to sign in with Google, the app requests a single permission: access to files the app itself created in your Drive (the <code>drive.file</code> scope). The app creates its own folder and backup files, visible in your Drive, and reads and writes only those. It cannot see or access any of your other Drive files, your email, contacts, or other account data. You can delete the backup directly in Google Drive or revoke access at <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>.</p>
+<p>If you choose to sign in with Google, the app requests a single permission: access to files the app itself created in your Drive (the <code>drive.file</code> scope). The app creates its own folder and backup files, visible in your Drive, and reads and writes only those. It cannot see or access any of your other Drive files, your email, contacts, or other account data. If you pick a file from your Drive to scan it (the "Google Drive" button in the file chooser), Google's picker gives the app access to <b>only the file you chose</b>; it is downloaded to your device and scanned like any other file. You can delete the backup directly in Google Drive or revoke access at <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>.</p>
 <h2>Invoice scanning and AI (optional)</h2>
 <p>When you scan an invoice or product, the image or text is sent through a relay server (a Cloudflare Worker) to Google Gemini to read its contents, and the result is returned to your device. The image is <b>not stored</b> by us. The relay keeps only technical request counters (a random device ID and IP address) to limit usage and prevent abuse; they expire automatically after a short time. Use of Google Gemini is subject to <a href="https://policies.google.com/privacy">Google's Privacy Policy</a>. If you enter your own Gemini key in Settings, requests go directly from your device to Google.</p>
 <h2>Other services</h2>
