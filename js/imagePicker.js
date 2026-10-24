@@ -1,7 +1,7 @@
 // בורר תמונה/קובץ: מצלמה בתוך האפליקציה (עם חזרה לקלט capture אם לא זמינה) וגלריה/קבצים.
 import { openModal, closeModal, info } from "./ui.js";
 import { DOC_ACCEPT } from "./filePrep.js";
-import { driveButtonHtml, pickFromDrive, warmDrivePicker } from "./cloud/drivePicker.js";
+import { driveButtonHtml, pickFromDrive, warmDrivePicker, ONEDRIVE_LOGO } from "./cloud/drivePicker.js";
 
 export function openImagePicker({ title, hint, onFile }) {
     const overlay = openModal(`
@@ -10,7 +10,7 @@ export function openImagePicker({ title, hint, onFile }) {
             <button type="button" class="btn btn-accent" id="pick-camera">צלם</button>
             <button type="button" class="btn btn-secondary" id="pick-gallery">🖼️ גלריה</button>
         </div>
-        <button type="button" class="btn btn-secondary btn-block" id="pick-any" style="margin-top:8px;">📁 קבצים (PDF, Word, Excel, OneDrive)</button>
+        <button type="button" class="btn btn-secondary btn-block" id="pick-any" style="margin-top:8px;">${ONEDRIVE_LOGO}📁 קבצים (PDF, Word, Excel, OneDrive)</button>
         ${driveButtonHtml("pick-drive")}
         <input type="file" id="pick-file-camera" accept="image/*" capture="environment" style="display:none">
         <input type="file" id="pick-file-gallery" accept="image/*" style="display:none">
