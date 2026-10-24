@@ -14,7 +14,7 @@ export async function openOrderModal(supplier, onChanged) {
     const rowsHtml = products.map((p, i) => {
         const st = p.pantry_item_id ? stock.get(p.pantry_item_id) : null;
         const stockHint = st && Number.isFinite(Number(st.theoretical_quantity)) ? ` · מלאי תיאורטי ${+Number(st.theoretical_quantity).toFixed(2)}` : "";
-        const hint = `קנית ב-${escapeHtml(shortDate(p.last_date))}: ${p.last_qty != null ? +Number(p.last_qty).toFixed(3) : "?"}${p.last_price != null ? ` · ${cur()}${Number(p.last_price).toFixed(2)}` : ""}${stockHint}`;
+        const hint = `קנית בתאריך ${escapeHtml(shortDate(p.last_date))}: ${p.last_qty != null ? +Number(p.last_qty).toFixed(3) : "?"}${p.last_price != null ? ` · ${cur()}${Number(p.last_price).toFixed(2)}` : ""}${stockHint}`;
         return `<div class="item-row-inputs"><div class="top-line"><div style="flex:2;min-width:0;"><div style="font-weight:600;">${escapeHtml(p.name)}</div><div class="hint" style="margin:0;">${hint}</div></div>
             <input type="text" inputmode="decimal" data-oq="${i}" placeholder="כמות" style="width:84px;"></div></div>`;
     }).join("");

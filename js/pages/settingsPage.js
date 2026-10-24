@@ -226,7 +226,7 @@ export async function renderSettingsPage(container) {
             const text = await file.text();
             const s = inspectBackup(text); // בודק שהקובץ תקין לפני שנוגעים בנתונים
             const when = s.exportedAt ? new Date(s.exportedAt).toLocaleString("he-IL") : "לא ידוע";
-            const ok = await confirmDialog(`הקובץ מכיל ${s.pantry} מוצרים, ${s.recipes} מתכונים ו-${s.dishes} מנות (נוצר: ${when}).<br><br>השחזור יחליף את <b>כל</b> הנתונים הקיימים בטלפון.${s.noImages ? "<br>זה גיבוי בלי תמונות, ולכן תמונות חשבוניות שקיימות היום יימחקו." : ""}<br><br>לפני כן יורד אוטומטית עותק של המצב הנוכחי, לשמירה למקרה שתתחרט. להמשיך?`);
+            const ok = await confirmDialog(`הקובץ מכיל ${s.pantry} מוצרים, ${s.recipes} מתכונים, ${s.dishes} מנות. נוצר: ${when}.<br><br>השחזור יחליף את <b>כל</b> הנתונים הקיימים בטלפון.${s.noImages ? "<br>זה גיבוי בלי תמונות, ולכן תמונות חשבוניות שקיימות היום יימחקו." : ""}<br><br>לפני כן יורד אוטומטית עותק של המצב הנוכחי, לשמירה למקרה שתתחרט. להמשיך?`);
             if (!ok) { fileInput.value = ""; return; }
             await downloadSafetyCopy();
             await importAndReplace(text);
