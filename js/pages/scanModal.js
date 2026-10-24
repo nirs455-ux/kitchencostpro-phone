@@ -7,7 +7,7 @@ import { h, openModal, closeModal, toast, escapeHtml, info, busy, attemptClose, 
 import { compressImage } from "../imageUtil.js";
 import { addToQueue } from "../repo/scanQueue.js";
 import { FILE_ACCEPT, DOC_ACCEPT } from "../filePrep.js";
-import { driveButtonHtml, pickFromDrive, warmDrivePicker } from "../cloud/drivePicker.js";
+import { driveButtonHtml, pickFromDrive, warmDrivePicker, ONEDRIVE_LOGO } from "../cloud/drivePicker.js";
 import { logError } from "../errorLog.js";
 import { priceChanges } from "../repo/suppliersRepo.js";
 import { showPriceChangesDialog } from "./priceAlerts.js";
@@ -29,7 +29,7 @@ export async function openScanModal({ supplierAware, onDone, initialFile = null 
                 <button type="button" class="btn btn-accent" id="btn-pick-camera">צלם</button>
                 <button type="button" class="btn btn-secondary" id="btn-pick-gallery">🖼️ גלריה</button>
             </div>
-            <button type="button" class="btn btn-secondary btn-block" id="btn-pick-any" style="margin-top:8px;">📁 קבצים (PDF, Word, Excel, OneDrive)</button>
+            <button type="button" class="btn btn-secondary btn-block" id="btn-pick-any" style="margin-top:8px;">${ONEDRIVE_LOGO}📁 קבצים (PDF, Word, Excel, OneDrive)</button>
             ${driveButtonHtml("btn-pick-drive")}
             <input type="file" id="scan-file-camera" accept="image/*" capture="environment" style="display:none">
             <input type="file" id="scan-file-gallery" accept="image/*" style="display:none">
