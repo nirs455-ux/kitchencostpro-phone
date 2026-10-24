@@ -1,9 +1,9 @@
 // ספר מתכונים: מתכון נשמר גם כשחסרים רכיבים (טיוטה שאפשר להשלים אחר כך), המסמך המקורי נשמר איתו,
 // ויש תצוגת פרטים עם רשימת רכיבים לתווית והצהרת אלרגנים.
-import { listRecipesWithItems, saveRecipe, deleteRecipe, recipeDishCount, recipeParentCount, listSubRecipeOptions, setRecipeBase } from "../repo/recipesRepo.js";
+import { listRecipesWithItems, saveRecipe, deleteRecipe, recipeDishCount, recipeParentCount, listSubRecipeOptions, setRecipeBase, replaceIngredientWithSubRecipe } from "../repo/recipesRepo.js";
 import { listAllPantryItems, addPantryItem, setItemAllergens, clearItemAllergens, setEggSize } from "../repo/pantryRepo.js";
 import { getLabelNames, setLabelName } from "../repo/labelNamesRepo.js";
-import { resolveAllergens } from "../allergenResolve.js";
+import { resolveAllergens, labelNameOf, preparedWord } from "../allergenResolve.js";
 import { ALLERGENS, allergenLabels } from "../allergens.js";
 import { RECIPE_CATEGORIES, NON_FOOD_CATEGORIES, CATEGORY_GROUPS, UNIT_TYPES, UNIT_TYPE_LABELS } from "../constants.js";
 import { pricePerGram, itemCost as calcItemCost, effectivePrice } from "../formulas.js";
@@ -22,7 +22,7 @@ import { isStaffMode } from "../staff.js";
 import { listRow, groupsEl, orderCategories, matchesDeep, normalize } from "./listKit.js";
 import { requestNewProductFor } from "./producerPage.js";
 import { openNutritionLookup } from "./nutritionModal.js";
-import { getNutritionDb } from "../repo/nutritionRepo.js";
+import { getNutritionDb, applyRememberedNutrition } from "../repo/nutritionRepo.js";
 import { computeNutrition, perServing, NUTRIENTS } from "../nutrition.js";
 import { assignAutoSubs, subOf } from "../autoGroups.js";
 import { factorFor, scaleRecipe, fmtQty } from "../generator.js";
@@ -165,8 +165,18 @@ function printLabel(name, text) {
 async function openRecipeDetails(r, container, startTab = "recipe") {
     const rows = await dbGetAll("pantryItems");
     const byId = new Map(rows.map((p) => [p.id, p]));
-    const nutriDb = await getNutritionDb();
+    let nutriDb = await getNutritionDb();
     const labelNames = await getLabelNames(); // "שם בתווית" לכל מוצר (שום שלם 4 יחידות -> שום)
+    // מוצר בלי ערכים תזונתיים שיש לו שם נקי שכבר בחרת עבורו בעבר: ממלאים אוטומטית (נזכר מבחירה קודמת)
+    try {
+        const seenSrc = new Map();
+        for (const i of r.items) {
+            const row = byId.get(i.pantry_item_id);
+            const src = row && row.parent_id ? byId.get(row.parent_id) || row : row;
+            if (src) seenSrc.set(src.id, src);
+        }
+        nutriDb = await applyRememberedNutrition([...seenSrc.values()], (row) => labelNameOf(row, byId, labelNames));
+    } catch (e) { /* הזיכרון הוא רק עזר */ }
     let servingG = 0; // גודל מנה לתצוגה (לא נשמר)
     const missing = r.draft_ingredients || [];
     let tab = r.status === "draft" && startTab === "gen" ? "recipe" : startTab;
@@ -174,7 +184,27 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
     let lastDrawnTab = null; // כדי לשמור את מיקום הגלילה כשמציירים מחדש באותה לשונית
     let scaleGrams = null; // כמות בסיס מבוקשת (להגדלה)
     let gen = { mode: "factor", value: 2, round: true }; // מחולל: הגדלה/הקטנה
-    const nameOf = (i) => (byId.get(i.pantry_item_id) || {}).name || i.ingredient_name;
+    // שם חומר הגלם במסכי המתכון: שם נקי ("שום" ולא "שום שלם 4 יחידות"). במזווה ובחשבוניות נשאר השם המלא.
+    const nameOf = (i) => { const row = byId.get(i.pantry_item_id); return row ? labelNameOf(row, byId, labelNames) : i.ingredient_name; };
+    const nameFn = (src) => labelNameOf(src, byId, labelNames);
+    // מוצר מעובד (שום מטוגן): פותח טופס מתכון חדש עם חומר הגלם (שום) וזוכה שורה ריקה לשמן, ובסיום מציע להחליף אותו במתכון הזה
+    const startPreparedRecipe = (pid) => {
+        const row = byId.get(pid);
+        if (!row) return;
+        const pname = labelNameOf(row, byId, labelNames);
+        const word = preparedWord(pname) || preparedWord(row.name);
+        const base = pname.split(/\s+/).filter((w) => w.replace(/["'`]/g, "") !== word).join(" ").trim();
+        const baseRow = base ? [...byId.values()].find((p) => !p.parent_id && p.id !== pid && labelNameOf(p, byId, labelNames) === base) : null;
+        const draft = {
+            manual: true, name: pname, ingredients: [baseRow ? { pantry_item_id: baseRow.id, quantity_g: null } : { blank: true }, { blank: true }], source_file: null,
+            onSaved: async (newId) => {
+                if (await confirmDialog(`המתכון "${escapeHtml(pname)}" נשמר. להחליף אותו במתכון "${escapeHtml(r.name)}" במקום המוצר מהמזווה? (הכמויות נשארות)`)) {
+                    try { await replaceIngredientWithSubRecipe(r.id, pid, newId); toast("הוחלף"); } catch (e) { toast(e.message); }
+                }
+            },
+        };
+        openRecipeModal(null, container, draft);
+    };
     const exists = (i) => (i.sub_recipe_id != null ? !i.sub_missing : byId.has(i.pantry_item_id)); // האם הרכיב (מוצר או תת-מתכון) עדיין קיים
     const eggNotes = recipeEggSummary(r.items, rows);
     const items = () => r.items.map((i) => ({ id: i.pantry_item_id, name: nameOf(i), quantity_g: i.quantity_g }));
@@ -272,13 +302,13 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
             : '<div class="hint-warn">אין רכיבים עם כמות.</div>';
         } else if (tab === "nutri") {
             const fin = r.final_weight > 0 && !r.is_auto_weight ? r.final_weight : 0;
-            const N = computeNutrition({ items: r.items, byId, nutritionById: nutriDb, weightG: fin });
+            const N = computeNutrition({ items: r.items, byId, nutritionById: nutriDb, weightG: fin, nameFn });
             const sv = servingG > 0 ? perServing(N.per100, servingG) : null;
             body = N.rows.length ? `
             <div class="hint" style="margin-bottom:8px;">${fin > 0 ? `הערכים מחולקים במשקל הסופי של המתכון: <b>${Math.round(fin)} גרם</b>.` : `הערכים מחולקים במשקל הגולמי (סכום הרכיבים, ${Math.round(N.rawG)} גרם). אם יש ירידה בבישול או בסינון, הזן משקל סופי בעריכת המתכון.`}</div>
             ${N.missing.length ? `<div class="hint-warn">חסרים ערכים ל: ${N.missing.map(escapeHtml).join(", ")}. הערכים מכסים ${N.coveragePct}% ממשקל הרכיבים.</div>` : ""}
             <table class="simple"><thead><tr><th>רכיב</th><th>גרם</th><th>קק"ל ל-100 ג'</th><th></th></tr></thead><tbody>
-                ${N.rows.map((x) => `<tr><td>${escapeHtml(x.name)}</td><td>${+x.grams.toFixed(1)}</td><td>${x.has && x.per100.kcal != null ? x.per100.kcal : "—"}</td><td><button type="button" class="btn btn-secondary btn-small mgr-only" data-nu-open="${x.id}">${x.has ? "✎" : "חפש"}</button></td></tr>`).join("")}
+                ${N.rows.map((x) => `<tr><td>${escapeHtml(x.name)}${preparedWord(x.name) ? ' <span title="מוצר מעובד: עדיף ליצור אותו כמתכון (תת-מתכון)">⚠</span>' : ""}${x.has && nutriDb[x.id] && nutriDb[x.id]._source === "remembered" ? ' <span class="muted" title="נזכר מבחירה קודמת">↺</span>' : ""}</td><td>${+x.grams.toFixed(1)}</td><td>${x.has && x.per100.kcal != null ? x.per100.kcal : "—"}</td><td><button type="button" class="btn btn-secondary btn-small mgr-only" data-nu-open="${x.id}">${x.has ? "✎" : "חפש"}</button></td></tr>`).join("")}
             </tbody></table>
             <div class="card-title" style="margin:12px 0 4px;">סיכום ${info("ערכים ל-100 גרם מוצר מוגמר, לפי סכום הרכיבים. במנה: מזינים גודל מנה בק\"ג ורואים את הערכים שלה. הערכים הם הערכה לפי מאגר חומרי גלם, בלי שינויים בבישול.")}</div>
             <div class="field"><label>גודל מנה (ק"ג, לא חובה)</label><input type="text" inputmode="decimal" id="nu-serving" value="${servingG > 0 ? gramsToKgText(servingG) : ""}" placeholder="למשל 0.150"></div>
@@ -364,7 +394,7 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
             printRecipe(r, lines, fmtQty(r.items.reduce((n, i) => n + (Number(i.quantity_g) || 0), 0)));
         };
         const waBtn = overlay.querySelector("#d-wa-recipe");
-        if (waBtn) waBtn.onclick = () => { window.open(whatsappUrl(recipeShareText(r)), "_blank", "noopener"); };
+        if (waBtn) waBtn.onclick = () => { window.open(whatsappUrl(recipeShareText({ ...r, direct_items: r.direct_items.map((i) => ({ ...i, ingredient_name: nameOf(i) })) })), "_blank", "noopener"); };
         const mkp = overlay.querySelector("#d-make-product");
         if (mkp) mkp.onclick = () => { requestNewProductFor(r.id); closeModal(); location.hash = "producer"; };
         const src = overlay.querySelector("#d-source");
@@ -399,12 +429,12 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
 
         // ---- לשונית תזונה ----
         overlay.querySelectorAll("[data-nu-open]").forEach((b2) => {
-            b2.onclick = () => { const id = Number(b2.dataset.nuOpen); const row = byId.get(id); openNutritionLookup({ name: row ? row.name : "", pantryId: id, onDone: () => openRecipeDetails(r, container, "nutri") }); };
+            b2.onclick = () => { const id = Number(b2.dataset.nuOpen); const row = byId.get(id); openNutritionLookup({ name: row ? row.name : "", cleanName: row ? labelNameOf(row, byId, labelNames) : "", pantryId: id, onDone: () => openRecipeDetails(r, container, "nutri"), onCreateRecipe: row ? () => startPreparedRecipe(id) : null }); };
         });
         const nuServ = overlay.querySelector("#nu-serving");
         if (nuServ) nuServ.onchange = () => { servingG = textToGrams(nuServ.value) || 0; draw(); };
         const nutriText = () => {
-            const N = computeNutrition({ items: r.items, byId, nutritionById: nutriDb, weightG: r.final_weight > 0 && !r.is_auto_weight ? r.final_weight : 0 });
+            const N = computeNutrition({ items: r.items, byId, nutritionById: nutriDb, weightG: r.final_weight > 0 && !r.is_auto_weight ? r.final_weight : 0, nameFn });
             return [`${r.name} - ערכים תזונתיים ל-100 גרם`, ...NUTRIENTS.map((n) => `${n.label}: ${N.per100[n.key]}`), `(חושב על ${Math.round(N.weightG)} גרם. הערכה בלבד)`].join("\n");
         };
         const nuCopy = overlay.querySelector("#nu-copy");
@@ -536,9 +566,9 @@ async function openRecipeModal(existing, container, draft = null) {
 
     const overlay = openModal(`
         <div class="pg-top"><button type="button" class="pg-back" id="btn-cancel" aria-label="חזרה">→</button>
-            <div class="pg-title">${isEdit ? (existing.status === "draft" ? "השלמת מתכון (טיוטה)" : "עריכת מתכון") : draft ? "מתכון חדש (מסריקה, בדוק לפני שמירה)" : "מתכון חדש"}</div></div>
+            <div class="pg-title">${isEdit ? (existing.status === "draft" ? "השלמת מתכון (טיוטה)" : "עריכת מתכון") : draft && draft.manual ? "מתכון חדש למוצר מעובד" : draft ? "מתכון חדש (מסריקה, בדוק לפני שמירה)" : "מתכון חדש"}</div></div>
         <div class="pg-body">
-            ${draft ? scanNoticeHtml(draft) : ""}
+            ${draft && draft.manual ? '<div class="hint-warn">הוסף את הכמויות (למשל שום ושמן), ומשקל סופי אחרי הטיגון אם יש ירידה. אחרי השמירה תוכל להחליף את המוצר במתכון הזה.</div>' : draft ? scanNoticeHtml(draft) : ""}
             <div class="field"><label>שם המתכון</label><input type="text" id="f-name" value="${src ? escapeHtml(src.name) : ""}"></div>
             <div class="field">
                 <label>קטגוריה</label>
@@ -791,6 +821,7 @@ async function openRecipeModal(existing, container, draft = null) {
         for (const d of existing.draft_ingredients || []) addRow({ pantry_item_id: null, quantity_g: null, um: d });
     } else if (draft && draft.ingredients.length) {
         for (const ing of draft.ingredients) {
+            if (ing.blank) { addRow(); continue; }
             addRow({
                 pantry_item_id: ing.pantry_item_id, quantity_g: ing.quantity_g,
                 um: ing.pantry_item_id ? null : { name: ing.original_name, quantity: ing.original_quantity, unit: ing.original_unit },
@@ -831,9 +862,10 @@ async function openRecipeModal(existing, container, draft = null) {
         if (draftIngredients.length && !window.confirm(`${draftIngredients.length} רכיבים עדיין לא במזווה:\n${draftIngredients.map((d) => d.name).join(", ")}\n\nלשמור כטיוטה ולהשלים אותם אחר כך?`)) return;
         try {
             for (const [eggId, size] of eggSizeChanges) await setEggSize(eggId, size);
-            await saveRecipe(existing ? existing.id : null, data);
+            const savedId = await saveRecipe(existing ? existing.id : null, data);
             closeModal();
             toast(draftIngredients.length ? "נשמר כטיוטה - אפשר להשלים בכל שלב" : "נשמר");
+            if (draft && draft.onSaved) { try { await draft.onSaved(savedId); } catch (e2) { /* ההחלפה היא רק עזר */ } }
             renderRecipesPage(container);
         } catch (e) {
             el.textContent = e.message;

@@ -1,24 +1,30 @@
-// חלון ערכים תזונתיים למוצר: חיפוש ב-USDA (עם תרגום השם לאנגלית), חיפוש לפי ברקוד ב-Open Food Facts, או הזנה ידנית.
+// חלון ערכים תזונתיים למוצר: חיפוש ב-USDA (עם תרגום השם לאנגלית, דירוג ו-3 תוצאות טובות בלבד), חיפוש לפי ברקוד ב-Open Food Facts, צילום תווית, או הזנה ידנית.
+// בחירה ממאגר USDA נזכרת לפי השם הנקי, ומוצר אחר עם אותו שם נקי מקבל אותה אוטומטית.
 import { openModal, closeModal, toast, escapeHtml, h, busy } from "../ui.js";
-import { getSetting } from "../repo/settingsRepo.js";
 import { getAgentKey } from "../agent.js";
-import { getNutritionDb, saveNutrition, removeNutrition, getUsdaKey, toEnglishFoodName, searchUsda, lookupBarcode } from "../repo/nutritionRepo.js";
-import { NUTRIENTS } from "../nutrition.js";
+import { getNutritionDb, saveNutrition, removeNutrition, getUsdaKey, toEnglishFoodName, searchUsda, lookupBarcode, rememberChoice } from "../repo/nutritionRepo.js";
+import { NUTRIENTS, rankUsdaFoods } from "../nutrition.js";
+import { preparedWord } from "../allergenResolve.js";
 import { openLabelScan } from "./labelModal.js";
 
-const SRC_LABEL = { usda: "USDA", off: "Open Food Facts", manual: "הזנה ידנית", label: "תווית יצרן" };
+const SRC_LABEL = { usda: "USDA", off: "Open Food Facts", manual: "הזנה ידנית", label: "תווית יצרן", remembered: "נזכר מבחירה קודמת" };
+const TOP = 3; // כמה התאמות מוצגות מיד; השאר תחת "הצג עוד"
 
 const summary = (p) => ["kcal", "protein", "fat", "carbs"].filter((k) => p[k] != null).map((k) => `${NUTRIENTS.find((n) => n.key === k).short} ${+Number(p[k]).toFixed(1)}`).join(" · ");
 
-// onSaved(db) נקרא אחרי שמירה או הסרה
-export async function openNutritionLookup({ name, pantryId, onSaved, onDone }) {
+// name = שם המוצר במזווה, cleanName = שם נקי של חומר הגלם (לחיפוש ולזיכרון). onSaved(db) נקרא אחרי שמירה או הסרה
+// onCreateRecipe: אם הועבר, בהערת "מוצר מעובד" מופיע כפתור שיוצר מתכון למוצר (למשל שום מטוגן = שום + שמן)
+export async function openNutritionLookup({ name, cleanName, pantryId, onSaved, onDone, onCreateRecipe }) {
+    const shown = cleanName || name;
     const db = await getNutritionDb();
     const cur = db[pantryId] || null;
+    const prepared = preparedWord(name) || preparedWord(shown);
     const ov = openModal(`
-        <h2>ערכים תזונתיים: ${escapeHtml(name)}</h2>
+        <h2>ערכים תזונתיים: ${escapeHtml(shown)}</h2>
+        ${prepared ? `<div class="hint-warn">השם "${escapeHtml(prepared)}" מרמז על מוצר מעובד, וערכי המאגר הם לחומר גלם. אם זה מוצר שהכנת (למשל שום מטוגן), עדיף ליצור אותו כמתכון (למשל שום + שמן) ולהשתמש בו כתת-מתכון: התזונה תחושב מהרכיבים האמיתיים.${onCreateRecipe ? '<div style="margin-top:8px;"><button type="button" class="btn btn-primary btn-small" id="nu-make-recipe">➕ צור מתכון למוצר הזה</button></div>' : ""}</div>` : ""}
         ${cur ? `<div class="hint-warn" style="background:var(--ok-soft);border-color:var(--ok);">יש ערכים שמורים (${escapeHtml(SRC_LABEL[cur._source] || "")}${cur._label ? ": " + escapeHtml(cur._label) : ""}). אפשר להחליף או להסיר.</div>` : ""}
         <div class="card-title" style="margin:8px 0 4px;">חיפוש במאגר USDA</div>
-        <div class="field" style="margin:0 0 6px;"><input type="text" id="nu-q" value="${escapeHtml(name)}" placeholder="שם המוצר"></div>
+        <div class="field" style="margin:0 0 6px;"><input type="text" id="nu-q" value="${escapeHtml(shown)}" placeholder="שם המוצר"></div>
         <button type="button" class="btn btn-secondary btn-small" id="nu-search">🔍 חפש</button>
         <div id="nu-results" style="margin-top:8px;"></div>
         <div class="card-title" style="margin:14px 0 4px;">מוצר ארוז: צילום התווית</div>
@@ -34,21 +40,26 @@ export async function openNutritionLookup({ name, pantryId, onSaved, onDone }) {
         <div class="modal-actions">${cur ? '<button type="button" class="btn btn-danger" id="nu-del">הסר ערכים</button>' : ""}<button type="button" class="btn btn-secondary" id="nu-close">סגור</button></div>`);
 
     const save = async (per100, source, label) => {
-        try { const newDb = await saveNutrition(pantryId, per100, { source, label }); closeModal(); toast("נשמר"); if (onSaved) onSaved(newDb); if (onDone) onDone(); }
-        catch (e) { toast(e.message); }
+        try {
+            const newDb = await saveNutrition(pantryId, per100, { source, label });
+            if (source === "usda") await rememberChoice(shown, per100, label); // זיכרון לפי שם נקי
+            closeModal(); toast("נשמר"); if (onSaved) onSaved(newDb); if (onDone) onDone();
+        } catch (e) { toast(e.message); }
     };
-    const rowFor = (title, sub, per100, source, label) => {
-        const row = h(`<div class="pk-row" style="cursor:pointer;"><div class="pk-name">${escapeHtml(title)}</div><div class="pk-hint">${escapeHtml(sub)}</div></div>`);
+    const rowFor = (title, sub, per100, source, label, best = false) => {
+        const row = h(`<div class="pk-row" style="cursor:pointer;${best ? "border:2px solid var(--ok);border-radius:10px;" : ""}"><div class="pk-name">${best ? "✅ " : ""}${escapeHtml(title)}</div><div class="pk-hint">${best ? "ההצעה הטובה ביותר · " : ""}${escapeHtml(sub)}</div></div>`);
         row.onclick = () => save(per100, source, label);
         return row;
     };
 
     ov.querySelector("#nu-close").onclick = () => { closeModal(); if (onDone) onDone(); };
+    const mk = ov.querySelector("#nu-make-recipe");
+    if (mk) mk.onclick = () => { closeModal(); onCreateRecipe(); };
     ov.querySelector("#nu-label").onclick = () => { closeModal(); openLabelScan({ item: { id: pantryId, name }, onDone: () => { if (onDone) onDone(); } }); };
     const del = ov.querySelector("#nu-del");
     if (del) del.onclick = async () => { const newDb = await removeNutrition(pantryId); closeModal(); toast("הוסר"); if (onSaved) onSaved(newDb); if (onDone) onDone(); };
 
-    ov.querySelector("#nu-search").onclick = busy(async () => {
+    const runSearch = busy(async () => {
         const box = ov.querySelector("#nu-results");
         box.innerHTML = '<div class="hint">מחפש...</div>';
         const q = ov.querySelector("#nu-q").value;
@@ -57,10 +68,18 @@ export async function openNutritionLookup({ name, pantryId, onSaved, onDone }) {
         box.innerHTML = "";
         if (error) { box.innerHTML = `<div class="hint-warn">${escapeHtml(error)}</div>`; return; }
         if (!foods.length) { box.innerHTML = `<div class="hint">לא נמצאו תוצאות עבור "${escapeHtml(en)}". נסה שם באנגלית (למשל olive oil).</div>`; return; }
-        box.appendChild(h(`<div class="hint" style="margin-bottom:4px;">חיפשתי: ${escapeHtml(en)}. בחר את ההתאמה הכי קרובה (ל-100 גרם):</div>`));
-        for (const f of foods) box.appendChild(rowFor(f.name, summary(f.per100), f.per100, "usda", f.name));
+        const ranked = rankUsdaFoods(foods, en);
+        box.appendChild(h(`<div class="hint" style="margin-bottom:4px;">חיפשתי: ${escapeHtml(en)}. ההתאמות הטובות ביותר (ל-100 גרם), מסודרות לפי קרבה לחומר גלם:</div>`));
+        ranked.slice(0, TOP).forEach((f, i) => box.appendChild(rowFor(f.name, summary(f.per100), f.per100, "usda", f.name, i === 0)));
+        if (ranked.length > TOP) {
+            const more = h(`<button type="button" class="btn-link" style="margin-top:6px;">הצג עוד ${ranked.length - TOP} אפשרויות</button>`);
+            more.onclick = () => { more.remove(); ranked.slice(TOP).forEach((f) => box.appendChild(rowFor(f.name, summary(f.per100), f.per100, "usda", f.name))); };
+            box.appendChild(more);
+        }
     });
+    ov.querySelector("#nu-search").onclick = runSearch;
     ov.querySelector("#nu-q").addEventListener("keydown", (e) => { if (e.key === "Enter") ov.querySelector("#nu-search").click(); });
+    if (!cur && !prepared) runSearch.call(ov.querySelector("#nu-search")); // אין עדיין ערכים: מציעים מיד את ההתאמה הטובה ביותר
 
     ov.querySelector("#nu-bc-go").onclick = busy(async () => {
         const box = ov.querySelector("#nu-bc-res");
