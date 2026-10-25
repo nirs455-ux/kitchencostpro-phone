@@ -31,7 +31,7 @@ export function recipeShareText(recipe) {
     const items = [...(recipe.direct_items || recipe.items || [])].sort((a, b) => (Number(b.quantity_g) || 0) - (Number(a.quantity_g) || 0));
     if (items.length) {
         lines.push("", "רכיבים:");
-        for (const i of items) lines.push(`• ${i.sub_recipe_id != null ? "📖 " : ""}${i.ingredient_name || ""} - ${qtyText(i.quantity_g)}`);
+        for (const i of items) lines.push(`• ${i.sub_recipe_id != null ? "📖 " : ""}${i.ingredient_name || ""} - ${i.unit_count ? +Number(i.quantity_g).toFixed(2) + " יחידות" : qtyText(i.quantity_g)}`);
     }
     for (const d of recipe.draft_ingredients || []) lines.push(`• ${d.name}${d.quantity != null ? " - " + d.quantity + (d.unit ? " " + d.unit : "") : ""}`);
     if (Number(recipe.final_weight) > 0) lines.push("", `משקל סופי: ${qtyText(recipe.final_weight)}`);

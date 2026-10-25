@@ -25,6 +25,9 @@ export function effectivePrice(price, yieldPct, isFrozen) {
     return pyRound(price / (yieldFactor * iceFactor), 2);
 }
 
+// מוצר ביחידות בלי משקל ליחידה (למשל לחמניה): הכמות במתכון/מנה היא מספר יחידות, והעלות = יחידות x מחיר ליחידה. אין לו משקל לחישובי משקל/תזונה.
+export const isCountItem = (row) => !!row && row.unit_type === "unit" && !(Number(row.unit_amount) > 0);
+
 // ממיר את המחיר האמיתי של מרכיב למחיר-לגרם אחיד, לשימוש במתכונים.
 export function pricePerGram(item) {
     const eff = effectivePrice(item.price, item.yield_pct, item.is_frozen);

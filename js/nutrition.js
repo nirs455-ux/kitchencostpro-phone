@@ -71,7 +71,7 @@ export function computeNutrition({ items, byId, nutritionById, weightG, nameFn =
     const rowsMap = new Map();
     let rawG = 0;
     for (const it of items || []) {
-        const grams = Number(it.quantity_g) || 0;
+        const grams = it.unit_count ? 0 : Number(it.quantity_g) || 0; // יחידות בלי משקל: אין משקל לחשב
         if (!(grams > 0)) continue;
         const row = get(it.pantry_item_id);
         const src = row && row.parent_id ? get(row.parent_id) || row : row; // תוצר מפורק יורש מחומר הגלם

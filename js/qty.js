@@ -56,3 +56,30 @@ export function qtyWarning(text, { liquid = false } = {}) {
     if (kg > 0 && kg < 0.0005) return `פחות מחצי ${small}. בטוח?`;
     return null;
 }
+
+// מוצר ספירה (יחידות בלי משקל, למשל לחמניה): מקלידים מספר יחידות רגיל. "2" = 2 יחידות. null אם ריק או לא תקין
+export function textToCount(text) {
+    if (text == null) return null;
+    const t = String(text).trim().replace(",", ".");
+    if (t === "" || !/^\d*\.?\d+$|^\d+\.$/.test(t)) return null;
+    const n = parseFloat(t);
+    return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+export function countToText(n) {
+    n = Number(n);
+    return Number.isFinite(n) && n > 0 ? String(+n.toFixed(4)) : "";
+}
+
+export function describeCount(text) {
+    const n = textToCount(text);
+    return n == null ? "" : `= ${n} יחידות`;
+}
+
+export function countWarning(text) {
+    const raw = String(text == null ? "" : text).trim();
+    if (raw !== "" && textToCount(raw) == null) return "לא הבנתי את המספר. כותבים מספר יחידות.";
+    const n = textToCount(raw);
+    if (n != null && n > 1000) return `${n} יחידות? בטוח?`;
+    return null;
+}

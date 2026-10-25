@@ -72,7 +72,7 @@ export function niceRound(g) {
 export function factorFor({ mode, value, currentWeight }) {
     const v = Number(value);
     if (!(v > 0)) return null;
-    if (mode === "weight") return currentWeight > 0 ? v / currentWeight : null;
+    if (mode === "weight" || mode === "ingredient") return currentWeight > 0 ? v / currentWeight : null; // currentWeight: המשקל הכולל, או הכמות הנוכחית של הרכיב שנבחר
     return v;
 }
 
@@ -82,7 +82,7 @@ export function scaleRecipe(items, factor, rows, { round = true } = {}) {
     const byId = new Map(rows.map((r) => [r.id, r]));
     const out = items.map((i) => {
         const raw = Number(i.quantity_g) * factor;
-        const grams = i.egg_part ? Math.round(raw * 100) / 100 : round ? niceRound(raw) : Math.round(raw * 100) / 100;
+        const grams = i.egg_part || i.unit_count ? Math.round(raw * 100) / 100 : round ? niceRound(raw) : Math.round(raw * 100) / 100; // יחידות בלי משקל: מספר יחידות, לא מעגלים לגרמים
         return { ...i, grams, cost: (Number(i.item_cost) || 0) * factor };
     });
     // ביצים: חישוב מחדש לפי הגרמים המוגדלים
@@ -105,7 +105,7 @@ export function scaleRecipe(items, factor, rows, { round = true } = {}) {
     }
     return {
         rows: out,
-        totalGrams: Math.round(out.reduce((n, o) => n + o.grams, 0) * 100) / 100,
+        totalGrams: Math.round(out.reduce((n, o) => n + (o.unit_count ? 0 : o.grams), 0) * 100) / 100,
         totalCost: Math.round(out.reduce((n, o) => n + o.cost, 0) * 100) / 100,
         eggs,
     };

@@ -18,7 +18,7 @@ export function buildLabel({ items, pantryById, showPercent = false, labelNames 
 
     for (const it of items || []) {
         const row = get(it.pantry_item_id);
-        const grams = Number(it.quantity_g) || 0;
+        const grams = it.unit_count ? 0 : Number(it.quantity_g) || 0; // יחידות בלי משקל: מופיע ברשימת הרכיבים, בלי אחוז
         const res = row ? resolveAllergens(row, pantryById, labelNames) : null;
         const name = (res && res.name) || it.ingredient_name || "";
         if (!name) continue;
@@ -30,7 +30,7 @@ export function buildLabel({ items, pantryById, showPercent = false, labelNames 
     }
 
     const ingredients = [...merged.entries()]
-        .map(([name, grams]) => ({ name, grams: Math.round(grams * 100) / 100, pct: total > 0 ? (grams / total) * 100 : null }))
+        .map(([name, grams]) => ({ name, grams: Math.round(grams * 100) / 100, pct: total > 0 && grams > 0 ? (grams / total) * 100 : null }))
         .sort((a, b) => b.grams - a.grams || a.name.localeCompare(b.name, "he"));
 
     // סדר האלרגנים כפי שהוגדר ברשימה הקבועה
