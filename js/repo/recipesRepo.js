@@ -40,7 +40,12 @@ export async function recipeParentCount(id) {
 // selfId: המתכון שנשמר כרגע (כדי לחסום מעגל: מתכון שמכיל את עצמו)
 // cache (לא חובה): { pantry: Map, recipes: Map, recipeItems: [] } שנטענו פעם אחת (חישוב מחדש של הכול). בלעדיו קוראים מהמסד לכל רכיב.
 // שורה שהוקלדה באחוזים: הגרמים נשמרים ב-quantity_g (כך כל החישובים נשארים כמו שהיו), והאחוז נשמר רק כדי להציג אותו שוב בעריכה
-const pctFields = (it) => (it.pct_mode === "base" || it.pct_mode === "total") && Number(it.pct) > 0 ? { pct: Number(it.pct), pct_mode: it.pct_mode } : {};
+const EST_MODES = ["est_s", "est_m", "est_l", "juice"];
+const pctFields = (it) => ({
+    ...((it.pct_mode === "base" || it.pct_mode === "total") && Number(it.pct) > 0 ? { pct: Number(it.pct), pct_mode: it.pct_mode } : {}),
+    // הערכה: יחידות לפי משקל ממוצע (est_s/m/l) או מ"ל מיץ שמחושבים לפירות (juice). quantity_g נשמר בגרמים
+    ...(EST_MODES.includes(it.est_mode) && Number(it.est_n) > 0 ? { est_mode: it.est_mode, est_n: Number(it.est_n) } : {}),
+});
 
 export async function resolveRecipeItems(items, { selfId = null, cache = null } = {}) {
     const getRecipe = async (id) => (cache ? cache.recipes.get(id) : await dbGet("recipes", id));
