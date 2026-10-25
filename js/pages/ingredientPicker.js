@@ -66,7 +66,7 @@ export async function openIngredientPicker({ title = "בחר מרכיב", items,
     layer.className = "picker";
     document.body.appendChild(layer);
     const tabList = tabs && tabs.length > 1 ? tabs : null;
-    const st = { tab: tabList ? tabList[0].key : null, q: "", cat: "", sub: "", open: null };
+    const st = { tab: tabList ? tabList[0].key : null, q: "", cat: "", sub: "", open: null, openGroups: new Set() };
     let restoreScroll = 0;
     if (memory && (!tabList || tabList.some((t) => t.key === memory.tab))) {
         st.tab = memory.tab; st.cat = memory.cat; st.sub = memory.sub; // החיפוש מתנקה בכל פתיחה
@@ -164,14 +164,32 @@ export async function openIngredientPicker({ title = "בחר מרכיב", items,
             const groups = new Map();
             for (const i of shown) { const g = groupBy(i); if (!groups.has(g)) groups.set(g, []); groups.get(g).push(i); }
             const order = st.cat ? [...groups.keys()].sort((a, b) => a.localeCompare(b, "he")) : orderCategories([...groups.keys()]);
+            // קטגוריות סגורות: רואים רק שם ומספר, ולחיצה פותחת את הרשימה שלה. קבוצה בודדת (או בלי שם) מוצגת פתוחה.
+            const single = order.length <= 1;
             for (const g of order) {
-                if (g) html += `<div class="pk-head">${escapeHtml(g)} <span class="pk-n">${groups.get(g).length}</span></div>`;
-                html += groups.get(g).map(mk).join("");
+                if (g && !single) {
+                    const isOpen = st.openGroups.has(g);
+                    html += `<div class="pk-acc" data-grp="${escapeHtml(g)}"><span>${isOpen ? "▾" : "◂"} ${escapeHtml(g)}</span><span class="pk-n">${groups.get(g).length}</span></div>`;
+                    if (isOpen) html += groups.get(g).map(mk).join("");
+                } else {
+                    if (g) html += `<div class="pk-head">${escapeHtml(g)} <span class="pk-n">${groups.get(g).length}</span></div>`;
+                    html += groups.get(g).map(mk).join("");
+                }
             }
             list.innerHTML = html;
         }
 
         layer.querySelector("#pk-close").onclick = close;
+        list.querySelectorAll(".pk-acc").forEach((h) => {
+            h.onclick = () => {
+                const g = h.dataset.grp;
+                if (st.openGroups.has(g)) st.openGroups.delete(g); else st.openGroups.add(g);
+                const keep = list.scrollTop;
+                draw();
+                const l2 = layer.querySelector("#pk-list");
+                if (l2) l2.scrollTop = keep;
+            };
+        });
         const newBtn = layer.querySelector("#pk-new");
         if (newBtn) newBtn.onclick = () => drawCreate(st.q.trim());
         layer.querySelectorAll("#pk-tabs [data-tab]").forEach((b) => { b.onclick = () => { st.tab = b.dataset.tab; st.cat = ""; st.sub = ""; draw(); }; });

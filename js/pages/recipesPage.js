@@ -189,9 +189,20 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
     const genWeight = () => r.items.reduce((n, i) => n + (i.unit_count ? 0 : Number(i.quantity_g) || 0), 0);
     // רכיבים שאפשר לבסס עליהם את ההגדלה: עם כמות במשקל (לא יחידות בלי משקל)
     const genIngs = () => r.items.map((i, idx) => ({ i, idx })).filter((x) => !x.i.unit_count && Number(x.i.quantity_g) > 0);
-    const genIngQty = () => { const it = r.items[gen.ingIdx]; return it && !it.unit_count ? Number(it.quantity_g) || 0 : 0; };
-    // הכמות שהמקדם מחושב ממנה: המשקל הכולל, או הכמות הנוכחית של הרכיב שנבחר
-    const genBase = () => (gen.mode === "ingredient" ? genIngQty() : genWeight());
+    // המקדם: לפי "כמה יש לי" (המגביל ביותר מבין הרכיבים שמולאו), או לפי מספר או משקל סופי
+    const genFactor = () => {
+        if (gen.mode === "have") {
+            let best = null, lim = null;
+            for (const x of genIngs()) {
+                const h = textToGrams(gen.have[x.idx] || "");
+                if (h > 0) { const f = h / Number(x.i.quantity_g); if (best == null || f < best) { best = f; lim = x; } }
+            }
+            return { f: best == null ? 1 : best, lim };
+        }
+        return { f: factorFor({ mode: gen.mode, value: gen.value, currentWeight: genWeight() }), lim: null };
+    };
+    // ברירת מחדל: "כמה יש לי" (מתכון אומר 900 פלפלים ויש רק 710: מקלידים 0.710 וכל השאר מתעדכן)
+    gen = { ...gen, mode: "have", have: {} };
     // שם חומר הגלם במסכי המתכון: שם נקי ("שום" ולא "שום שלם 4 יחידות"). במזווה ובחשבוניות נשאר השם המלא.
     const nameOf = (i) => { const row = byId.get(i.pantry_item_id); return row ? labelNameOf(row, byId, labelNames) : i.ingredient_name; };
     const nameFn = (src) => labelNameOf(src, byId, labelNames);
@@ -328,17 +339,20 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
             : '<div class="hint-warn">אין רכיבים עם כמות.</div>';
         } else if (tab === "gen") {
             const curWeight = genWeight();
-            const f = factorFor({ mode: gen.mode, value: gen.value, currentWeight: genBase() });
+            const gf = genFactor();
+            const f = gf.f;
             const sc = f ? scaleRecipe(r.items, f, rows, { round: gen.round }) : null;
             body = `
             <div class="card">
                 <div class="card-title">הגדלה / הקטנה ${info("מכפילים את כל המתכון. עיגול נוח מעגל כמויות קטנות לערכים שקל לשקול (ביצים לא מעוגלות, כי הן נספרות בנפרד). העלות מחושבת מחדש, כולל מספר הביצים לשבירה.")}</div>
                 <div class="chips" id="g-quick">${[[0.25, "÷4"], [1 / 3, "÷3"], [0.5, "÷2"], [1, "×1"], [2, "×2"], [3, "×3"], [4, "×4"], [5, "×5"]].map(([v, l]) => `<button type="button" class="chip ${gen.mode === "factor" && Math.abs(Number(gen.value) - v) < 1e-6 ? "active" : ""}" data-q="${v}">${l}</button>`).join("")}</div>
                 <div class="form-row">
-                    <div class="field"><label>לפי</label><select id="g-mode"><option value="factor" ${gen.mode === "factor" ? "selected" : ""}>פי כמה</option><option value="weight" ${gen.mode === "weight" ? "selected" : ""}>משקל סופי (ק"ג)</option><option value="ingredient" ${gen.mode === "ingredient" ? "selected" : ""}>לפי רכיב שיש לי</option></select></div>
-                    ${gen.mode === "ingredient" ? `<div class="field"><label>הרכיב</label><select id="g-ing">${genIngs().map((x) => `<option value="${x.idx}" ${x.idx === gen.ingIdx ? "selected" : ""}>${escapeHtml(nameOf(x.i))}</option>`).join("")}</select></div>` : ""}
-                    <div class="field"><label>${gen.mode === "weight" ? `ק"ג (עכשיו ${gramsToKgText(curWeight)})` : gen.mode === "ingredient" ? `כמה יש לי, בק"ג (במתכון ${gramsToKgText(genIngQty())})` : "מקדם"}</label><input type="text" id="g-val" value="${gen.mode !== "factor" ? gramsToKgText(gen.value) : +Number(gen.value).toFixed(4)}" inputmode="decimal"></div>
-                </div>${gen.mode === "ingredient" && f ? `<div class="hint">כל המתכון מוקטן או מוגדל לפי הרכיב שנבחר: פי ${+f.toFixed(3)}</div>` : ""}
+                    <div class="field"><label>לפי</label><select id="g-mode"><option value="have" ${gen.mode === "have" ? "selected" : ""}>כמה יש לי מכל רכיב</option><option value="factor" ${gen.mode === "factor" ? "selected" : ""}>פי כמה</option><option value="weight" ${gen.mode === "weight" ? "selected" : ""}>משקל סופי (ק"ג)</option></select></div>
+                    ${gen.mode === "have" ? "" : `<div class="field"><label>${gen.mode === "weight" ? `ק"ג (עכשיו ${gramsToKgText(curWeight)})` : "מקדם"}</label><input type="text" id="g-val" value="${gen.mode === "weight" ? gramsToKgText(gen.value) : +Number(gen.value).toFixed(4)}" inputmode="decimal"></div>`}
+                </div>
+                ${gen.mode === "have" ? `<div class="hint">רשום כמה יש לך מרכיב אחד או יותר. המערכת לוקחת את המגביל ביותר ומחשבת את כל השאר.</div>
+                ${genIngs().map((x) => `<div class="form-row"><div class="field"><label>${escapeHtml(nameOf(x.i))} <span class="muted">${gramsToKgText(x.i.quantity_g)}</span></label><input type="text" inputmode="decimal" class="g-have" data-idx="${x.idx}" value="${escapeHtml(gen.have[x.idx] || "")}" placeholder='ק"ג'></div></div>`).join("")}
+                ${gf.lim ? `<div class="hint"><b>המגביל: ${escapeHtml(nameOf(gf.lim.i))}</b> · פי ${+f.toFixed(3)}</div>` : ""}` : ""}
                 <div class="checkbox-field"><input type="checkbox" id="g-round" ${gen.round ? "checked" : ""}><label for="g-round">עיגול נוח</label></div>
             </div>
             ${sc ? `
@@ -375,7 +389,7 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
                 <button type="button" data-t="percent" class="${tab === "percent" ? "active" : ""}">באחוזים</button>
                 <button type="button" data-t="label" class="${tab === "label" ? "active" : ""}">אלרגנים</button>
                 <button type="button" data-t="nutri" class="${tab === "nutri" ? "active" : ""}">תזונה</button>
-                ${r.status === "draft" ? "" : `<button type="button" data-t="gen" class="${tab === "gen" ? "active" : ""}">מחולל</button>`}
+                ${r.status === "draft" ? "" : `<button type="button" data-t="gen" class="${tab === "gen" ? "active" : ""}">לפי מה שיש לי</button>`}
             </div>
             ${body}
             <div class="modal-actions"><button type="button" class="btn btn-secondary" id="d-close">סגור</button>
@@ -456,15 +470,14 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
         overlay.querySelectorAll("#g-quick [data-q]").forEach((b) => { b.onclick = () => { gen.mode = "factor"; gen.value = Number(b.dataset.q); draw(); }; });
         bind("#g-mode", "onchange", (e) => {
             gen.mode = e.target.value;
-            if (gen.mode === "ingredient") { const first = genIngs()[0]; gen.ingIdx = first ? first.idx : 0; gen.value = genIngQty(); }
-            else gen.value = gen.mode === "weight" ? Math.round(genWeight() * 2) : 2;
+            if (gen.mode !== "have") gen.value = gen.mode === "weight" ? Math.round(genWeight() * 2) : 2;
             draw();
         });
-        bind("#g-ing", "onchange", (e) => { gen.ingIdx = Number(e.target.value); gen.value = genIngQty(); draw(); });
-        bind("#g-val", "onchange", (e) => { gen.value = gen.mode !== "factor" ? textToGrams(e.target.value) : parseFloat(String(e.target.value).replace(",", ".")); draw(); });
+        overlay.querySelectorAll(".g-have").forEach((inp) => { inp.onchange = () => { gen.have[inp.dataset.idx] = inp.value; draw(); }; });
+        bind("#g-val", "onchange", (e) => { gen.value = gen.mode === "weight" ? textToGrams(e.target.value) : parseFloat(String(e.target.value).replace(",", ".")); draw(); });
         bind("#g-round", "onchange", (e) => { gen.round = e.target.checked; draw(); });
         if (tab === "gen") {
-            const f = factorFor({ mode: gen.mode, value: gen.value, currentWeight: genBase() });
+            const f = genFactor().f;
             const sc = f ? scaleRecipe(r.items, f, rows, { round: gen.round }) : null;
             const genText = () => [`${r.name} (פי ${+f.toFixed(3)})`, ...[...sc.rows].sort((a, b) => b.grams - a.grams).map((o) => `${nameOf(o)}${o.egg_part && o.egg_part !== "whole" ? " (" + EGG_PART_UI[o.egg_part] + ")" : ""}: ${o.unit_count ? o.grams + " יחידות" : fmtQty(o.grams)}`), `סה"כ: ${fmtQty(sc.totalGrams)}`, ...sc.eggs.map(eggSummaryText)].join("\n");
             bind("#g-copy", "onclick", async () => { try { await navigator.clipboard.writeText(genText()); toast("הועתק"); } catch (e) { toast("לא הצלחתי להעתיק"); } });
