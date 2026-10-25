@@ -18,7 +18,20 @@ export function logError(source, err) {
 }
 
 export function clearErrorLog() {
-    try { localStorage.removeItem(KEY); } catch (e) { /* ignore */ }
+    try { localStorage.removeItem(KEY); localStorage.removeItem(CRUMBS); } catch (e) { /* ignore */ }
+}
+
+// פירורי לחם: 60 הפעולות האחרונות (פתיחה, מעבר דף, סריקה, יציאה לרקע, טעינה מחדש). נכנסים לדוח תקלה כדי להבין מה קרה לפני שהאפליקציה קפצה לבית.
+const CRUMBS = "kcp_crumbs";
+export function crumb(label) {
+    try {
+        const list = JSON.parse(localStorage.getItem(CRUMBS) || "[]");
+        list.push({ t: new Date().toISOString().slice(11, 19), m: String(label).slice(0, 90) });
+        localStorage.setItem(CRUMBS, JSON.stringify(list.slice(-60)));
+    } catch (e) { /* עזר בלבד */ }
+}
+function readCrumbs() {
+    try { return JSON.parse(localStorage.getItem(CRUMBS) || "[]"); } catch (e) { return []; }
 }
 
 export function installErrorHandlers() {
@@ -43,5 +56,7 @@ export async function buildReport(note = "") {
         `נתונים: ${counts.join(", ")}`,
         `תקלות אחרונות (${errs.length}):`,
         ...errs.map((e) => `  ${e.t} [${e.src}] ${e.msg}`),
+        `פעולות אחרונות (שעה UTC):`,
+        ...readCrumbs().map((c) => `  ${c.t} ${c.m}`),
     ].join("\n");
 }

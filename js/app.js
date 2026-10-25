@@ -23,7 +23,7 @@ import { initLang, getLang, langDir } from "./i18n.js";
 import { initDomTranslate } from "./domTranslate.js";
 import { recalcAllCosts, startAutoRecalc, ensureCostsFresh } from "./repo/recalc.js";
 import { initStatusIcons, renderStatusIcons } from "./statusIcons.js";
-import { installErrorHandlers } from "./errorLog.js";
+import { installErrorHandlers, crumb } from "./errorLog.js";
 import { openScanModal } from "./pages/scanModal.js";
 import { scanRecipeFile } from "./pages/recipesPage.js";
 import { openModal, closeModal, dropLayers, toastAction } from "./ui.js";
@@ -50,6 +50,14 @@ const PAGES = {
 };
 
 installErrorHandlers();
+{
+    let navType = "?";
+    try { navType = (performance.getEntriesByType("navigation")[0] || {}).type || "?"; } catch (e) { /* לא קריטי */ }
+    crumb(`boot ${navType} ${location.hash || "(none)"}`);
+    window.addEventListener("pagehide", (e) => crumb(`pagehide persisted=${e.persisted}`));
+    document.addEventListener("visibilitychange", () => crumb(`visibility ${document.visibilityState}`));
+    window.addEventListener("popstate", () => crumb("popstate " + location.hash));
+}
 let appRole = "manager"; // manager | cook | producer (נטען בהפעלה)
 const STAFF_PAGES = new Set(["home", "recipes", "inventory", "waste"]); // מצב טבח: בית, מתכונים (בלי כסף), מלאי ופחת
 
@@ -58,6 +66,7 @@ const pageTitle = document.getElementById("page-title");
 const navButtons = document.querySelectorAll("#bottom-nav button");
 
 async function navigate(pageKey) {
+    crumb("navigate " + pageKey);
     await ensureCostsFresh(); // שינוי מחיר במזווה שעדיין מחושב מחדש במתכונים/מנות: ממתינים כדי שלא יוצג מספר ישן
     if (!PAGES[pageKey]) pageKey = "home";
     // הגדרות מוגנות בקוד מנהל (אם הוגדר). יצרן לא רואה מנות.
@@ -95,6 +104,7 @@ navButtons.forEach((btn) => {
 });
 
 window.addEventListener("hashchange", () => {
+    crumb("hashchange " + location.hash);
     dropLayers(); // מעבר מסך (תפריט/קישור) סוגר חלון או בורר שנשארו פתוחים
     const key = location.hash.replace("#", "");
     if (key === "share") return;
