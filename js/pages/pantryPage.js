@@ -54,8 +54,7 @@ const unitWord = (it) => (it.unit_type === "unit" ? "יחידה" : it.unit_type 
 
 function pxRow(it) {
     const [ic, tint] = catStyle(it.category);
-    const noWeight = it.unit_type === "unit" && !it.unit_amount;
-    const tags = [it.is_frozen ? '<span class="tag tag-frozen">❄ קפוא</span>' : "", noWeight ? '<span class="tag tag-danger">חסר משקל</span>' : ""].filter(Boolean).join(" ");
+    const tags = [it.is_frozen ? '<span class="tag tag-frozen">❄ קפוא</span>' : ""].filter(Boolean).join(" ");
     return h(`<div class="px-row" data-id="${it.id}"><span class="px-ic" style="background:${tint};">${ic}</span>
         <div class="px-main"><div class="px-name">${escapeHtml(it.name)}</div><div class="px-meta">${escapeHtml(subOf(it) || it.category)}${tags ? " · " : ""}${tags}</div></div>
         <div class="px-price">${cur()}${Number(it.price).toFixed(2)}<small>/ ${unitWord(it)}</small></div></div>`);
@@ -79,10 +78,8 @@ export async function renderPantryProducts(container) {
     let chip = ""; // קטגוריה נבחרת בתצוגת הרשימה
     const sorted = () => [...items].sort((a, b) => a.category.localeCompare(b.category, "he") || (sortMode === "recent" ? (lastBought.get(b.id) || "").localeCompare(lastBought.get(a.id) || "") : 0) || a.name.localeCompare(b.name, "he"));
     const visible = (it) => matchesDeep({ name: it.name, category: it.category, subcategory: subOf(it) }, q); // חיפוש רק במוצרים (העיבוד שייך ללשונית עיבוד)
-    const noWeight = items.filter((it) => it.unit_type === "unit" && !it.unit_amount);
 
     container.innerHTML = `
-        ${noWeight.length ? `<div class="tint-row warn"><span class="tr-ic">⚖</span><span class="tr-text">${noWeight.length} מוצרים ביחידות בלי משקל ליחידה (אי אפשר להשתמש בהם במתכון)</span><button type="button" class="tr-btn" id="px-fix">תקן</button></div>` : ""}
         <div class="px-top"><input type="search" id="px-q" placeholder="חיפוש מוצר..." autocomplete="off">
             <div class="seg px-view"><button type="button" data-v="cats" class="${view === "cats" ? "active" : ""}">קטגוריות</button><button type="button" data-v="list" class="${view === "list" ? "active" : ""}">רשימה</button></div></div>
         <div id="px-chips"></div>
@@ -142,8 +139,6 @@ export async function renderPantryProducts(container) {
     const qEl = container.querySelector("#px-q");
     qEl.oninput = () => { q = qEl.value; draw(); };
     container.querySelectorAll(".px-view [data-v]").forEach((b) => { b.onclick = async () => { view = b.dataset.v; await setSetting("pantry_view", view); renderPantryProducts(container); }; });
-    const fix = container.querySelector("#px-fix");
-    if (fix) fix.onclick = () => openPantryModal(noWeight[0], container);
     container.querySelector("#btn-add").onclick = () => openPantryModal(null, container);
     draw();
 }
@@ -162,7 +157,7 @@ async function openProductSheet(it, children, container, root) {
         <div class="sh-head"><span class="px-ic" style="background:${tint};">${ic}</span><div><div class="sh-name">${escapeHtml(it.name)}</div><div class="muted">${escapeHtml(it.category)}${subOf(it) ? " / " + escapeHtml(subOf(it)) : ""}${it.is_frozen ? " · ❄ קפוא" : ""}</div></div></div>
         ${row("מחיר קנייה", `${cur()}${Number(it.price).toFixed(2)} / ${unitWord(it)}`)}
         ${Math.abs(eff - Number(it.price)) > 0.004 ? row("מחיר אמיתי (אחרי ניצולת)", `${cur()}${eff.toFixed(2)} (${Number(it.yield_pct).toFixed(0)}%)`) : ""}
-        ${it.unit_type === "unit" ? row("משקל ליחידה", it.unit_amount ? `${gramsToKgText(it.unit_amount)} ק"ג` : '<span style="color:var(--danger);">חסר</span>') : ""}
+        ${it.unit_type === "unit" ? row("משקל ליחידה", it.unit_amount ? `${gramsToKgText(it.unit_amount)} ק"ג` : '<span class="muted">לא הוגדר (בסדר, אפשר לעבוד ביחידות)</span>') : ""}
         ${stock ? row("מלאי תיאורטי", `${+Number(stock.theoretical_quantity).toFixed(3)} ${unitWord(it)}`) : ""}
         ${labelInfo && labelInfo.ingredients ? row("רכיבים (מהתווית)", escapeHtml(labelInfo.ingredients.length > 160 ? labelInfo.ingredients.slice(0, 160) + "…" : labelInfo.ingredients)) : ""}
         ${labelInfo && labelInfo.may_contain && labelInfo.may_contain.length ? row("עלול להכיל עקבות", escapeHtml(allergenLabels(labelInfo.may_contain).join(", "))) : ""}
@@ -224,7 +219,7 @@ function openPantryModal(existing, container) {
                 <select id="f-egg-size">${Object.keys(EGG_SIZES).map((k) => `<option value="${k}">${k}</option>`).join("")}</select>
             </div>
             <div class="field" id="f-unit-amount-wrap">
-                <label>משקל ליחידה (ק"ג) ${info('כמה שוקלת יחידה אחת, בק"ג עם נקודה עשרונית: ביצה 0.061, לימון 0.100, בקבוק שמן ליטר 1. נדרש כדי שמתכון יוכל להשתמש במוצר בגרמים.')}</label>
+                <label>משקל ליחידה (ק"ג, לא חובה) ${info('כמה שוקלת יחידה אחת, בק"ג עם נקודה עשרונית: ביצה 0.061, לימון 0.100. אפשר להשאיר ריק, למשל בלחמניה. במתכון כותבים כמה יחידות, והעלות מחושבת ממחיר היחידה. משקל נחוץ רק אם רוצים משקל ותזונה לרכיב הזה.')}</label>
                 <input type="text" inputmode="decimal" id="f-unit-amount" value="${existing && existing.unit_amount != null ? gramsToKgText(existing.unit_amount) : ""}">
                 <div class="hint" id="f-unit-echo"></div>
             </div>

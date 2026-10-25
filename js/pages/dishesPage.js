@@ -2,8 +2,8 @@ import { listDishesWithItems, saveDish, deleteDish } from "../repo/dishesRepo.js
 import { listAllPantryItems } from "../repo/pantryRepo.js";
 import { dbGetAll } from "../db.js";
 import { NON_FOOD_CATEGORIES } from "../constants.js";
-import { pricePerGram, itemCost as calcItemCost, computeDishPricing } from "../formulas.js";
-import { textToGrams, gramsToKgText, describeQty, qtyWarning } from "../qty.js";
+import { pricePerGram, itemCost as calcItemCost, computeDishPricing, isCountItem } from "../formulas.js";
+import { textToGrams, gramsToKgText, describeQty, qtyWarning, textToCount, countToText, describeCount, countWarning } from "../qty.js";
 import { bindPickerButton, refreshPickerButton, resetPickerMemory } from "./ingredientPicker.js";
 import { listRow, matchesDeep } from "./listKit.js";
 import { renderSalesTab, renderGapTab } from "./salesPage.js";
@@ -27,6 +27,8 @@ async function allSources() {
     return out;
 }
 
+// מוצר מזווה ביחידות בלי משקל: הכמות במנה היא מספר יחידות
+const isCountSrc = (src) => !!src && src.source_type === "pantry" && isCountItem(src.ppgSource);
 function ppgFor(src) {
     return src.source_type === "recipe" ? src.recipeCostPerGram : pricePerGram(src.ppgSource);
 }
@@ -128,7 +130,7 @@ async function openDishModal(existing, container) {
                         <option value="">בחר מרכיב/מתכון...</option>
                         ${sources.map((s, i) => `<option value="${i}" ${selected && sources[i] === selected ? "selected" : ""}>${s.indent ? "↳ " : ""}${escapeHtml(s.name)}</option>`).join("")}
                     </select>
-                    <input type="text" inputmode="decimal" id="dish-qty-${id}" placeholder='ק"ג' style="width:80px;" value="${prefill ? gramsToKgText(prefill.quantity_g) : ""}">
+                    <input type="text" inputmode="decimal" id="dish-qty-${id}" placeholder='ק"ג' style="width:80px;" value="${prefill ? (selected && isCountSrc(selected) ? countToText(prefill.quantity_g) : gramsToKgText(prefill.quantity_g)) : ""}">
                     <button type="button" class="remove-row-btn" data-remove="${id}">✕</button>
                 </div>
                 <div class="line-total" id="dish-line-${id}"></div>
@@ -162,12 +164,14 @@ async function openDishModal(existing, container) {
             const id = row.id.replace("dish-row-", "");
             const idx = overlay.querySelector(`#dish-source-${id}`).value;
             const rawText = overlay.querySelector(`#dish-qty-${id}`).value;
-            const qty = textToGrams(rawText) || 0;
+            const countSrc = idx !== "" && isCountSrc(sources[idx]);
+            overlay.querySelector(`#dish-qty-${id}`).placeholder = countSrc ? "יחידות" : 'ק"ג';
+            const qty = (countSrc ? textToCount(rawText) : textToGrams(rawText)) || 0;
             const lineEl = overlay.querySelector(`#dish-line-${id}`);
             refreshPickerButton(overlay.querySelector(`#dish-pick-${id}`), overlay.querySelector(`#dish-source-${id}`));
             const echoEl = overlay.querySelector(`#dish-echo-${id}`);
-            const warn = qtyWarning(rawText);
-            echoEl.innerHTML = warn ? `<span style="color:var(--danger);">${escapeHtml(warn)}</span>` : escapeHtml(describeQty(rawText));
+            const warn = countSrc ? countWarning(rawText) : qtyWarning(rawText);
+            echoEl.innerHTML = warn ? `<span style="color:var(--danger);">${escapeHtml(warn)}</span>` : escapeHtml(countSrc ? describeCount(rawText) : describeQty(rawText));
             if (idx !== "" && qty > 0) {
                 const src = sources[idx];
                 const cost = calcItemCost(ppgFor(src), qty);
@@ -234,7 +238,8 @@ async function openDishModal(existing, container) {
         box.querySelectorAll(".item-row-inputs").forEach((row) => {
             const id = row.id.replace("dish-row-", "");
             const idx = overlay.querySelector(`#dish-source-${id}`).value;
-            const qty = textToGrams(overlay.querySelector(`#dish-qty-${id}`).value) || "";
+            const rawQ = overlay.querySelector(`#dish-qty-${id}`).value;
+            const qty = (idx !== "" && isCountSrc(sources[idx]) ? textToCount(rawQ) : textToGrams(rawQ)) || "";
             if (idx !== "" && qty) {
                 const src = sources[idx];
                 items.push({ source_type: src.source_type, source_id: src.source_id, quantity_g: qty });
