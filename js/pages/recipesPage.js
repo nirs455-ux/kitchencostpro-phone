@@ -25,6 +25,7 @@ import { openNutritionLookup } from "./nutritionModal.js";
 import { getNutritionDb, applyRememberedNutrition } from "../repo/nutritionRepo.js";
 import { computeNutrition, perServing, NUTRIENTS } from "../nutrition.js";
 import { assignAutoSubs, subOf } from "../autoGroups.js";
+import { guessCategory } from "../guessCategory.js";
 import { factorFor, scaleRecipe, fmtQty } from "../generator.js";
 import { recipeEggSummary, eggSummaryText, allocateEggCosts, isEggProduct, eggSizeOf, partGrams, eggBreakdown, EGG_SIZES, EGG_PARTS, EGG_PART_UI } from "../eggs.js";
 import { showImageFullscreen } from "../imageUtil.js";
@@ -618,6 +619,7 @@ async function openRecipeModal(existing, container, draft = null) {
             ${(existing && existing.source_file) || (draft && draft.source_file) ? '<div class="hint">📎 המסמך המקורי יישמר עם המתכון.</div>' : ""}
             <div class="hint" id="egg-note"></div>
             <div class="hint" id="partial-note" style="display:none;color:var(--danger);">העלות חלקית - יש רכיבים שעדיין לא במזווה.</div>
+            <button type="button" class="btn btn-secondary" id="btn-add-missing" style="display:none;margin:6px 0;">➕ הוסף את כל החסרים למזווה (בלי מחיר)</button>
             <div class="error-msg"></div>
         </div>
         <div class="pg-foot"><div class="pg-sum"><span>עלות כוללת</span><b id="total-cost-display">${cur()}0.00</b></div>
@@ -875,7 +877,7 @@ async function openRecipeModal(existing, container, draft = null) {
                 }
             } else {
                 lineEl.textContent = "";
-                if (meta && meta.um) hasUnmatched = true;
+                if (meta && meta.um && !s && !subRec) hasUnmatched = true;
             }
         });
         for (const g of eggGroups.values()) {
@@ -906,6 +908,7 @@ async function openRecipeModal(existing, container, draft = null) {
         });
         overlay.querySelector("#egg-note").innerHTML = recipeEggSummary(eggLines, sources.map((x) => x.item)).map((e) => escapeHtml(eggSummaryText(e))).join("<br>");
         overlay.querySelector("#partial-note").style.display = hasUnmatched ? "block" : "none";
+        overlay.querySelector("#btn-add-missing").style.display = hasUnmatched ? "block" : "none";
         return total;
     }
 
@@ -925,6 +928,53 @@ async function openRecipeModal(existing, container, draft = null) {
     }
     recalc();
     overlay.querySelector("#btn-add-row").onclick = () => addRow();
+    // הוספה מרוכזת: כל הרכיבים שעדיין לא במזווה נוצרים בבת אחת (בלי מחיר, עם סימון "חסר מחיר"), ומתחברים לשורות שלהם
+    overlay.querySelector("#btn-add-missing").onclick = busy(async () => {
+        const todo = [];
+        box.querySelectorAll(".item-row-inputs").forEach((row) => {
+            const id = row.id.replace("ing-row-", "");
+            const meta = rowMeta.get(Number(id));
+            const sel = overlay.querySelector(`#ing-source-${id}`);
+            if (meta && meta.um && !sel.value && String(meta.um.name || "").trim()) todo.push({ id, um: meta.um });
+        });
+        if (!todo.length) return;
+        if (!window.confirm(`להוסיף ${todo.length} מוצרים למזווה, בלי מחיר? את המחירים אפשר להשלים אחר כך במזווה (הם יסומנו כחסר מחיר). הקטגוריה מנוחשת לפי השם ואפשר לתקן.`)) return;
+        let added = 0, reused = 0;
+        const failed = [];
+        for (const x of todo) {
+            const name = String(x.um.name).trim();
+            let item = (sources.find((src) => String(src.item.name || "").trim().toLowerCase() === name.toLowerCase()) || {}).item;
+            if (!item) {
+                try {
+                    const unitType = x.um.unit === "ml" || x.um.unit === "l" ? "liter" : x.um.unit === "unit" ? "unit" : "weight";
+                    const newId = await addPantryItem({ name, category: guessCategory(name), unit_type: unitType, unit_amount: "", price: "", allow_no_price: true });
+                    item = await dbGet("pantryItems", newId);
+                    sources.push({ id: newId, name: item.name, indent: false, item });
+                    overlay.querySelectorAll('[id^="ing-source-"]').forEach((sel2) => {
+                        const opt = document.createElement("option");
+                        opt.value = String(newId);
+                        opt.textContent = item.name;
+                        sel2.appendChild(opt);
+                    });
+                    added++;
+                } catch (e) { failed.push(name); continue; }
+            } else reused++;
+            const sel = overlay.querySelector(`#ing-source-${x.id}`);
+            sel.value = String(item.id);
+            const qtyEl = overlay.querySelector(`#ing-qty-${x.id}`);
+            if (!qtyEl.value) {
+                if (isCountItem(item) && x.um.unit === "unit" && Number(x.um.quantity) > 0) qtyEl.value = countToText(x.um.quantity);
+                else { const g = gramsFromOriginal(x.um, item); if (g != null) qtyEl.value = gramsToKgText(g); }
+            }
+            refreshPickerButton(overlay.querySelector(`#ing-pick-${x.id}`), sel);
+            const qaBtn = overlay.querySelector(`#ing-qa-btn-${x.id}`);
+            if (qaBtn) qaBtn.style.display = "none";
+            const qaBox = overlay.querySelector(`#ing-qa-${x.id}`);
+            if (qaBox) qaBox.style.display = "none";
+        }
+        recalc();
+        toast(`נוספו ${added} מוצרים למזווה${reused ? `, ${reused} כבר היו קיימים` : ""}${failed.length ? `. לא הצלחתי: ${failed.join(", ")}` : ""}`);
+    });
     overlay.querySelector("#btn-add-manual").onclick = () => addRow({ pantry_item_id: null, quantity_g: null, um: { name: "", quantity: null, unit: null, manual: true } });
 
     overlay.querySelector("#btn-cancel").onclick = () => attemptClose(overlay);

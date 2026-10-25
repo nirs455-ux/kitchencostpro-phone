@@ -3,6 +3,7 @@
 import { CATEGORY_GROUPS, UNIT_TYPES, UNIT_TYPE_LABELS } from "../constants.js";
 import { escapeHtml, layerOpened, layerClosed } from "../ui.js";
 import { getSetting, setSetting } from "../repo/settingsRepo.js";
+import { nameCovers } from "../nameMatch.js";
 
 const RECENT_KEY = "picker_recent";
 const RECENT_MAX = 12;
@@ -146,7 +147,10 @@ export async function openIngredientPicker({ title = "בחר מרכיב", items,
         const list = layer.querySelector("#pk-list");
         list.addEventListener("scroll", () => { lastScroll = list.scrollTop; });
 
-        let shown = base.filter((i) => matchesDeep(i, st.q) && (!st.cat || i.category === st.cat) && (!st.sub || i.subcategory === st.sub));
+        const inScope = (i) => (!st.cat || i.category === st.cat) && (!st.sub || i.subcategory === st.sub);
+        let shown = base.filter((i) => matchesDeep(i, st.q) && inScope(i));
+        // לא נמצא? חיפוש סלחני: בלי מספרים ואחוזים ("חומץ 5%" מוצא "חומץ"), ועם רבים/יחיד ("עגבניות" מוצא "עגבנייה")
+        if (!shown.length && st.q.trim()) shown = base.filter((i) => inScope(i) && (nameCovers(st.q, i.name) || (i.children || []).some((c) => nameCovers(st.q, c.name))));
         const mk = (i) => {
             const n = (i.children || []).length;
             return `<div class="pk-row" data-key="${escapeHtml(i.key)}"><div class="pk-name">${escapeHtml(i.name)}</div><div class="pk-hint">${escapeHtml(i.hint || "")}${n ? ` · ${n + 1} אפשרויות ›` : ""}</div></div>`;

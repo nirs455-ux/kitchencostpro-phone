@@ -1,4 +1,5 @@
 import { getSetting, setSetting } from "../repo/settingsRepo.js";
+import { whatsappUrl } from "../shareText.js";
 import { downloadExport, downloadSafetyCopy, inspectBackup, importAndReplace } from "../export.js";
 import { toast, confirmDialog, info, openModal, closeModal } from "../ui.js";
 import { APP_VERSION, THEMES } from "../constants.js";
@@ -171,8 +172,9 @@ export async function renderSettingsPage(container) {
     container.querySelector("#btn-report-open").onclick = async () => {
         const ov = openModal(`
             <h2>דיווח על תקלה</h2>
-            <div class="hint" style="margin-bottom:6px;">הדוח לא נשלח אוטומטית. כאן אתה רואה בדיוק מה בו, יכול להוסיף כמה מילים, ואז לשתף אותו או להעתיק. הוא לא כולל חשבוניות או מחירים.</div>
+            <div class="hint" style="margin-bottom:6px;">הדוח לא נשלח אוטומטית. כאן אתה רואה בדיוק מה בו, כותב כמה מילים, מזין לאן לשלוח (פעם אחת, והיעד נשמר), ולוחץ שלח. הוא לא כולל חשבוניות או מחירים.</div>
             <div class="field"><label>מה קרה? (לא חובה, אבל עוזר מאוד)</label><textarea id="rp-note" rows="3" style="width:100%;" placeholder="באיזה מסך היית, מה לחצת, ומה ציפית שיקרה"></textarea></div>
+            <div class="field"><label>לאן לשלוח (טלפון לוואטסאפ, או מייל)</label><input type="text" id="rp-to" inputmode="email" placeholder="מספר טלפון או כתובת מייל" style="width:100%;"></div>
             <div class="card-title" style="margin:8px 0 4px;">הדוח</div>
             <pre id="rp-text" class="card" style="white-space:pre-wrap;font-size:12px;max-height:200px;overflow:auto;direction:ltr;text-align:left;margin:0 0 8px;"></pre>
             <div class="modal-actions" style="flex-wrap:wrap;">
@@ -195,8 +197,15 @@ export async function renderSettingsPage(container) {
             }
         };
         ov.querySelector("#rp-copy").onclick = copy;
+        // יעד הדוחות נשמר: מייל פותח הודעת מייל מוכנה, מספר טלפון פותח וואטסאפ מוכן, ובלי יעד נפתח תפריט השיתוף
+        const toEl = ov.querySelector("#rp-to");
+        try { toEl.value = (await getSetting("report_to")) || ""; } catch (e) { /* לא קריטי */ }
         ov.querySelector("#rp-share").onclick = async () => {
             const text = await buildReport(noteEl.value);
+            const to = toEl.value.trim();
+            try { await setSetting("report_to", to); } catch (e) { /* לא קריטי */ }
+            if (to.includes("@")) { window.location.href = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent("דוח תקלה - KitchenCostPro")}&body=${encodeURIComponent(text.slice(0, 1800))}`; return; }
+            if (/\d{7,}/.test(to)) { window.open(whatsappUrl(text, to), "_blank"); return; }
             if (navigator.share) { try { await navigator.share({ title: "דוח תקלה - KitchenCostPro", text }); } catch (e) { /* בוטל */ } }
             else await copy();
         };
