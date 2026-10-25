@@ -69,6 +69,7 @@ async function navigate(pageKey) {
     if (isStaffMode() && !STAFF_PAGES.has(pageKey)) pageKey = "home"; // מצב עובד: רק בית וספירת מלאי
     if (pageKey === "files" && location.hash !== "#files") openFilesFolder(null);
     location.hash = pageKey;
+    try { localStorage.setItem("kcp_last_page", pageKey); } catch (e) { /* לא קריטי */ } // כדי לחזור לאותו דף אם הטלפון סגר את האפליקציה ברקע
     // ספירת מלאי ועיבוד הם לשוניות של המזווה (הכתובות #inventory ו-#processing ממשיכות לעבוד)
     const inPantry = pageKey === "inventory" || pageKey === "processing" || pageKey === "waste";
     if (pageKey === "recipes") collapseRecipes();
@@ -143,7 +144,11 @@ const refreshProducerNav = async () => {
 await refreshProducerNav();
 window.addEventListener("kcp-nav-refresh", refreshProducerNav);
 await initCloud().catch(() => {}); // גיבוי אוטומטי לענן (אם מחובר)
-navigate(location.hash.replace("#", "") === "share" ? "home" : (location.hash.replace("#", "") || "home"));
+// פתיחה בלי כתובת (למשל אחרי שהטלפון סגר את האפליקציה ברקע, או חזרה ממצלמה/בורר קבצים): חוזרים לדף האחרון ולא לבית
+let lastPage = "";
+try { lastPage = localStorage.getItem("kcp_last_page") || ""; } catch (e) { /* לא קריטי */ }
+const startKey = location.hash.replace("#", "");
+navigate(startKey === "share" ? "home" : startKey || (PAGES[lastPage] && lastPage !== "settings" ? lastPage : "home"));
 
 // אשף הפעלה: רק בהתקנה ריקה לגמרי שעוד לא עברה אותו (מי שכבר יש לו נתונים לא יראה אותו אוטומטית)
 (async () => {
