@@ -39,6 +39,9 @@ export async function recipeParentCount(id) {
 
 // selfId: המתכון שנשמר כרגע (כדי לחסום מעגל: מתכון שמכיל את עצמו)
 // cache (לא חובה): { pantry: Map, recipes: Map, recipeItems: [] } שנטענו פעם אחת (חישוב מחדש של הכול). בלעדיו קוראים מהמסד לכל רכיב.
+// שורה שהוקלדה באחוזים: הגרמים נשמרים ב-quantity_g (כך כל החישובים נשארים כמו שהיו), והאחוז נשמר רק כדי להציג אותו שוב בעריכה
+const pctFields = (it) => (it.pct_mode === "base" || it.pct_mode === "total") && Number(it.pct) > 0 ? { pct: Number(it.pct), pct_mode: it.pct_mode } : {};
+
 export async function resolveRecipeItems(items, { selfId = null, cache = null } = {}) {
     const getRecipe = async (id) => (cache ? cache.recipes.get(id) : await dbGet("recipes", id));
     const getPantry = async (id) => (cache ? cache.pantry.get(id) : await dbGet("pantryItems", id));
@@ -64,7 +67,7 @@ export async function resolveRecipeItems(items, { selfId = null, cache = null } 
             const scost = calcItemCost(spg, q);
             totalCost += scost;
             rawWeight += q;
-            resolved.push({ pantry_item_id: null, sub_recipe_id: subId, ingredient_name: sub.name, quantity_g: q, price_per_gram: spg, item_cost: scost });
+            resolved.push({ pantry_item_id: null, sub_recipe_id: subId, ingredient_name: sub.name, quantity_g: q, price_per_gram: spg, item_cost: scost, ...pctFields(it) });
             continue;
         }
         const pantryId = parseInt(it.pantry_item_id, 10);
@@ -81,7 +84,7 @@ export async function resolveRecipeItems(items, { selfId = null, cache = null } 
         const cost = calcItemCost(ppg, qty);
         totalCost += cost;
         if (!count) rawWeight += qty; // מוצר ספירה (יחידות בלי משקל): הכמות היא יחידות ולא גרמים
-        resolved.push({ pantry_item_id: pantryId, ingredient_name: row.name, quantity_g: qty, price_per_gram: ppg, item_cost: cost, ...(count ? { unit_count: true } : {}), ...(eggPart ? { egg_part: eggPart } : {}) });
+        resolved.push({ pantry_item_id: pantryId, ingredient_name: row.name, quantity_g: qty, price_per_gram: ppg, item_cost: cost, ...(count ? { unit_count: true } : {}), ...(eggPart ? { egg_part: eggPart } : {}), ...pctFields(it) });
         if (eggPart) eggRows.push({ idx: resolved.length - 1, row });
     }
     // ביצים: משלמים על כל הביצים ששוברים (לא רק על הגרמים שבשימוש). העלות מתחלקת בין שורות הביצים של אותו מוצר
@@ -113,7 +116,7 @@ export async function saveRecipe(existingId, data) {
     if (!RECIPE_CATEGORIES.includes(data.category)) throw new Error("קטגוריה לא תקינה");
     // רכיבים שעדיין לא במזווה נשמרים כטיוטה (draft_ingredients) ואפשר להשלים אותם אחר כך; העלות מחושבת רק מהרכיבים שבמזווה
     const draftIngredients = (data.draft_ingredients || [])
-        .map((d) => ({ name: String(d.name || "").trim(), quantity: d.quantity ?? null, unit: d.unit ?? null }))
+        .map((d) => ({ name: String(d.name || "").trim(), quantity: d.quantity ?? null, unit: d.unit ?? null, ...(d.manual ? { manual: true } : {}) }))
         .filter((d) => d.name);
     const items = data.items || [];
     if (items.length === 0 && draftIngredients.length === 0) throw new Error("יש להוסיף לפחות מרכיב אחד");
