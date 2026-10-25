@@ -46,13 +46,15 @@ function renderStaffHome(container) {
 export async function renderHomePage(container) {
     if (isStaffMode()) { renderStaffHome(container); return; }
     const rerender = () => renderHomePage(container);
+    // שתי הצגות במקביל (פתיחת האפליקציה + רענון אחרי סנכרון/סטטוס) היו כותבות לאותו מסך ומכפילות שורות. רק האחרונה מציירת.
+    const token = (container.__homeRender = (container.__homeRender || 0) + 1);
+    const stale = () => container.__homeRender !== token;
     const pantry = await dbGetAll("pantryItems");
     const invoices = await listInvoicesWithItems();
     const apiKey = await getAgentKey();
     const lastExport = await getSetting("last_export");
     const owed = await pettyCashOwed();
     const alerts = await priceChanges({ thresholdPct: 10, sinceDays: 30 });
-    const noWeight = pantry.filter((p) => !p.parent_id && p.unit_type === "unit" && !p.unit_amount);
     const queue = await listQueue();
     const counts = await dbGetAll("inventoryCounts");
     const lastCount = counts.map((c) => c.count_date).sort().pop();
@@ -60,6 +62,7 @@ export async function renderHomePage(container) {
 
     const scan = () => openScanModal({ supplierAware: true, onDone: rerender });
     const wasteLogs = await dbGetAll("wasteLogs");
+    if (stale()) return;
 
     container.innerHTML = `
         <div class="sec-title">מה דורש תשומת לב</div>
@@ -84,12 +87,12 @@ export async function renderHomePage(container) {
     const items = [];
     if (queue.length) items.push({ cls: "warn", icon: "⏳", text: `${queue.length} חשבוניות מחכות לעיבוד`, btn: "עבד", fn: () => processQueue(queue, rerender) });
     if (alerts.length) items.push({ cls: "danger", icon: "⚠", text: `${alerts.length} שינויי מחיר ב-30 הימים האחרונים`, btn: "הצג", fn: () => showPriceChangesDialog(alerts, "שינויי מחיר (30 יום אחרונים)") });
-    if (noWeight.length) items.push({ cls: "warn", icon: "⚖", text: `${noWeight.length} מוצרים ביחידות בלי משקל ליחידה (לא ניתן להשתמש בהם במתכון)`, btn: "למזווה", fn: () => go("pantry") });
     const cloudNow = getCloudStatus();
     const cloudFresh = cloudNow.enabled && cloudNow.lastBackup && daysSince(cloudNow.lastBackup) < 3; // גיבוי טרי בענן מחליף תזכורת לגיבוי ידני
     if (pantry.length + invoices.length > 0 && !cloudFresh && daysSince(lastExport) >= 7) items.push({ cls: "warn", icon: "💾", text: lastExport ? `לא יוצא גיבוי ${daysSince(lastExport)} ימים` : "עדיין לא יוצא גיבוי", btn: "ייצא", fn: async () => { await downloadExport(); rerender(); } });
     if (counts.length && daysSince(lastCount) >= 14) items.push({ cls: "warn", icon: "📋", text: `ספירת המלאי האחרונה לפני ${daysSince(lastCount)} ימים`, btn: "לספירה", fn: () => go("inventory") });
     const sts = await computeStatus();
+    if (stale()) return;
     if (sts.agent === "bad") items.unshift({ cls: "danger", icon: "🤖", text: "אין סוכן מחובר - אי אפשר לסרוק חשבוניות ומתכונים מתמונה", btn: "חבר", fn: () => openWizardAt(1) });
     if (sts.cloud === "bad") items.push({ cls: "warn", icon: "☁️", text: sts.cloudAvailable ? "אין גיבוי בענן - הנתונים שמורים רק בטלפון הזה" : "אין גיבוי בענן (החיבור עדיין לא הוגדר) - ייצא גיבוי ידני", btn: sts.cloudAvailable ? "חבר" : "ייצא", fn: sts.cloudAvailable ? () => openWizardAt(2) : async () => { await downloadExport(); rerender(); } });
     const cst = getCloudStatus();

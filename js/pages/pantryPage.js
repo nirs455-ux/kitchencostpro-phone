@@ -54,7 +54,7 @@ const unitWord = (it) => (it.unit_type === "unit" ? "יחידה" : it.unit_type 
 
 function pxRow(it) {
     const [ic, tint] = catStyle(it.category);
-    const tags = [it.is_frozen ? '<span class="tag tag-frozen">❄ קפוא</span>' : ""].filter(Boolean).join(" ");
+    const tags = [it.is_frozen ? '<span class="tag tag-frozen">❄ קפוא</span>' : "", it.price_missing ? '<span class="tag tag-danger">חסר מחיר</span>' : ""].filter(Boolean).join(" ");
     return h(`<div class="px-row" data-id="${it.id}"><span class="px-ic" style="background:${tint};">${ic}</span>
         <div class="px-main"><div class="px-name">${escapeHtml(it.name)}</div><div class="px-meta">${escapeHtml(subOf(it) || it.category)}${tags ? " · " : ""}${tags}</div></div>
         <div class="px-price">${cur()}${Number(it.price).toFixed(2)}<small>/ ${unitWord(it)}</small></div></div>`);

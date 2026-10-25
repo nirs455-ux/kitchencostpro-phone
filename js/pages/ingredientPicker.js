@@ -1,6 +1,6 @@
 // בורר מרכיבים: חיפוש + קטגוריות + תתי-קטגוריות + "אחרונים". משמש לבניית מתכון ולבניית מנה (ועובד גם עם מאות מוצרים).
 // נפתח כשכבה נפרדת מעל החלון הפתוח (בלי לסגור אותו). מחזיר את הבחירה דרך onPick.
-import { CATEGORY_GROUPS } from "../constants.js";
+import { CATEGORY_GROUPS, UNIT_TYPES, UNIT_TYPE_LABELS } from "../constants.js";
 import { escapeHtml, layerOpened, layerClosed } from "../ui.js";
 import { getSetting, setSetting } from "../repo/settingsRepo.js";
 
@@ -60,7 +60,8 @@ async function pushRecent(key) {
 let memory = null;
 export function resetPickerMemory() { memory = null; }
 
-export async function openIngredientPicker({ title = "בחר מרכיב", items, tabs = null, onPick }) {
+// onCreate (לא חובה): מאפשר להוסיף מוצר חדש תוך כדי עבודה. מקבל { name, category, unit_type, price } ומחזיר את הפריט החדש (או זורק שגיאה)
+export async function openIngredientPicker({ title = "בחר מרכיב", items, tabs = null, onPick, onCreate = null }) {
     const layer = document.createElement("div");
     layer.className = "picker";
     document.body.appendChild(layer);
@@ -68,8 +69,8 @@ export async function openIngredientPicker({ title = "בחר מרכיב", items,
     const st = { tab: tabList ? tabList[0].key : null, q: "", cat: "", sub: "", open: null };
     let restoreScroll = 0;
     if (memory && (!tabList || tabList.some((t) => t.key === memory.tab))) {
-        st.tab = memory.tab; st.q = memory.q; st.cat = memory.cat; st.sub = memory.sub;
-        restoreScroll = memory.scroll || 0;
+        st.tab = memory.tab; st.cat = memory.cat; st.sub = memory.sub; // החיפוש מתנקה בכל פתיחה
+        restoreScroll = memory.q ? 0 : memory.scroll || 0;
     }
     let lastScroll = restoreScroll;
     const remember = () => { memory = { tab: st.tab, q: st.q, cat: st.cat, sub: st.sub, scroll: lastScroll }; };
@@ -98,6 +99,38 @@ export async function openIngredientPicker({ title = "בחר מרכיב", items,
         });
     }
 
+    // טופס קצר למוצר חדש: שם, קטגוריה, יחידת מדידה ומחיר (לא חובה)
+    function drawCreate(name) {
+        layer.innerHTML = `
+            <div class="pk-top"><button type="button" class="pk-close" id="pk-back" aria-label="חזרה">→</button><div class="pk-title">מוצר חדש במזווה</div></div>
+            <div style="padding:0 16px 16px;overflow:auto;flex:1;">
+                <div class="field"><label>שם המוצר</label><input type="text" id="pk-n-name" value="${escapeHtml(name)}"></div>
+                <div class="field"><label>קטגוריה</label><select id="pk-n-cat"><option value="">בחר...</option>${Object.keys(CATEGORY_GROUPS).map((c) => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join("")}</select></div>
+                <div class="field"><label>נמדד ב-</label><select id="pk-n-unit">${UNIT_TYPES.map((u) => `<option value="${u}">${escapeHtml(UNIT_TYPE_LABELS[u])}</option>`).join("")}</select></div>
+                <div class="field"><label>מחיר (לא חובה)</label><input type="text" inputmode="decimal" id="pk-n-price" placeholder="אפשר להשלים אחר כך"><div class="hint">בלי מחיר, העלות של המרכיב הזה תהיה אפס עד שתשלים אותו במזווה.</div></div>
+                <div class="error-msg" id="pk-n-err"></div>
+                <button type="button" class="btn btn-primary" id="pk-n-save">הוסף ובחר</button>
+            </div>`;
+        layer.querySelector("#pk-back").onclick = () => draw();
+        layer.querySelector("#pk-n-save").onclick = async () => {
+            const err = layer.querySelector("#pk-n-err");
+            const btn = layer.querySelector("#pk-n-save");
+            const data = { name: layer.querySelector("#pk-n-name").value, category: layer.querySelector("#pk-n-cat").value, unit_type: layer.querySelector("#pk-n-unit").value, price: layer.querySelector("#pk-n-price").value };
+            if (!data.category) { err.textContent = "בחר קטגוריה"; err.style.display = "block"; return; }
+            btn.disabled = true;
+            try {
+                const item = await onCreate(data);
+                remember();
+                close();
+                onPick(item);
+            } catch (e) {
+                err.textContent = e.message;
+                err.style.display = "block";
+                btn.disabled = false;
+            }
+        };
+    }
+
     function draw(keepSearchFocus = false) {
         if (st.open) { const parent = flat.find((i) => i.key === st.open); if (parent) { drawOptions(parent); return; } st.open = null; }
         const base = visibleItems();
@@ -119,10 +152,11 @@ export async function openIngredientPicker({ title = "בחר מרכיב", items,
             return `<div class="pk-row" data-key="${escapeHtml(i.key)}"><div class="pk-name">${escapeHtml(i.name)}</div><div class="pk-hint">${escapeHtml(i.hint || "")}${n ? ` · ${n + 1} אפשרויות ›` : ""}</div></div>`;
         };
 
+        const createBtn = onCreate && st.q.trim() ? `<button type="button" class="btn btn-secondary" id="pk-new" style="margin:10px 0;width:100%;">＋ <span>הוסף כמוצר חדש:</span> <b>${escapeHtml(st.q.trim())}</b></button>` : "";
         if (!shown.length) {
-            list.innerHTML = `<div class="empty-state">${st.q ? `לא נמצא "${escapeHtml(st.q)}"` : "אין פריטים בקטגוריה הזאת"}</div>`;
+            list.innerHTML = `<div class="empty-state">${st.q ? `לא נמצא "${escapeHtml(st.q)}"` : "אין פריטים בקטגוריה הזאת"}</div>${createBtn}`;
         } else if (normalize(st.q)) {
-            list.innerHTML = rankResults(shown, st.q).map((i) => mk({ ...i, hint: [i.category, i.hint].filter(Boolean).join(" · ") })).join("");
+            list.innerHTML = rankResults(shown, st.q).map((i) => mk({ ...i, hint: [i.category, i.hint].filter(Boolean).join(" · ") })).join("") + createBtn;
         } else {
             let html = "";
             // קבוצות לפי קטגוריה (ואם נבחרה קטגוריה עם תתי-קטגוריות: לפי תת-קטגוריה)
@@ -138,6 +172,8 @@ export async function openIngredientPicker({ title = "בחר מרכיב", items,
         }
 
         layer.querySelector("#pk-close").onclick = close;
+        const newBtn = layer.querySelector("#pk-new");
+        if (newBtn) newBtn.onclick = () => drawCreate(st.q.trim());
         layer.querySelectorAll("#pk-tabs [data-tab]").forEach((b) => { b.onclick = () => { st.tab = b.dataset.tab; st.cat = ""; st.sub = ""; draw(); }; });
         layer.querySelectorAll("#pk-cats [data-cat]").forEach((b) => { b.onclick = () => { st.cat = b.dataset.cat; st.sub = ""; draw(); }; });
         layer.querySelectorAll("#pk-subs [data-sub]").forEach((b) => { b.onclick = () => { st.sub = b.dataset.sub; draw(); }; });
@@ -167,9 +203,9 @@ export async function openIngredientPicker({ title = "בחר מרכיב", items,
 }
 
 // הופך שורת <select> נסתרת (שהקוד הקיים קורא ממנה) לכפתור בחירה: לחיצה פותחת את הבורר, ובחירה מעדכנת את ה-select ומפעילה change
-export function bindPickerButton({ button, select, getItems, tabs, title, keyOf }) {
+export function bindPickerButton({ button, select, getItems, tabs, title, keyOf, onCreate = null }) {
     button.onclick = () => openIngredientPicker({
-        title, items: getItems(), tabs,
+        title, items: getItems(), tabs, onCreate,
         onPick: (item) => { select.value = keyOf(item); select.dispatchEvent(new Event("change", { bubbles: true })); refreshPickerButton(button, select); },
     });
     refreshPickerButton(button, select);

@@ -632,7 +632,7 @@ async function openRecipeModal(existing, container, draft = null) {
                     <input type="text" inputmode="decimal" id="ing-qty-${id}" placeholder='ק"ג' style="width:80px;" value="${prefill && prefill.pct_mode ? countToText(prefill.pct) : prefill && prefill.quantity_g != null ? (prefill.unit_count ? countToText(prefill.quantity_g) : gramsToKgText(prefill.quantity_g)) : (um && gramsFromOriginal(um, null) != null ? gramsToKgText(gramsFromOriginal(um, null)) : "")}">
                     <button type="button" class="remove-row-btn" data-remove="${id}">✕</button>
                 </div>
-                ${um ? "" : `<select id="ing-mode-${id}" style="width:auto;font-size:12px;padding:2px 6px;margin:2px 0;"><option value="">כמות בק"ג</option><option value="base" ${prefill && prefill.pct_mode === "base" ? "selected" : ""}>אחוז מהבסיס</option><option value="total" ${prefill && prefill.pct_mode === "total" ? "selected" : ""}>אחוז מהמסה</option></select>`}
+                ${um ? "" : `<select id="ing-mode-${id}" style="width:auto;font-size:12px;padding:2px 6px;margin:2px 0;"><option value="">כמות בק"ג</option><option value="base" ${prefill && prefill.pct_mode === "base" ? "selected" : ""}>אחוז מהבסיס</option>${prefill && prefill.pct_mode === "total" ? `<option value="total" selected>אחוז מהמסה</option>` : ""}</select>`}
                 <div class="line-total" id="ing-line-${id}"></div>
                 <div class="hint" id="ing-echo-${id}" style="margin:2px 0;"></div>
                 <div id="ing-egg-${id}" style="display:none;margin:6px 0;">
@@ -662,6 +662,19 @@ async function openRecipeModal(existing, container, draft = null) {
         bindPickerButton({
             button: row.querySelector(`#ing-pick-${id}`), select: row.querySelector(`#ing-source-${id}`), title: "בחר מרכיב", keyOf: (it) => String(it.id),
             tabs: subOpts.length ? [{ key: "pantry", label: "מוצרים" }, { key: "recipe", label: "מתכונים (תת-מתכון)" }] : null,
+            // מוצר חדש תוך כדי בניית המתכון (בלי לעצור ולצאת למזווה). מחיר לא חובה.
+            onCreate: async (d) => {
+                const newId = await addPantryItem({ name: d.name, category: d.category, unit_type: d.unit_type, unit_amount: "", price: d.price, allow_no_price: true });
+                const item = await dbGet("pantryItems", newId);
+                sources.push({ id: newId, name: item.name, indent: false, item });
+                overlay.querySelectorAll('[id^="ing-source-"]').forEach((sel) => {
+                    const opt = document.createElement("option");
+                    opt.value = String(newId);
+                    opt.textContent = item.name;
+                    sel.appendChild(opt);
+                });
+                return { key: `p${newId}`, id: newId, name: item.name, category: item.category, subcategory: "", hint: "" };
+            },
             getItems: () => {
                 const unitWord = (it) => (it.unit_type === "unit" ? "יחידה" : it.unit_type === "liter" ? "ליטר" : 'ק"ג');
                 assignAutoSubs(sources.filter((x) => !x.item.parent_id).map((x) => x.item));
@@ -844,7 +857,7 @@ async function openRecipeModal(existing, container, draft = null) {
                     lineEl.textContent = "";
                 } else {
                     const cost = calcItemCost(pricePerGram(s.item), qty);
-                    lineEl.textContent = money(cost);
+                    lineEl.innerHTML = money(cost) + (s.item.price_missing ? ' <span class="muted">אין מחיר</span>' : "");
                     total += cost;
                 }
             } else {
