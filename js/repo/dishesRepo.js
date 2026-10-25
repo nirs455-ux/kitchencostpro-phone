@@ -1,6 +1,6 @@
 // לוגיקת מנות - תרגום מדויק של _resolve_dish_items / _parse_dish_payload / add_dish / update_dish / delete_dish.
 import { dbGetAll, dbGet, dbPut, dbDelete, dbGetByIndex, dbDeleteWhere } from "../db.js";
-import { pricePerGram, itemCost as calcItemCost, computeDishPricing } from "../formulas.js";
+import { pricePerGram, itemCost as calcItemCost, computeDishPricing, isCountItem } from "../formulas.js";
 
 export async function listDishesWithItems() {
     const dishes = await dbGetAll("dishes");
@@ -23,13 +23,13 @@ export async function resolveDishItems(items, { cache = null } = {}) {
         if (Number.isNaN(sourceId) || Number.isNaN(qty)) throw new Error("מרכיב עם נתונים לא תקינים");
         if (qty <= 0) throw new Error("כמות חייבת להיות גדולה מ-0");
 
-        let ppg, sourceName;
+        let ppg, sourceName, countLine = false;
         if (sourceType === "pantry") {
             const row = cache ? cache.pantry.get(sourceId) : await dbGet("pantryItems", sourceId);
             if (!row) throw new Error("מרכיב לא נמצא במזווה");
-            if (row.unit_type === "unit" && !row.unit_amount) throw new Error(`'${row.name}' חסר משקל ליחידה - השלם אותו במזווה לפני השימוש במנה`);
             ppg = pricePerGram(row);
             sourceName = row.name;
+            if (isCountItem(row)) countLine = true;
         } else if (sourceType === "recipe") {
             const row = cache ? cache.recipes.get(sourceId) : await dbGet("recipes", sourceId);
             if (!row) throw new Error("מתכון לא נמצא");
@@ -41,7 +41,7 @@ export async function resolveDishItems(items, { cache = null } = {}) {
         }
         const cost = calcItemCost(ppg, qty);
         totalCost += cost;
-        resolved.push({ source_type: sourceType, source_id: sourceId, source_name: sourceName, quantity_g: qty, price_per_gram: ppg, item_cost: cost });
+        resolved.push({ source_type: sourceType, source_id: sourceId, source_name: sourceName, quantity_g: qty, price_per_gram: ppg, item_cost: cost, ...(countLine ? { unit_count: true } : {}) });
     }
     return { resolved, totalCost };
 }

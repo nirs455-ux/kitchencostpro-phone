@@ -48,7 +48,7 @@ export function flattenRecipeItems(direct, recipeById, itemsOf, factor = 1, dept
         if (!sub) { out.push({ ...it, sub_recipe_id: null, pantry_item_id: null, quantity_g: (Number(it.quantity_g) || 0) * factor, item_cost: (Number(it.item_cost) || 0) * factor }); continue; }
         if (depth >= MAX_SUB_DEPTH || trail.has(sub.id)) continue;
         const subRows = itemsOf(sub.id);
-        const raw = subRows.reduce((n, r) => n + (Number(r.quantity_g) || 0), 0);
+        const raw = subRows.reduce((n, r) => n + (r.unit_count ? 0 : Number(r.quantity_g) || 0), 0);
         const fw = Number(sub.final_weight) > 0 ? Number(sub.final_weight) : raw;
         if (!(fw > 0)) continue;
         const f = factor * ((Number(it.quantity_g) || 0) / fw);

@@ -1,7 +1,7 @@
 // לוגיקת מתכונים - תרגום מדויק של _resolve_recipe_items / add_recipe / update_recipe / delete_recipe.
 import { dbGetAll, dbGet, dbPut, dbDelete, dbGetByIndex, dbDeleteWhere } from "../db.js";
 import { RECIPE_CATEGORIES } from "../constants.js";
-import { pricePerGram, itemCost as calcItemCost, recipeCostPerGram, effectivePrice } from "../formulas.js";
+import { pricePerGram, itemCost as calcItemCost, recipeCostPerGram, effectivePrice, isCountItem } from "../formulas.js";
 import { ensureEggDefaults } from "./pantryRepo.js";
 import { isEggProduct, eggSizeOf, allocateEggCosts } from "../eggs.js";
 import { isSubRow, includesRecipe, expandToParents, flattenRecipeItems } from "./subRecipes.js";
@@ -75,12 +75,13 @@ export async function resolveRecipeItems(items, { selfId = null, cache = null } 
         if (!row) throw new Error("מרכיב לא נמצא במזווה");
         const eggPart = ["whole", "white", "yolk"].includes(it.egg_part) && isEggProduct(row) ? it.egg_part : null;
         if (eggPart) row = await ensureEggDefaults(row); // גודל ומשקל ללא קליפה אוטומטיים אם חסרים
-        if (row.unit_type === "unit" && !row.unit_amount) throw new Error(`'${row.name}' חסר משקל ליחידה - השלם אותו במזווה לפני השימוש במתכון`);
+        if (isCountItem(row) && isEggProduct(row)) throw new Error(`'${row.name}' חסר משקל ליחידה - השלם אותו במזווה לפני השימוש במתכון`);
+        const count = isCountItem(row);
         const ppg = pricePerGram(row);
         const cost = calcItemCost(ppg, qty);
         totalCost += cost;
-        rawWeight += qty;
-        resolved.push({ pantry_item_id: pantryId, ingredient_name: row.name, quantity_g: qty, price_per_gram: ppg, item_cost: cost, ...(eggPart ? { egg_part: eggPart } : {}) });
+        if (!count) rawWeight += qty; // מוצר ספירה (יחידות בלי משקל): הכמות היא יחידות ולא גרמים
+        resolved.push({ pantry_item_id: pantryId, ingredient_name: row.name, quantity_g: qty, price_per_gram: ppg, item_cost: cost, ...(count ? { unit_count: true } : {}), ...(eggPart ? { egg_part: eggPart } : {}) });
         if (eggPart) eggRows.push({ idx: resolved.length - 1, row });
     }
     // ביצים: משלמים על כל הביצים ששוברים (לא רק על הגרמים שבשימוש). העלות מתחלקת בין שורות הביצים של אותו מוצר

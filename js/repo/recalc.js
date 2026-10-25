@@ -50,7 +50,7 @@ async function recalcRecipes(cache) {
             if (live.length) resolved = await resolveRecipeItems(live.map((r) => ({ pantry_item_id: r.pantry_item_id, sub_recipe_id: r.sub_recipe_id, quantity_g: r.quantity_g, egg_part: r.egg_part })), { selfId: recipe.id, cache });
         } catch (e) { continue; } // למשל מוצר ביחידות שאיבד משקל ליחידה: משאירים כמו שהיה
         const ghostCost = ghosts.reduce((n, r) => n + (Number(r.item_cost) || 0), 0);
-        const ghostGrams = ghosts.reduce((n, r) => n + (Number(r.quantity_g) || 0), 0);
+        const ghostGrams = ghosts.reduce((n, r) => n + (r.unit_count ? 0 : Number(r.quantity_g) || 0), 0);
         const total = resolved.totalCost + ghostCost;
         const finalWeight = recipe.is_auto_weight ? resolved.rawWeight + ghostGrams : recipe.final_weight;
         const cpg = recipeCostPerGram(total, finalWeight);

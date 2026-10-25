@@ -1,7 +1,7 @@
 // לוגיקת מזווה - תרגום מדויק של _validate_payload / add_item / update_item / update_item_yield / delete_item מ-main.py.
 import { dbGetAll, dbGet, dbPut, dbDelete, dbGetByIndex } from "../db.js";
 import { CATEGORY_GROUPS, UNIT_TYPES } from "../constants.js";
-import { computeYieldPct } from "../formulas.js";
+import { computeYieldPct, isCountItem } from "../formulas.js";
 import { EGG_SIZES, guessEggSize } from "../eggs.js";
 import { expandToParents } from "./subRecipes.js";
 
@@ -78,7 +78,7 @@ export async function addPantryItem(data) {
     const price = checkPrice(data.price);
 
     let unitAmount = null;
-    if (data.unit_type === "unit") unitAmount = checkUnitAmount(data.unit_amount);
+    if (data.unit_type === "unit") unitAmount = numIn(data.unit_amount) > 0 ? checkUnitAmount(data.unit_amount) : null; // משקל ליחידה לא חובה
 
     const row = {
         name, category: data.category, subcategory, unit_type: data.unit_type, unit_amount: unitAmount,
@@ -132,7 +132,16 @@ export async function updatePantryItem(id, data) {
     const price = checkPrice(data.price);
 
     let unitAmount = null;
-    if (data.unit_type === "unit") unitAmount = checkUnitAmount(data.unit_amount);
+    if (data.unit_type === "unit") unitAmount = numIn(data.unit_amount) > 0 ? checkUnitAmount(data.unit_amount) : null; // משקל ליחידה לא חובה
+
+    // מעבר בין "ספירה" (יחידות בלי משקל) לבין משקל משנה את משמעות הכמות ששמורה במתכונים ובמנות, ולכן חסום כשהמוצר בשימוש
+    const wasCount = isCountItem(existing);
+    const willCount = data.unit_type === "unit" && !(unitAmount > 0);
+    if (wasCount !== willCount || (existing.unit_type !== data.unit_type && (wasCount || willCount))) {
+        const usedInRecipe = (await dbGetAll("recipeItems")).some((r) => r.pantry_item_id === id);
+        const usedInDish = (await dbGetAll("dishItems")).some((r) => r.source_type === "pantry" && r.source_id === id);
+        if (usedInRecipe || usedInDish) throw new Error("המוצר בשימוש במתכונים או במנות. אי אפשר להוסיף או להסיר לו משקל ליחידה, כי הכמויות שהוזנו שם נשמרו אחרת. הסר אותו מהם קודם, או צור מוצר חדש.");
+    }
 
     let newSubcategory = existing.subcategory;
     const allowedSubs = CATEGORY_GROUPS[data.category];
