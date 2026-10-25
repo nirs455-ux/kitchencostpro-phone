@@ -1,6 +1,13 @@
 // התאמת שם מרכיב משורת מתכון למוצר במזווה: מבינה שמספר ויחידת מידה אינם חלק מהשם ("עגבניות 200" = עגבניות, כמות 200),
 // ש-"חומץ 5%" הוא חומץ עם ריכוז, ושרבים/יחיד ("עגבניות" / "עגבנייה") אותו מוצר. טהור (בלי DOM), נבדק ב-tests/name_match.verify.mjs
 
+// גודל ("עגבניות בינוניות"): לא חלק מהשם, אבל קובע הערכת משקל. s קטנה, m בינונית, l גדולה
+const SIZE_WORDS = { "קטן": "s", "קטנה": "s", "קטנים": "s", "קטנות": "s", "בינוני": "m", "בינונית": "m", "בינוניים": "m", "בינוניות": "m", "גדול": "l", "גדולה": "l", "גדולים": "l", "גדולות": "l" };
+export function sizeInName(raw) {
+    for (const t of String(raw || "").split(/\s+/)) if (SIZE_WORDS[t]) return SIZE_WORDS[t];
+    return "m";
+}
+
 const UNIT_WORDS = new Set(["גרם", "גר", "קג", "קילו", "קילוגרם", "מל", "ליטר", "ל", "כף", "כפות", "כפית", "כפיות", "כוס", "כוסות", "יחידות", "יחידה", "יח"]);
 
 // מפרק שם לחלקים: מילים (בלי מספרים ויחידות), אחוז (ריכוז) אם יש, ומספר ראשון שנשאר (כמות שנכתבה בתוך השם)
@@ -12,7 +19,7 @@ export function parseNameParts(raw) {
     let num = null;
     s = s.replace(/\d+(?:[.,]\d+)?/g, (m) => { if (num == null) num = parseFloat(m.replace(",", ".")); return " "; });
     s = s.replace(/["'`׳״]/g, "").replace(/[()\[\],;:/\\\-–־_.*+]/g, " ");
-    const tokens = s.split(/\s+/).filter((t) => t && !UNIT_WORDS.has(t));
+    const tokens = s.split(/\s+/).filter((t) => t && !UNIT_WORDS.has(t) && !SIZE_WORDS[t]);
     return { tokens, pct, num };
 }
 

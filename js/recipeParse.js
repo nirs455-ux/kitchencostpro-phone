@@ -1,7 +1,8 @@
 // הופך JSON שחילץ ה-AI מתמונת מתכון לטיוטה: כמויות לגרם, והתאמת כל מרכיב למוצר במזווה.
 // טהור (בלי רשת/DB) - משקף את build_recipe_draft ב-main.py, ונבדק מול אותו קלט בדיוק.
 import { getCloseMatches } from "./fuzzyMatch.js";
-import { smartMatch, quantityInName, cleanName } from "./nameMatch.js";
+import { smartMatch, quantityInName, cleanName, sizeInName } from "./nameMatch.js";
+import { unitWeightG, juiceInfo, juiceFruitName, gramsFromJuiceMl } from "./produceKb.js";
 import { RECIPE_CATEGORIES } from "./constants.js";
 
 // נוזלים: 1 מ"ל = 1 גרם (כמו בממשק המתכונים הקיים)
@@ -48,9 +49,23 @@ export function buildRecipeDraft(parsed, pantryItems) {
         const key = ingName.toLowerCase();
         let match = byName.get(key) || null;
         let fuzzy = false;
-        if (!match) { // התאמה לפי מילים: מתעלמת ממספרים, יחידות וריכוז ("חומץ 5%" מול "חומץ"), ומרבים/יחיד
+        // "מיץ לימון טרי" = סחוט מלימונים: לא מתאימים למיץ קנוי שיש במזווה, אלא מחשבים מהפרי
+        const wantsFresh = /טרי|טרייה/.test(ingName) && !!juiceFruitName(ingName);
+        if (!match && !wantsFresh) { // התאמה לפי מילים: מתעלמת ממספרים, יחידות וריכוז ("חומץ 5%" מול "חומץ"), ומרבים/יחיד
             const sm = smartMatch(ingName, pantryItems);
             if (sm) { match = sm.item; fuzzy = !sm.exact; }
+        }
+        // "מיץ לימון 300 מ"ל" ובמזווה יש לימון: מחשבים כמה לימונים צריך (לפי ממוצע)
+        let est = null;
+        if (!match) {
+            const fruit = juiceFruitName(ingName);
+            const fm = fruit ? smartMatch(fruit, pantryItems) : null;
+            const mlQty = qty > 0 && unit in RECIPE_UNIT_GRAMS && unit !== "g" && unit !== "kg" ? qty * RECIPE_UNIT_GRAMS[unit] : null;
+            if (fm && juiceInfo(fm.item.name) && mlQty) {
+                match = fm.item;
+                fuzzy = true;
+                est = { est_mode: "juice", est_n: round2(mlQty), grams: round2(gramsFromJuiceMl(fm.item.name, mlQty)) };
+            }
         }
         if (!match) {
             const close = getCloseMatches(key, [...byName.keys()], 1, 0.7);
@@ -69,7 +84,16 @@ export function buildRecipeDraft(parsed, pantryItems) {
             }
         }
 
+        // "6 עגבניות בינוניות" ובמזווה עגבניות בק"ג: מעריכים משקל לפי ממוצע (קטנה/בינונית/גדולה)
+        if (!est && unit === "unit" && qty > 0 && match && match.unit_type === "weight") {
+            const size = sizeInName(String((ing && ing.name) || ""));
+            const w = unitWeightG(match.name, size);
+            if (w) est = { est_mode: "est_" + size, est_n: qty, grams: round2(qty * w) };
+        }
+        if (est) quantityG = est.grams;
+
         ingredients.push({
+            ...(est ? { est_mode: est.est_mode, est_n: est.est_n } : {}),
             original_name: ingName,
             original_quantity: qty,
             original_unit: unit,
