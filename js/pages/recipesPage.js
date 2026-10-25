@@ -26,6 +26,7 @@ import { getNutritionDb, applyRememberedNutrition } from "../repo/nutritionRepo.
 import { computeNutrition, perServing, NUTRIENTS } from "../nutrition.js";
 import { assignAutoSubs, subOf } from "../autoGroups.js";
 import { guessCategory } from "../guessCategory.js";
+import { crumb } from "../errorLog.js";
 import { unitWeightG, juiceInfo, gramsFromJuiceMl, fruitsFromJuiceMl } from "../produceKb.js";
 import { factorFor, scaleRecipe, fmtQty } from "../generator.js";
 import { recipeEggSummary, eggSummaryText, allocateEggCosts, isEggProduct, eggSizeOf, partGrams, eggBreakdown, EGG_SIZES, EGG_PARTS, EGG_PART_UI } from "../eggs.js";
@@ -119,12 +120,16 @@ export async function renderRecipesPage(container) {
 // סורק קובץ מתכון מכל סוג (תמונה / PDF / Word / Excel / טקסט...) ופותח טיוטה לבדיקה. משמש גם ל"שתף".
 export async function scanRecipeFile(file, container) {
     const apiKey = await getAgentKey();
+    crumb(`scan start ${file && file.type} ${file && Math.round(file.size / 1024)}KB`);
     openModal('<div style="text-align:center;padding:24px;color:#666;">קורא את המתכון...</div>');
     try {
         const draft = await scanRecipeImage(apiKey, file);
+        crumb("scan got draft");
         closeModal();
-        openRecipeModal(null, container, draft);
+        await openRecipeModal(null, container, draft); // await: שגיאה בבניית המסך תוצג כשגיאת סריקה ולא תיבלע בשקט
+        crumb("scan draft opened");
     } catch (e) {
+        crumb("scan error " + String(e && e.message).slice(0, 60));
         const overlay = openModal(`<h2>שגיאה בסריקה</h2><div class="error-msg" style="display:block;">${escapeHtml(e.message)}</div><div class="modal-actions"><button class="btn btn-secondary" id="err-close">סגור</button></div>`);
         overlay.querySelector("#err-close").onclick = closeModal;
     }
