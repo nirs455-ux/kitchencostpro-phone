@@ -75,7 +75,9 @@ export async function addPantryItem(data) {
     }
     if (!allowedSubs.length || !subcategory) subcategory = null;
 
-    const price = checkPrice(data.price);
+    // הוספה תוך כדי עבודה (למשל מתוך מתכון): אפשר בלי מחיר. נשמר עם סימון "חסר מחיר" עד שמשלימים
+    const noPrice = !!data.allow_no_price && String(data.price ?? "").trim() === "";
+    const price = noPrice ? 0 : checkPrice(data.price);
 
     let unitAmount = null;
     if (data.unit_type === "unit") unitAmount = numIn(data.unit_amount) > 0 ? checkUnitAmount(data.unit_amount) : null; // משקל ליחידה לא חובה
@@ -84,7 +86,7 @@ export async function addPantryItem(data) {
         name, category: data.category, subcategory, unit_type: data.unit_type, unit_amount: unitAmount,
         pkg_size: data.unit_type !== "unit" && parseFloat(data.pkg_size) > 0 ? parseFloat(data.pkg_size) : null, // גודל אריזה (ק"ג/ליטר) לספירה באריזות
         price, yield_pct: yieldPct, weight_before: weightBefore, weight_after: weightAfter,
-        is_frozen: isFrozen ? 1 : 0, parent_id: null,
+        is_frozen: isFrozen ? 1 : 0, parent_id: null, ...(noPrice ? { price_missing: true } : {}),
         ...(data.unit_type === "unit" && EGG_SIZES[data.egg_size] ? { egg_size: data.egg_size } : {}),
         // אלרגנים: רק אם הוגדרו במפורש. אחרת השדה לא קיים = "לא ידוע" (המאגר מכריע בזמן התצוגה). אין ניחוש לפי שם.
         ...(Array.isArray(data.allergens) ? { allergens: data.allergens, allergens_auto: false } : {}),
@@ -151,6 +153,7 @@ export async function updatePantryItem(id, data) {
         name, category: data.category, subcategory: newSubcategory, unit_type: data.unit_type,
         unit_amount: unitAmount, price, is_frozen: isFrozen ? 1 : 0,
     });
+    if (price > 0) delete existing.price_missing; // הושלם מחיר
     if (data.unit_type === "unit" && EGG_SIZES[data.egg_size]) existing.egg_size = data.egg_size;
     existing.pkg_size = data.unit_type !== "unit" && parseFloat(data.pkg_size) > 0 ? parseFloat(data.pkg_size) : null;
     if (Array.isArray(data.allergens)) { existing.allergens = data.allergens; existing.allergens_auto = false; }
