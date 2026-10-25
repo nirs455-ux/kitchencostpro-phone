@@ -1,6 +1,7 @@
 // הופך JSON שחילץ ה-AI מתמונת מתכון לטיוטה: כמויות לגרם, והתאמת כל מרכיב למוצר במזווה.
 // טהור (בלי רשת/DB) - משקף את build_recipe_draft ב-main.py, ונבדק מול אותו קלט בדיוק.
 import { getCloseMatches } from "./fuzzyMatch.js";
+import { smartMatch, quantityInName, cleanName } from "./nameMatch.js";
 import { RECIPE_CATEGORIES } from "./constants.js";
 
 // נוזלים: 1 מ"ל = 1 גרם (כמו בממשק המתכונים הקיים)
@@ -35,15 +36,22 @@ export function buildRecipeDraft(parsed, pantryItems) {
 
     const ingredients = [];
     for (const ing of parsed.ingredients || []) {
-        const ingName = String((ing && ing.name) || "").trim();
+        let ingName = String((ing && ing.name) || "").trim();
         if (!ingName) continue;
         let qty = parseFloat(ing.quantity);
         qty = Number.isFinite(qty) ? qty : null;
-        const unit = ing.unit || null;
+        let unit = ing.unit || null;
+        // כמות שנכתבה בתוך השם ("עגבניות 200"): השם הוא "עגבניות", והכמות 200
+        const inName = qty === null ? quantityInName(ingName) : null;
+        if (inName) { qty = inName.qty; unit = unit || inName.unit; ingName = cleanName(ingName); }
 
         const key = ingName.toLowerCase();
         let match = byName.get(key) || null;
         let fuzzy = false;
+        if (!match) { // התאמה לפי מילים: מתעלמת ממספרים, יחידות וריכוז ("חומץ 5%" מול "חומץ"), ומרבים/יחיד
+            const sm = smartMatch(ingName, pantryItems);
+            if (sm) { match = sm.item; fuzzy = !sm.exact; }
+        }
         if (!match) {
             const close = getCloseMatches(key, [...byName.keys()], 1, 0.7);
             if (close.length) {
