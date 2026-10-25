@@ -26,6 +26,7 @@ import { getNutritionDb, applyRememberedNutrition } from "../repo/nutritionRepo.
 import { computeNutrition, perServing, NUTRIENTS } from "../nutrition.js";
 import { assignAutoSubs, subOf } from "../autoGroups.js";
 import { guessCategory } from "../guessCategory.js";
+import { unitWeightG, juiceInfo, gramsFromJuiceMl, fruitsFromJuiceMl } from "../produceKb.js";
 import { factorFor, scaleRecipe, fmtQty } from "../generator.js";
 import { recipeEggSummary, eggSummaryText, allocateEggCosts, isEggProduct, eggSizeOf, partGrams, eggBreakdown, EGG_SIZES, EGG_PARTS, EGG_PART_UI } from "../eggs.js";
 import { showImageFullscreen } from "../imageUtil.js";
@@ -592,6 +593,16 @@ async function openRecipeModal(existing, container, draft = null) {
     const src = existing || draft;
     let rowCounter = 0;
     const rowMeta = new Map(); // id -> { um: {name, quantity, unit} | null }
+    // אפשרויות הכמות בשורה: ק"ג, אחוז מהבסיס, ולמוצר שמכירים (עגבניה, לימון...) גם יחידות לפי משקל ממוצע ומ"ל מיץ
+    const modeOptionsHtml = (selected, item) => {
+        const opts = [["", 'כמות בק"ג'], ["base", "אחוז מהבסיס"]];
+        if (selected === "total") opts.push(["total", "אחוז מהמסה"]);
+        if (item && !isCountItem(item) && !isEggProduct(item)) {
+            if (unitWeightG(item.name)) opts.push(["est_s", "יחידות קטנות (הערכה)"], ["est_m", "יחידות בינוניות (הערכה)"], ["est_l", "יחידות גדולות (הערכה)"]);
+            if (juiceInfo(item.name)) opts.push(["juice", 'מ"ל מיץ (כמה פירות)']);
+        }
+        return opts.map(([v, l]) => `<option value="${v}" ${v === (selected || "") ? "selected" : ""}>${l}</option>`).join("");
+    };
 
     const overlay = openModal(`
         <div class="pg-top"><button type="button" class="pg-back" id="btn-cancel" aria-label="חזרה">→</button>
@@ -634,7 +645,7 @@ async function openRecipeModal(existing, container, draft = null) {
     function addRow(prefill) {
         const id = rowCounter++;
         const um = prefill && prefill.um ? prefill.um : null;
-        rowMeta.set(id, { um, eggPart: (prefill && prefill.egg_part) || "whole", eggSize: null, eggUnit: "g", pct: (prefill && prefill.pct_mode) || null });
+        rowMeta.set(id, { um, eggPart: (prefill && prefill.egg_part) || "whole", eggSize: null, eggUnit: "g", pct: (prefill && (prefill.pct_mode || prefill.est_mode)) || null });
         const row = h(`
             <div class="item-row-inputs" id="ing-row-${id}">
                 ${um && um.manual ? `<div class="field" style="margin:0 0 6px;"><input type="text" id="ing-name-${id}" placeholder="שם הרכיב (עדיין לא במזווה)" value="${escapeHtml(um.name || "")}"></div>` : um ? `<div class="hint-warn" style="margin-top:0;">מהמסמך: <b>${escapeHtml(um.name)}</b> ${originalHtml(um)}</div>` : ""}
@@ -644,10 +655,10 @@ async function openRecipeModal(existing, container, draft = null) {
                         <option value="">${um ? "בחר מוצר מהמזווה..." : "בחר מרכיב..."}</option>
                         ${selectOptions(prefill ? (prefill.sub_recipe_id != null ? "r" + prefill.sub_recipe_id : prefill.pantry_item_id) : null)}
                     </select>
-                    <input type="text" inputmode="decimal" id="ing-qty-${id}" placeholder='ק"ג' style="width:80px;" value="${prefill && prefill.pct_mode ? countToText(prefill.pct) : prefill && prefill.quantity_g != null ? (prefill.unit_count ? countToText(prefill.quantity_g) : gramsToKgText(prefill.quantity_g)) : (um && gramsFromOriginal(um, null) != null ? gramsToKgText(gramsFromOriginal(um, null)) : "")}">
+                    <input type="text" inputmode="decimal" id="ing-qty-${id}" placeholder='ק"ג' style="width:80px;" value="${prefill && prefill.pct_mode ? countToText(prefill.pct) : prefill && prefill.est_mode ? countToText(prefill.est_n) : prefill && prefill.quantity_g != null ? (prefill.unit_count ? countToText(prefill.quantity_g) : gramsToKgText(prefill.quantity_g)) : (um && gramsFromOriginal(um, null) != null ? gramsToKgText(gramsFromOriginal(um, null)) : "")}">
                     <button type="button" class="remove-row-btn" data-remove="${id}">✕</button>
                 </div>
-                ${um ? "" : `<select id="ing-mode-${id}" style="width:auto;font-size:12px;padding:2px 6px;margin:2px 0;"><option value="">כמות בק"ג</option><option value="base" ${prefill && prefill.pct_mode === "base" ? "selected" : ""}>אחוז מהבסיס</option>${prefill && prefill.pct_mode === "total" ? `<option value="total" selected>אחוז מהמסה</option>` : ""}</select>`}
+                ${um ? "" : `<select id="ing-mode-${id}" style="width:auto;font-size:12px;padding:2px 6px;margin:2px 0;">${modeOptionsHtml((prefill && (prefill.pct_mode || prefill.est_mode)) || "", (sources.find((x) => String(x.id) === String(prefill && prefill.pantry_item_id)) || {}).item)}</select>`}
                 <div class="line-total" id="ing-line-${id}"></div>
                 <div class="hint" id="ing-echo-${id}" style="margin:2px 0;"></div>
                 <div id="ing-egg-${id}" style="display:none;margin:6px 0;">
@@ -797,9 +808,29 @@ async function openRecipeModal(existing, container, draft = null) {
     overlay.querySelector("#f-manual-weight").addEventListener("input", () => recalc());
 
     // אחוזים: שורה במצב אחוז מחושבת מהשורות שהוקלדו בגרמים (הבסיס). base = אחוז מהבסיס. total = אחוז מהמסה הסופית כולל השורה עצמה.
+    function rowEst(id) {
+        const meta = rowMeta.get(Number(id));
+        if (!meta || !/^(est_[sml]|juice)$/.test(meta.pct || "")) return null;
+        const rawSel = overlay.querySelector(`#ing-source-${id}`).value;
+        if (!rawSel || rawSel.startsWith("r")) return null;
+        const s = sources.find((x) => String(x.id) === rawSel);
+        if (!s || isCountItem(s.item) || isEggProduct(s.item)) return null;
+        if (meta.pct === "juice" ? !juiceInfo(s.item.name) : !unitWeightG(s.item.name)) return null;
+        return meta.pct;
+    }
+    // גרמים מהערכה: יחידות x משקל ממוצע, או מ"ל מיץ -> גרם פרי
+    function estGrams(id) {
+        const mode = rowEst(id);
+        if (!mode) return null;
+        const s = sources.find((x) => String(x.id) === overlay.querySelector(`#ing-source-${id}`).value);
+        const n = textToCount(overlay.querySelector(`#ing-qty-${id}`).value) || 0;
+        if (mode === "juice") return { mode, n, g: Math.round((gramsFromJuiceMl(s.item.name, n) || 0) * 100) / 100, fruits: fruitsFromJuiceMl(s.item.name, n) || 0 };
+        const w = unitWeightG(s.item.name, mode.slice(4));
+        return { mode, n, w, g: Math.round(n * w * 100) / 100 };
+    }
     function rowPct(id) {
         const meta = rowMeta.get(Number(id));
-        if (!meta || !meta.pct) return null;
+        if (!meta || (meta.pct !== "base" && meta.pct !== "total")) return null;
         const rawSel = overlay.querySelector(`#ing-source-${id}`).value;
         if (!rawSel) return null;
         if (!rawSel.startsWith("r")) { const s = sources.find((x) => String(x.id) === rawSel); if (!s || isCountItem(s.item) || isEggProduct(s.item)) return null; }
@@ -814,6 +845,7 @@ async function openRecipeModal(existing, container, draft = null) {
             const mode = rowPct(id);
             const raw = overlay.querySelector(`#ing-qty-${id}`).value;
             if (mode) { pr.push({ id, mode, p: textToCount(raw) || 0 }); return; }
+            if (rowEst(id)) { base += estGrams(id).g; return; }
             const eg = eggRow(id);
             const rawSel = overlay.querySelector(`#ing-source-${id}`).value;
             const s = rawSel.startsWith("r") ? null : sources.find((x) => String(x.id) === rawSel);
@@ -850,14 +882,21 @@ async function openRecipeModal(existing, container, draft = null) {
             const rawText = overlay.querySelector(`#ing-qty-${id}`).value;
             const count = !!(s && !subRec && !egg && isCountItem(s.item));
             const qtyInput = overlay.querySelector(`#ing-qty-${id}`);
+            const modeSelEl = overlay.querySelector(`#ing-mode-${id}`);
+            if (modeSelEl && meta.modeFor !== rawSel) { meta.modeFor = rawSel; modeSelEl.innerHTML = modeOptionsHtml(meta.pct || "", s && s.item); meta.pct = modeSelEl.value || null; }
             const pm = !egg && !count ? rowPct(id) : null;
-            qtyInput.placeholder = count ? "יחידות" : pm ? "%" : 'ק"ג';
-            const qty = egg ? egg.grams : count ? textToCount(rawText) || 0 : pm ? pctRes.map.get(id) || 0 : textToGrams(rawText) || 0;
+            const em = !egg && !count && !pm ? rowEst(id) : null;
+            qtyInput.placeholder = count ? "יחידות" : pm ? "%" : em ? (em === "juice" ? 'מ"ל' : "יחידות") : 'ק"ג';
+            const qty = egg ? egg.grams : count ? textToCount(rawText) || 0 : pm ? pctRes.map.get(id) || 0 : em ? estGrams(id).g : textToGrams(rawText) || 0;
             const echoEl = overlay.querySelector(`#ing-echo-${id}`);
             if (echoEl) {
                 const liquid = !!(s && s.item.unit_type === "liter");
                 const warn = pm ? (pctRes.sumTotal >= 100 ? "סך האחוזים מהמסה חייב להיות קטן ממאה" : rawText.trim() !== "" && textToCount(rawText) == null ? "לא הבנתי את המספר. כותבים מספר יחידות." : null) : egg && meta.eggUnit === "unit" ? null : count ? countWarning(rawText) : qtyWarning(rawText, { liquid });
-                if (pm) echoEl.innerHTML = warn ? `<span style="color:var(--danger);">${escapeHtml(warn)}</span>` : qty > 0 ? escapeHtml(`= ${qty} גרם`) : pctRes.base > 0 ? "" : '<span style="color:var(--danger);">קודם מזינים רכיבים בגרמים, והאחוז מחושב מהם</span>';
+                if (em) {
+                    const e = estGrams(id);
+                    const w2 = rawText.trim() !== "" && textToCount(rawText) == null ? "לא הבנתי את המספר. כותבים מספר יחידות." : null;
+                    echoEl.innerHTML = w2 ? `<span style="color:var(--danger);">${escapeHtml(w2)}</span>` : e.g > 0 ? escapeHtml(em === "juice" ? `≈ ${+e.fruits.toFixed(1)} יחידות · ${Math.round(e.g)} גרם (הערכה)` : `${e.n} × ${e.w} גרם = ${Math.round(e.g)} גרם (הערכה)`) : "";
+                } else if (pm) echoEl.innerHTML = warn ? `<span style="color:var(--danger);">${escapeHtml(warn)}</span>` : qty > 0 ? escapeHtml(`= ${qty} גרם`) : pctRes.base > 0 ? "" : '<span style="color:var(--danger);">קודם מזינים רכיבים בגרמים, והאחוז מחושב מהם</span>';
                 else echoEl.innerHTML = warn ? `<span style="color:var(--danger);">${escapeHtml(warn)}</span>` : egg && meta.eggUnit === "unit" ? "" : escapeHtml(count ? describeCount(rawText) : describeQty(rawText, { liquid }));
             }
             if (subRec && qty > 0) {
@@ -894,6 +933,7 @@ async function openRecipeModal(existing, container, draft = null) {
                 const rs = sources.find((x) => String(x.id) === overlay.querySelector(`#ing-source-${id}`).value);
                 if (!eg && rs && isCountItem(rs.item)) return; // יחידות בלי משקל: לא נספרות במשקל
                 if (!eg && rowPct(id)) { rawG += pctRes.map.get(id) || 0; return; }
+                if (!eg && rowEst(id)) { rawG += estGrams(id).g || 0; return; }
                 rawG += eg ? eg.grams : textToGrams(overlay.querySelector(`#ing-qty-${id}`).value) || 0;
             });
             const fin = textToGrams(overlay.querySelector("#f-manual-weight").value) || 0;
@@ -919,7 +959,7 @@ async function openRecipeModal(existing, container, draft = null) {
         for (const ing of draft.ingredients) {
             if (ing.blank) { addRow(); continue; }
             addRow({
-                pantry_item_id: ing.pantry_item_id, quantity_g: ing.quantity_g,
+                pantry_item_id: ing.pantry_item_id, quantity_g: ing.quantity_g, est_mode: ing.est_mode, est_n: ing.est_n,
                 um: ing.pantry_item_id ? null : { name: ing.original_name, quantity: ing.original_quantity, unit: ing.original_unit },
             });
         }
@@ -990,8 +1030,9 @@ async function openRecipeModal(existing, container, draft = null) {
             const ss = pantry_item_id.startsWith("r") ? null : sources.find((x) => String(x.id) === pantry_item_id);
             const countRow = !egg && ss && isCountItem(ss.item);
             const pm = !egg && !countRow ? rowPct(id) : null;
-            const quantity_g = egg ? (egg.grams > 0 ? egg.grams : "") : countRow ? (textToCount(overlay.querySelector(`#ing-qty-${id}`).value) || "") : pm ? (savePct.map.get(id) || "") : (textToGrams(overlay.querySelector(`#ing-qty-${id}`).value) || "");
-            const pctPart = pm && quantity_g ? { pct: textToCount(overlay.querySelector(`#ing-qty-${id}`).value), pct_mode: pm } : {};
+            const em = !egg && !countRow && !pm ? rowEst(id) : null;
+            const quantity_g = egg ? (egg.grams > 0 ? egg.grams : "") : countRow ? (textToCount(overlay.querySelector(`#ing-qty-${id}`).value) || "") : pm ? (savePct.map.get(id) || "") : em ? (estGrams(id).g || "") : (textToGrams(overlay.querySelector(`#ing-qty-${id}`).value) || "");
+            const pctPart = pm && quantity_g ? { pct: textToCount(overlay.querySelector(`#ing-qty-${id}`).value), pct_mode: pm } : em && quantity_g ? { est_mode: em, est_n: textToCount(overlay.querySelector(`#ing-qty-${id}`).value) } : {};
             const meta = rowMeta.get(Number(id));
             if (egg && meta.eggSize) eggSizeChanges.set(egg.s.id, meta.eggSize);
             if (pantry_item_id.startsWith("r") && quantity_g) items.push({ sub_recipe_id: Number(pantry_item_id.slice(1)), quantity_g, ...pctPart });
