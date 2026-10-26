@@ -27,6 +27,7 @@ import { computeNutrition, perServing, NUTRIENTS } from "../nutrition.js";
 import { assignAutoSubs, subOf } from "../autoGroups.js";
 import { guessCategory } from "../guessCategory.js";
 import { crumb } from "../errorLog.js";
+import { getRecipeCategories, addRecipeCategory, renameRecipeCategory, deleteRecipeCategory, recipeCategoryCounts, FALLBACK_CATEGORY } from "../repo/recipeCategories.js";
 import { unitWeightG, juiceInfo, gramsFromJuiceMl, fruitsFromJuiceMl } from "../produceKb.js";
 import { factorFor, scaleRecipe, fmtQty } from "../generator.js";
 import { recipeEggSummary, eggSummaryText, allocateEggCosts, isEggProduct, eggSizeOf, partGrams, eggBreakdown, EGG_SIZES, EGG_PARTS, EGG_PART_UI } from "../eggs.js";
@@ -71,7 +72,7 @@ export async function renderRecipesPage(container) {
     let q = "";
 
     container.innerHTML = `
-        <div class="btn-row mgr-only"><button class="btn btn-accent" id="btn-scan-recipe">📷 סרוק מתכון (תמונה / קובץ)</button>${recipes.length ? '<button class="btn btn-secondary" id="btn-share-cat">💬 שתף קטגוריה</button>' : ""}</div>
+        <div class="btn-row mgr-only"><button class="btn btn-accent" id="btn-scan-recipe">📷 סרוק מתכון (תמונה / קובץ)</button>${recipes.length ? '<button class="btn btn-secondary" id="btn-share-cat">💬 שתף קטגוריה</button>' : ""}<button class="btn btn-secondary" id="btn-manage-cats">🗂 קטגוריות</button></div>
         ${recipes.length ? `<div class="px-top"><input type="search" id="rc-q" placeholder="חיפוש מתכון..." autocomplete="off"></div>` : ""}
         ${recipes.length ? `<div class="fchips mgr-only">
             <button type="button" class="chip ${recipeFilter === "all" ? "active" : ""}" data-rf="all">הכול (${recipes.length})</button>
@@ -99,6 +100,34 @@ export async function renderRecipesPage(container) {
     if (qEl) qEl.oninput = () => { q = qEl.value; draw(); };
     draw();
     container.querySelector("#btn-add").onclick = () => openRecipeModal(null, container);
+    // ניהול קטגוריות: להוסיף, לשנות שם ולמחוק. "כללי" קבועה. מחיקה מעבירה את המתכונים ל"כללי"
+    container.querySelector("#btn-manage-cats").onclick = async () => {
+        const draw = async () => {
+            const cats = await getRecipeCategories();
+            const counts = await recipeCategoryCounts();
+            const ov = openModal(`<h2>קטגוריות מתכונים</h2>
+                <div class="hint" style="margin-bottom:8px;">מוסיפים, משנים שם או מוחקים. מחיקת קטגוריה מעבירה את המתכונים שלה ל"כללי", ואף מתכון לא נמחק.</div>
+                <div class="form-row"><div class="field"><input type="text" id="cat-new" maxlength="30" placeholder="קטגוריה חדשה"></div><button type="button" class="btn btn-primary" id="cat-add" style="align-self:flex-end;">הוסף</button></div>
+                <div class="error-msg" id="cat-err"></div>
+                <div id="cat-list">${cats.map((c) => `<div class="card-row" style="align-items:center;gap:6px;padding:6px 0;"><b style="flex:1;">${escapeHtml(c)}</b><span class="muted">${counts.get(c) || 0}</span>${c === FALLBACK_CATEGORY ? "" : `<button type="button" class="btn btn-secondary btn-small" data-ren="${escapeHtml(c)}">שם</button><button type="button" class="btn btn-danger btn-small" data-del="${escapeHtml(c)}">מחק</button>`}</div>`).join("")}</div>
+                <div class="modal-actions"><button type="button" class="btn btn-secondary" id="cat-close">סגור</button></div>`);
+            const err = ov.querySelector("#cat-err");
+            const fail = (e) => { err.textContent = e.message; err.style.display = "block"; };
+            ov.querySelector("#cat-add").onclick = async () => { try { await addRecipeCategory(ov.querySelector("#cat-new").value); await draw(); } catch (e) { fail(e); } };
+            ov.querySelectorAll("[data-ren]").forEach((b) => { b.onclick = async () => {
+                const nn = window.prompt("שם חדש לקטגוריה:", b.dataset.ren);
+                if (nn === null) return;
+                try { await renameRecipeCategory(b.dataset.ren, nn); await draw(); } catch (e) { fail(e); }
+            }; });
+            ov.querySelectorAll("[data-del]").forEach((b) => { b.onclick = async () => {
+                const n = counts.get(b.dataset.del) || 0;
+                if (!(await confirmDialog(n ? `למחוק את "${escapeHtml(b.dataset.del)}"? ${n} מתכונים יעברו ל"כללי".` : `למחוק את "${escapeHtml(b.dataset.del)}"?`))) { await draw(); return; }
+                try { await deleteRecipeCategory(b.dataset.del); await draw(); } catch (e) { fail(e); }
+            }; });
+            ov.querySelector("#cat-close").onclick = () => { closeModal(); renderRecipesPage(container); };
+        };
+        await draw();
+    };
     const shareCat = container.querySelector("#btn-share-cat");
     if (shareCat) shareCat.onclick = () => {
         const cats = orderCategories(recipes.filter((r) => r.status !== "draft").map((r) => r.category));
@@ -596,6 +625,8 @@ async function openRecipeModal(existing, container, draft = null) {
     const sources = await ingredientSources();
     const isEdit = !!existing;
     const src = existing || draft;
+    const categoryList = await getRecipeCategories();
+    if (src && src.category && !categoryList.includes(src.category)) categoryList.push(src.category);
     let rowCounter = 0;
     const rowMeta = new Map(); // id -> { um: {name, quantity, unit} | null }
     // אפשרויות הכמות בשורה: ק"ג, אחוז מהבסיס, ולמוצר שמכירים (עגבניה, לימון...) גם יחידות לפי משקל ממוצע ומ"ל מיץ
@@ -619,8 +650,10 @@ async function openRecipeModal(existing, container, draft = null) {
                 <label>קטגוריה</label>
                 <select id="f-category">
                     <option value="">בחר...</option>
-                    ${RECIPE_CATEGORIES.map((c) => `<option value="${c}" ${src && src.category === c ? "selected" : ""}>${c}</option>`).join("")}
+                    ${categoryList.map((c) => `<option value="${escapeHtml(c)}" ${src && src.category === c ? "selected" : ""}>${escapeHtml(c)}</option>`).join("")}
+                    <option value="__new__">＋ קטגוריה חדשה...</option>
                 </select>
+                <input type="text" id="f-newcat" maxlength="30" placeholder="שם הקטגוריה החדשה" style="display:none;margin-top:6px;">
             </div>
             <div class="pg-sec">מרכיבים</div>
             <div id="ingredients-box"></div>
@@ -972,6 +1005,11 @@ async function openRecipeModal(existing, container, draft = null) {
         addRow();
     }
     recalc();
+    overlay.querySelector("#f-category").addEventListener("change", (e) => {
+        const nc = overlay.querySelector("#f-newcat");
+        nc.style.display = e.target.value === "__new__" ? "block" : "none";
+        if (e.target.value === "__new__") nc.focus();
+    });
     overlay.querySelector("#btn-add-row").onclick = () => addRow();
     // הוספה מרוכזת: כל הרכיבים שעדיין לא במזווה נוצרים בבת אחת (בלי מחיר, עם סימון "חסר מחיר"), ומתחברים לשורות שלהם
     overlay.querySelector("#btn-add-missing").onclick = busy(async () => {
@@ -1052,7 +1090,7 @@ async function openRecipeModal(existing, container, draft = null) {
         const el = overlay.querySelector(".error-msg");
         const data = {
             name: overlay.querySelector("#f-name").value,
-            category: overlay.querySelector("#f-category").value,
+            category: overlay.querySelector("#f-category").value === "__new__" ? overlay.querySelector("#f-newcat").value.trim() : overlay.querySelector("#f-category").value,
             items,
             draft_ingredients: draftIngredients,
             method: overlay.querySelector("#f-method").value,
