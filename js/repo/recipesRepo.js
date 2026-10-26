@@ -1,6 +1,6 @@
 // לוגיקת מתכונים - תרגום מדויק של _resolve_recipe_items / add_recipe / update_recipe / delete_recipe.
 import { dbGetAll, dbGet, dbPut, dbDelete, dbGetByIndex, dbDeleteWhere } from "../db.js";
-import { RECIPE_CATEGORIES } from "../constants.js";
+import { ensureRecipeCategory } from "./recipeCategories.js";
 import { pricePerGram, itemCost as calcItemCost, recipeCostPerGram, effectivePrice, isCountItem } from "../formulas.js";
 import { ensureEggDefaults } from "./pantryRepo.js";
 import { isEggProduct, eggSizeOf, allocateEggCosts } from "../eggs.js";
@@ -118,7 +118,9 @@ function computeWeight(manualWeight, rawWeight) {
 export async function saveRecipe(existingId, data) {
     const name = (data.name || "").trim();
     if (!name) throw new Error("יש להזין שם מתכון");
-    if (!RECIPE_CATEGORIES.includes(data.category)) throw new Error("קטגוריה לא תקינה");
+    data = { ...data, category: String(data.category || "").replace(/\s+/g, " ").trim() };
+    if (!data.category || data.category.length > 30) throw new Error("קטגוריה לא תקינה");
+    await ensureRecipeCategory(data.category);
     // רכיבים שעדיין לא במזווה נשמרים כטיוטה (draft_ingredients) ואפשר להשלים אותם אחר כך; העלות מחושבת רק מהרכיבים שבמזווה
     const draftIngredients = (data.draft_ingredients || [])
         .map((d) => ({ name: String(d.name || "").trim(), quantity: d.quantity ?? null, unit: d.unit ?? null, ...(d.manual ? { manual: true } : {}) }))

@@ -10,7 +10,8 @@ import { compressImage } from "../imageUtil.js";
 import { prepareParts } from "../filePrep.js";
 import { buildBasePrompt, parseBaseAnswer } from "../bakers.js";
 import { NON_FOOD_CATEGORIES } from "../constants.js";
-import { RECIPE_SCAN_PROMPT, buildRecipeDraft } from "../recipeParse.js";
+import { recipeScanPrompt, buildRecipeDraft } from "../recipeParse.js";
+import { getRecipeCategories } from "./recipeCategories.js";
 import { INVOICE_SCAN_PROMPT, mergeDiscountLines, computeStockFactor, toFloat } from "../invoiceParse.js";
 import { LABEL_SCAN_PROMPT, parseLabelAnswer } from "../labelParse.js";
 
@@ -249,10 +250,11 @@ export async function scanRecipeImage(apiKey, file) {
     if (!apiKey) throw new Error("לא הוגדר מפתח API של Gemini. הזן אותו במסך ההגדרות.");
     const prepared = await prepareParts(file, "טקסט המתכון");
     const filePart = prepared.parts;
+    const categories = await getRecipeCategories();
 
     let response;
     try {
-        response = await geminiFetch(apiKey, { contents: [{ parts: [{ text: RECIPE_SCAN_PROMPT }, ...filePart] }] });
+        response = await geminiFetch(apiKey, { contents: [{ parts: [{ text: recipeScanPrompt(categories) }, ...filePart] }] });
     } catch (e) {
         throw new Error("אין חיבור לאינטרנט או שהשרת לא זמין. נסה שוב בעוד רגע.");
     }
@@ -276,7 +278,7 @@ export async function scanRecipeImage(apiKey, file) {
         throw new Error(unreadableMessage(e));
     }
     const pantry = (await dbGetAll("pantryItems")).filter((r) => !NON_FOOD_CATEGORIES.has(r.category));
-    const draft = buildRecipeDraft(parsed, pantry);
+    const draft = buildRecipeDraft(parsed, pantry, categories);
     // המקור נשמר עם המתכון ("מתכון כפי שהוא"): הקובץ המקורי (תמונה מכווצת / PDF / מסמך), ואם הוא מסמך טקסט - גם הטקסט שחולץ
     draft.source_file = prepared.attachment || null;
     return draft;
