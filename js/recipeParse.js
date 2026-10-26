@@ -8,12 +8,12 @@ import { RECIPE_CATEGORIES } from "./constants.js";
 // נוזלים: 1 מ"ל = 1 גרם (כמו בממשק המתכונים הקיים)
 export const RECIPE_UNIT_GRAMS = { g: 1, kg: 1000, ml: 1, l: 1000, tbsp: 15, tsp: 5, cup: 240 };
 
-export const RECIPE_SCAN_PROMPT =
+export const recipeScanPrompt = (categories = RECIPE_CATEGORIES) =>
     "אתה מערכת לקריאת מתכונים למסעדה. נתח את התמונה/הקובץ וחלץ ממנו את המתכון.\n" +
     "החזר אך ורק JSON תקין, בדיוק בפורמט הזה, בלי שום טקסט נוסף לפני או אחרי:\n" +
     "{\n" +
     '  "name": "שם המתכון",\n' +
-    '  "category": "אחת מ: ' + RECIPE_CATEGORIES.join(", ") + '",\n' +
+    '  "category": "אחת מ: ' + categories.join(", ") + '",\n' +
     '  "final_weight_g": משקל סופי של המתכון בגרם אם כתוב במפורש, אחרת null,\n' +
     '  "method": "הוראות ההכנה כפי שכתובות במתכון (טקסט חופשי, אפשר בכמה שורות), או null אם אין",\n' +
     '  "ingredients": [\n' +
@@ -24,14 +24,15 @@ export const RECIPE_SCAN_PROMPT =
     '"tsp" (כפית), "cup" (כוס), "unit" (יחידות, למשל 2 ביצים), או null אם לא כתוב. ' +
     "quantity מספר עשרוני (שברים כמו חצי -> 0.5), או null אם לא כתובה כמות. " +
     "אל תמציא מרכיבים או כמויות שלא מופיעים. אם לא ניתן לקרוא שורה בבירור - דלג עליה.";
+export const RECIPE_SCAN_PROMPT = recipeScanPrompt();
 
 const round2 = (x) => Math.round(x * 100) / 100;
 
-export function buildRecipeDraft(parsed, pantryItems) {
+export function buildRecipeDraft(parsed, pantryItems, categories = RECIPE_CATEGORIES) {
     const byName = new Map(pantryItems.map((r) => [r.name.trim().toLowerCase(), r]));
 
     const name = String(parsed.name || "").trim();
-    const category = RECIPE_CATEGORIES.includes(parsed.category) ? parsed.category : "כללי";
+    const category = categories.includes(parsed.category) ? parsed.category : "כללי";
     let finalWeight = parseFloat(parsed.final_weight_g);
     finalWeight = Number.isFinite(finalWeight) && finalWeight > 0 ? finalWeight : null;
 

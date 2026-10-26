@@ -27,7 +27,11 @@ export function layerOpened() {
 }
 export function layerClosed() {
     setTimeout(() => { // בדיקה מאוחרת: סגירה ופתיחה רצופות (חלון מוחלף) לא צריכות להזיז את ההיסטוריה
-        if (layerActive && !anyLayerOpen()) { layerActive = false; ignorePops++; try { history.back(); } catch (e) { ignorePops--; } }
+        if (layerActive && !anyLayerOpen()) {
+            layerActive = false;
+            // חוזרים אחורה רק אם הרשומה הנוכחית היא באמת הרשומה הנוספת של השכבה. אם היא כבר נצרכה (למשל אחרי בורר קבצים של הטלפון), "אחורה" היה יוצא מהמסך הנוכחי ומעיף לבית.
+            if (history.state && history.state.kcpLayer) { ignorePops++; try { history.back(); } catch (e) { ignorePops--; } }
+        }
     }, 0);
 }
 // ניווט רגיל (מעבר מסך) כשיש שכבה פתוחה: סוגרים אותה בלי לגעת בהיסטוריה (כבר התקדמה)
