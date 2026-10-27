@@ -3,7 +3,7 @@ import { listAllPantryItems } from "../repo/pantryRepo.js";
 import { dbGetAll } from "../db.js";
 import { NON_FOOD_CATEGORIES } from "../constants.js";
 import { pricePerGram, itemCost as calcItemCost, computeDishPricing, isCountItem } from "../formulas.js";
-import { textToGrams, gramsToKgText, describeQty, qtyWarning, textToCount, countToText, describeCount, countWarning } from "../qty.js";
+import { textToGrams, gramsToKgText, describeQty, qtyWarning, textToCount, countToText, describeCount, countWarning, isGramMode } from "../qty.js";
 import { bindPickerButton, refreshPickerButton, resetPickerMemory } from "./ingredientPicker.js";
 import { listRow, matchesDeep } from "./listKit.js";
 import { renderSalesTab, renderGapTab } from "./salesPage.js";
@@ -130,7 +130,7 @@ async function openDishModal(existing, container) {
                         <option value="">בחר מרכיב/מתכון...</option>
                         ${sources.map((s, i) => `<option value="${i}" ${selected && sources[i] === selected ? "selected" : ""}>${s.indent ? "↳ " : ""}${escapeHtml(s.name)}</option>`).join("")}
                     </select>
-                    <input type="text" inputmode="decimal" id="dish-qty-${id}" placeholder='ק"ג' style="width:80px;" value="${prefill ? (selected && isCountSrc(selected) ? countToText(prefill.quantity_g) : gramsToKgText(prefill.quantity_g)) : ""}">
+                    <input type="text" inputmode="decimal" id="dish-qty-${id}" placeholder="${isGramMode() ? "גרם" : 'ק"ג'}" style="width:80px;" value="${prefill ? (selected && isCountSrc(selected) ? countToText(prefill.quantity_g) : gramsToKgText(prefill.quantity_g)) : ""}">
                     <button type="button" class="remove-row-btn" data-remove="${id}">✕</button>
                 </div>
                 <div class="line-total" id="dish-line-${id}"></div>
@@ -165,7 +165,7 @@ async function openDishModal(existing, container) {
             const idx = overlay.querySelector(`#dish-source-${id}`).value;
             const rawText = overlay.querySelector(`#dish-qty-${id}`).value;
             const countSrc = idx !== "" && isCountSrc(sources[idx]);
-            overlay.querySelector(`#dish-qty-${id}`).placeholder = countSrc ? "יחידות" : 'ק"ג';
+            overlay.querySelector(`#dish-qty-${id}`).placeholder = countSrc ? "יחידות" : isGramMode() ? "גרם" : 'ק"ג';
             const qty = (countSrc ? textToCount(rawText) : textToGrams(rawText)) || 0;
             const lineEl = overlay.querySelector(`#dish-line-${id}`);
             refreshPickerButton(overlay.querySelector(`#dish-pick-${id}`), overlay.querySelector(`#dish-source-${id}`));

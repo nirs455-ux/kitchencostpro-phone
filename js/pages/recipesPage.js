@@ -16,7 +16,7 @@ import { dbGetAll, dbGet } from "../db.js";
 import { buildLabel } from "../recipeLabel.js";
 import { suggestBaseHeuristic, computePercentages, scaleToBase, fmtPct } from "../bakers.js";
 import { RECIPE_UNIT_GRAMS } from "../recipeParse.js";
-import { textToGrams, gramsToKgText, describeQty, qtyWarning, textToCount, countToText, describeCount, countWarning } from "../qty.js";
+import { textToGrams, gramsToKgText, describeQty, qtyWarning, textToCount, countToText, describeCount, countWarning, isGramMode } from "../qty.js";
 import { bindPickerButton, refreshPickerButton, resetPickerMemory } from "./ingredientPicker.js";
 import { isStaffMode } from "../staff.js";
 import { listRow, groupsEl, orderCategories, matchesDeep, normalize } from "./listKit.js";
@@ -314,7 +314,7 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
                 rows: [...sc].sort((x, y) => y.grams - x.grams).map((x) => ({ name: x.name, pct: x.pct, grams: x.scaledGrams, isBase: x.isBase })), totalPct: P.totalPct, totalGrams: r1(sc.reduce((n, x) => n + x.scaledGrams, 0)), title: "מתכון באחוזים" };
         }
         const target = scaleGrams && scaleGrams > 0 ? scaleGrams : total;
-        return { note: `כל רכיב כאחוז מהמשקל הסופי של המתכון (${gramsToKgText(total)} ק"ג). הסכום תמיד 100%.`, scaleLabel: 'משקל סופי (ק"ג) - לשינוי כמות המתכון', target,
+        return { note: `כל רכיב כאחוז מהמשקל הסופי של המתכון (${gramsToKgText(total)} ${isGramMode() ? "גרם" : 'ק"ג'}). הסכום תמיד 100%.`, scaleLabel: isGramMode() ? "משקל סופי (גרם) - לשינוי כמות המתכון" : 'משקל סופי (ק"ג) - לשינוי כמות המתכון', target,
             rows: [...list].sort((x, y) => y.quantity_g - x.quantity_g).map((i) => ({ name: i.name, pct: (Number(i.quantity_g) / total) * 100, grams: r1((Number(i.quantity_g) / total) * target) })), totalPct: 100, totalGrams: r1(target), title: "מהמשקל הסופי" };
     };
     const draw = () => {
@@ -366,7 +366,7 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
                 ${N.rows.map((x) => `<tr><td>${escapeHtml(x.name)}${preparedWord(x.name) ? ' <span title="מוצר מעובד: עדיף ליצור אותו כמתכון (תת-מתכון)">⚠</span>' : ""}${x.has && nutriDb[x.id] && nutriDb[x.id]._source === "remembered" ? ' <span class="muted" title="נזכר מבחירה קודמת">↺</span>' : ""}</td><td>${+x.grams.toFixed(1)}</td><td>${x.has && x.per100.kcal != null ? x.per100.kcal : "—"}</td><td>${x.id == null ? "" : `<button type="button" class="btn btn-secondary btn-small mgr-only" data-nu-open="${x.id}">${x.has ? "✎" : "חפש"}</button>`}</td></tr>`).join("")}
             </tbody></table>
             <div class="card-title" style="margin:12px 0 4px;">סיכום ${info("ערכים ל-100 גרם מוצר מוגמר, לפי סכום הרכיבים. במנה: מזינים גודל מנה בק\"ג ורואים את הערכים שלה. הערכים הם הערכה לפי מאגר חומרי גלם, בלי שינויים בבישול.")}</div>
-            <div class="field"><label>גודל מנה (ק"ג, לא חובה)</label><input type="text" inputmode="decimal" id="nu-serving" value="${servingG > 0 ? gramsToKgText(servingG) : ""}" placeholder="למשל 0.150"></div>
+            <div class="field"><label>${isGramMode() ? "גודל מנה (גרם, לא חובה)" : 'גודל מנה (ק"ג, לא חובה)'}</label><input type="text" inputmode="decimal" id="nu-serving" value="${servingG > 0 ? gramsToKgText(servingG) : ""}" placeholder="${isGramMode() ? "למשל 150" : "למשל 0.150"}"></div>
             <table class="simple"><thead><tr><th></th><th>ל-100 גרם</th>${sv ? "<th>למנה</th>" : ""}<th>סה"כ</th></tr></thead><tbody>
                 ${NUTRIENTS.map((n) => `<tr><td>${escapeHtml(n.label)}</td><td><b>${N.per100[n.key]}</b></td>${sv ? `<td>${sv[n.key]}</td>` : ""}<td>${N.total[n.key]}</td></tr>`).join("")}
             </tbody></table>
@@ -383,11 +383,11 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
                 <div class="card-title">הגדלה / הקטנה ${info("מכפילים את כל המתכון. עיגול נוח מעגל כמויות קטנות לערכים שקל לשקול (ביצים לא מעוגלות, כי הן נספרות בנפרד). העלות מחושבת מחדש, כולל מספר הביצים לשבירה.")}</div>
                 <div class="chips" id="g-quick">${[[0.25, "÷4"], [1 / 3, "÷3"], [0.5, "÷2"], [1, "×1"], [2, "×2"], [3, "×3"], [4, "×4"], [5, "×5"]].map(([v, l]) => `<button type="button" class="chip ${gen.mode === "factor" && Math.abs(Number(gen.value) - v) < 1e-6 ? "active" : ""}" data-q="${v}">${l}</button>`).join("")}</div>
                 <div class="form-row">
-                    <div class="field"><label>לפי</label><select id="g-mode"><option value="have" ${gen.mode === "have" ? "selected" : ""}>כמה יש לי מכל רכיב</option><option value="factor" ${gen.mode === "factor" ? "selected" : ""}>פי כמה</option><option value="weight" ${gen.mode === "weight" ? "selected" : ""}>משקל סופי (ק"ג)</option></select></div>
-                    ${gen.mode === "have" ? "" : `<div class="field"><label>${gen.mode === "weight" ? `ק"ג (עכשיו ${gramsToKgText(curWeight)})` : "מקדם"}</label><input type="text" id="g-val" value="${gen.mode === "weight" ? gramsToKgText(gen.value) : +Number(gen.value).toFixed(4)}" inputmode="decimal"></div>`}
+                    <div class="field"><label>לפי</label><select id="g-mode"><option value="have" ${gen.mode === "have" ? "selected" : ""}>כמה יש לי מכל רכיב</option><option value="factor" ${gen.mode === "factor" ? "selected" : ""}>פי כמה</option><option value="weight" ${gen.mode === "weight" ? "selected" : ""}>${isGramMode() ? "משקל סופי (גרם)" : 'משקל סופי (ק"ג)'}</option></select></div>
+                    ${gen.mode === "have" ? "" : `<div class="field"><label>${gen.mode === "weight" ? (isGramMode() ? `גרם (עכשיו ${gramsToKgText(curWeight)})` : `ק"ג (עכשיו ${gramsToKgText(curWeight)})`) : "מקדם"}</label><input type="text" id="g-val" value="${gen.mode === "weight" ? gramsToKgText(gen.value) : +Number(gen.value).toFixed(4)}" inputmode="decimal"></div>`}
                 </div>
                 ${gen.mode === "have" ? `<div class="hint">רשום כמה יש לך מרכיב אחד או יותר. המערכת לוקחת את המגביל ביותר ומחשבת את כל השאר.</div>
-                ${genIngs().map((x) => `<div class="form-row"><div class="field"><label>${escapeHtml(nameOf(x.i))} <span class="muted">${gramsToKgText(x.i.quantity_g)}</span></label><input type="text" inputmode="decimal" class="g-have" data-idx="${x.idx}" value="${escapeHtml(gen.have[x.idx] || "")}" placeholder='ק"ג'></div></div>`).join("")}
+                ${genIngs().map((x) => `<div class="form-row"><div class="field"><label>${escapeHtml(nameOf(x.i))} <span class="muted">${gramsToKgText(x.i.quantity_g)}</span></label><input type="text" inputmode="decimal" class="g-have" data-idx="${x.idx}" value="${escapeHtml(gen.have[x.idx] || "")}" placeholder="${isGramMode() ? "גרם" : 'ק"ג'}"></div></div>`).join("")}
                 ${gf.lim ? `<div class="hint"><b>המגביל: ${escapeHtml(nameOf(gf.lim.i))}</b> · פי ${+f.toFixed(3)}</div>` : ""}` : ""}
                 <div class="checkbox-field"><input type="checkbox" id="g-round" ${gen.round ? "checked" : ""}><label for="g-round">עיגול נוח</label></div>
             </div>
@@ -631,7 +631,7 @@ async function openRecipeModal(existing, container, draft = null) {
     const rowMeta = new Map(); // id -> { um: {name, quantity, unit} | null }
     // אפשרויות הכמות בשורה: ק"ג, אחוז מהבסיס, ולמוצר שמכירים (עגבניה, לימון...) גם יחידות לפי משקל ממוצע ומ"ל מיץ
     const modeOptionsHtml = (selected, item) => {
-        const opts = [["", 'כמות בק"ג'], ["base", "אחוז מהבסיס"]];
+        const opts = [["", isGramMode() ? "כמות בגרם" : 'כמות בק"ג'], ["base", "אחוז מהבסיס"]];
         if (selected === "total") opts.push(["total", "אחוז מהמסה"]);
         if (item && !isCountItem(item) && !isEggProduct(item)) {
             if (unitWeightG(item.name)) opts.push(["est_s", "יחידות קטנות (הערכה)"], ["est_m", "יחידות בינוניות (הערכה)"], ["est_l", "יחידות גדולות (הערכה)"]);
@@ -661,8 +661,8 @@ async function openRecipeModal(existing, container, draft = null) {
             <button type="button" class="pg-add" id="btn-add-manual">＋ רכיב שעדיין לא במזווה (טיוטה)</button>
             <details class="pg-more"><summary>הוראות הכנה</summary><textarea id="f-method" rows="5" style="width:100%;">${src && src.method ? escapeHtml(src.method) : ""}</textarea></details>
             <div class="card-pg" style="margin-top:10px;">
-                <div class="field" style="margin:0;"><label>משקל סופי אחרי בישול וסינון (ק"ג, לא חובה) ${info('ריק = סכום הרכיבים הגולמיים. אם המתכון מתבשל, מתמצה או מסונן והמשקל יורד (למשל מ-0.733 ל-0.550), כתוב כאן את המשקל שיוצא בפועל. העלות לגרם והעלות לק"ג יחושבו על המשקל הסופי, כך שהם מדויקים.')}</label>
-                    <input type="text" inputmode="decimal" id="f-manual-weight" value="${existing && !existing.is_auto_weight ? gramsToKgText(existing.final_weight) : ""}" placeholder="למשל 0.550">
+                <div class="field" style="margin:0;"><label>${isGramMode() ? "משקל סופי אחרי בישול וסינון (גרם, לא חובה)" : 'משקל סופי אחרי בישול וסינון (ק"ג, לא חובה)'} ${info('ריק = סכום הרכיבים הגולמיים. אם המתכון מתבשל, מתמצה או מסונן והמשקל יורד (למשל מ-0.733 ל-0.550), כתוב כאן את המשקל שיוצא בפועל. העלות לגרם והעלות לק"ג יחושבו על המשקל הסופי, כך שהם מדויקים.')}</label>
+                    <input type="text" inputmode="decimal" id="f-manual-weight" value="${existing && !existing.is_auto_weight ? gramsToKgText(existing.final_weight) : ""}" placeholder="${isGramMode() ? "למשל 550" : "למשל 0.550"}">
                     <div class="hint" id="f-weight-echo"></div></div>
             </div>
             ${(existing && existing.source_file) || (draft && draft.source_file) ? '<div class="hint">📎 המסמך המקורי יישמר עם המתכון.</div>' : ""}
@@ -693,7 +693,7 @@ async function openRecipeModal(existing, container, draft = null) {
                         <option value="">${um ? "בחר מוצר מהמזווה..." : "בחר מרכיב..."}</option>
                         ${selectOptions(prefill ? (prefill.sub_recipe_id != null ? "r" + prefill.sub_recipe_id : prefill.pantry_item_id) : null)}
                     </select>
-                    <input type="text" inputmode="decimal" id="ing-qty-${id}" placeholder='ק"ג' style="width:80px;" value="${prefill && prefill.pct_mode ? countToText(prefill.pct) : prefill && prefill.est_mode ? countToText(prefill.est_n) : prefill && prefill.quantity_g != null ? (prefill.unit_count ? countToText(prefill.quantity_g) : gramsToKgText(prefill.quantity_g)) : (um && gramsFromOriginal(um, null) != null ? gramsToKgText(gramsFromOriginal(um, null)) : "")}">
+                    <input type="text" inputmode="decimal" id="ing-qty-${id}" placeholder="${isGramMode() ? "גרם" : 'ק"ג'}" style="width:80px;" value="${prefill && prefill.pct_mode ? countToText(prefill.pct) : prefill && prefill.est_mode ? countToText(prefill.est_n) : prefill && prefill.quantity_g != null ? (prefill.unit_count ? countToText(prefill.quantity_g) : gramsToKgText(prefill.quantity_g)) : (um && gramsFromOriginal(um, null) != null ? gramsToKgText(gramsFromOriginal(um, null)) : "")}">
                     <button type="button" class="remove-row-btn" data-remove="${id}">✕</button>
                 </div>
                 ${um ? "" : `<select id="ing-mode-${id}" style="width:auto;font-size:12px;padding:2px 6px;margin:2px 0;">${modeOptionsHtml((prefill && (prefill.pct_mode || prefill.est_mode)) || "", (sources.find((x) => String(x.id) === String(prefill && prefill.pantry_item_id)) || {}).item)}</select>`}
@@ -703,7 +703,7 @@ async function openRecipeModal(existing, container, draft = null) {
                     <div class="seg" id="ing-part-${id}">${EGG_PARTS.map(([k]) => `<button type="button" data-part="${k}">${EGG_PART_UI[k]}</button>`).join("")}</div>
                     <div class="form-row">
                         <div class="field"><label>גודל ${info("הגודל קובע כמה גרם חלבון וחלמון יש בביצה (ללא קליפה). נשמר במוצר הביצים.")}</label><select id="ing-size-${id}">${Object.keys(EGG_SIZES).map((k) => `<option value="${k}">${k}</option>`).join("")}</select></div>
-                        <div class="field"><label>הכמות ב-</label><select id="ing-eunit-${id}"><option value="g">ק"ג</option><option value="unit">יחידות</option></select></div>
+                        <div class="field"><label>הכמות ב-</label><select id="ing-eunit-${id}"><option value="g">${isGramMode() ? "גרם" : 'ק"ג'}</option><option value="unit">יחידות</option></select></div>
                     </div>
                     <div class="hint" id="ing-egg-hint-${id}"></div>
                 </div>
@@ -924,7 +924,7 @@ async function openRecipeModal(existing, container, draft = null) {
             if (modeSelEl && meta.modeFor !== rawSel) { meta.modeFor = rawSel; modeSelEl.innerHTML = modeOptionsHtml(meta.pct || "", s && s.item); meta.pct = modeSelEl.value || null; }
             const pm = !egg && !count ? rowPct(id) : null;
             const em = !egg && !count && !pm ? rowEst(id) : null;
-            qtyInput.placeholder = count ? "יחידות" : pm ? "%" : em ? (em === "juice" ? 'מ"ל' : "יחידות") : 'ק"ג';
+            qtyInput.placeholder = count ? "יחידות" : pm ? "%" : em ? (em === "juice" ? 'מ"ל' : "יחידות") : isGramMode() ? "גרם" : 'ק"ג';
             const qty = egg ? egg.grams : count ? textToCount(rawText) || 0 : pm ? pctRes.map.get(id) || 0 : em ? estGrams(id).g : textToGrams(rawText) || 0;
             const echoEl = overlay.querySelector(`#ing-echo-${id}`);
             if (echoEl) {

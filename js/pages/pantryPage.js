@@ -9,7 +9,7 @@ import { renderInventoryPage } from "./inventoryPage.js";
 import { renderWastePage } from "./wastePage.js";
 import { isStaffMode } from "../staff.js";
 import { EGG_SIZES, isEggName, guessEggSize } from "../eggs.js";
-import { textToGrams, gramsToKgText, describeQty, qtyWarning } from "../qty.js";
+import { textToGrams, gramsToKgText, describeQty, qtyWarning, isGramMode } from "../qty.js";
 import { matchesDeep, normalize, orderCategories } from "./ingredientPicker.js";
 import { getFilter } from "../filters.js";
 import { assignAutoSubs, subOf } from "../autoGroups.js";
@@ -157,7 +157,7 @@ async function openProductSheet(it, children, container, root) {
         <div class="sh-head"><span class="px-ic" style="background:${tint};">${ic}</span><div><div class="sh-name">${escapeHtml(it.name)}</div><div class="muted">${escapeHtml(it.category)}${subOf(it) ? " / " + escapeHtml(subOf(it)) : ""}${it.is_frozen ? " · ❄ קפוא" : ""}</div></div></div>
         ${row("מחיר קנייה", `${cur()}${Number(it.price).toFixed(2)} / ${unitWord(it)}`)}
         ${Math.abs(eff - Number(it.price)) > 0.004 ? row("מחיר אמיתי (אחרי ניצולת)", `${cur()}${eff.toFixed(2)} (${Number(it.yield_pct).toFixed(0)}%)`) : ""}
-        ${it.unit_type === "unit" ? row("משקל ליחידה", it.unit_amount ? `${gramsToKgText(it.unit_amount)} ק"ג` : '<span class="muted">לא הוגדר (בסדר, אפשר לעבוד ביחידות)</span>') : ""}
+        ${it.unit_type === "unit" ? row("משקל ליחידה", it.unit_amount ? `${gramsToKgText(it.unit_amount)} ${isGramMode() ? "גרם" : 'ק"ג'}` : '<span class="muted">לא הוגדר (בסדר, אפשר לעבוד ביחידות)</span>') : ""}
         ${stock ? row("מלאי תיאורטי", `${+Number(stock.theoretical_quantity).toFixed(3)} ${unitWord(it)}`) : ""}
         ${labelInfo && labelInfo.ingredients ? row("רכיבים (מהתווית)", escapeHtml(labelInfo.ingredients.length > 160 ? labelInfo.ingredients.slice(0, 160) + "…" : labelInfo.ingredients)) : ""}
         ${labelInfo && labelInfo.may_contain && labelInfo.may_contain.length ? row("עלול להכיל עקבות", escapeHtml(allergenLabels(labelInfo.may_contain).join(", "))) : ""}
@@ -219,7 +219,7 @@ function openPantryModal(existing, container) {
                 <select id="f-egg-size">${Object.keys(EGG_SIZES).map((k) => `<option value="${k}">${k}</option>`).join("")}</select>
             </div>
             <div class="field" id="f-unit-amount-wrap">
-                <label>משקל ליחידה (ק"ג, לא חובה) ${info('כמה שוקלת יחידה אחת, בק"ג עם נקודה עשרונית: ביצה 0.061, לימון 0.100. אפשר להשאיר ריק, למשל בלחמניה. במתכון כותבים כמה יחידות, והעלות מחושבת ממחיר היחידה. משקל נחוץ רק אם רוצים משקל ותזונה לרכיב הזה.')}</label>
+                <label>${isGramMode() ? "משקל ליחידה (גרם, לא חובה)" : 'משקל ליחידה (ק"ג, לא חובה)'} ${info(isGramMode() ? 'כמה שוקלת יחידה אחת, בגרמים: ביצה 61, לימון 100. אפשר להשאיר ריק, למשל בלחמניה. במתכון כותבים כמה יחידות, והעלות מחושבת ממחיר היחידה. משקל נחוץ רק אם רוצים משקל ותזונה לרכיב הזה.' : 'כמה שוקלת יחידה אחת, בק"ג עם נקודה עשרונית: ביצה 0.061, לימון 0.100. אפשר להשאיר ריק, למשל בלחמניה. במתכון כותבים כמה יחידות, והעלות מחושבת ממחיר היחידה. משקל נחוץ רק אם רוצים משקל ותזונה לרכיב הזה.')}</label>
                 <input type="text" inputmode="decimal" id="f-unit-amount" value="${existing && existing.unit_amount != null ? gramsToKgText(existing.unit_amount) : ""}">
                 <div class="hint" id="f-unit-echo"></div>
             </div>

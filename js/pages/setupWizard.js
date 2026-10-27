@@ -1,7 +1,7 @@
 // אשף הפעלה: מסך אחד קל, רק שפה ומטבע (מדינה). שאר ההגדרות (ענן, מפתח אישי, תפקיד, קוד) נמצאות בהגדרות, ואפשר לשנות הכול שם.
 // הטקסטים נשלפים מ-i18n (עברית, אנגלית, גרמנית).
 import { getSetting, setSetting } from "../repo/settingsRepo.js";
-import { COUNTRIES, CURRENCIES, countryByKey, saveLocale } from "../locale.js";
+import { COUNTRIES, CURRENCIES, countryByKey, saveLocale, saveQtyMode } from "../locale.js";
 import { escapeHtml } from "../ui.js";
 import { t, setLang, langDir, LANGS } from "../i18n.js";
 
@@ -29,6 +29,7 @@ export async function openSetupWizard({ onDone } = {}) {
         country: (await getSetting("country")) || "IL",
         currency: (await getSetting("currency")) || "ILS",
         units: (await getSetting("units")) || "metric",
+        qty: (await getSetting("qty_mode")) === "kg" ? "kg" : "g",
         producer: !!((await getSetting("producer_mode")) || (await getSetting("role")) === "producer"),
     };
     const root = document.createElement("div");
@@ -38,6 +39,7 @@ export async function openSetupWizard({ onDone } = {}) {
 
     const close = async (save) => {
         if (save) await saveLocale({ country: state.country, currency: state.currency, units: state.units, language: state.lang });
+        if (save) await saveQtyMode(state.qty);
         await setSetting("setup_done", true);
         if (!(await getSetting("role"))) await setSetting("role", "manager");
         if (save) await setSetting("producer_mode", !!state.producer);
@@ -56,6 +58,7 @@ export async function openSetupWizard({ onDone } = {}) {
                 ${LANGS.map((l) => `<button type="button" class="wiz-opt ${state.lang === l.key ? "on" : ""}" data-lang="${l.key}"><b>${escapeHtml(l.name)}</b></button>`).join("")}
                 <div class="field" style="margin-top:14px;"><label>${t("c.country")}</label><select id="w-country">${COUNTRIES.map((x) => `<option value="${x.key}" ${x.key === state.country ? "selected" : ""}>${t(`country.${x.key}`)}</option>`).join("")}</select></div>
                 <div class="field"><label>${t("c.currency")}</label><select id="w-cur">${Object.keys(CURRENCIES).map((k) => `<option value="${k}" ${k === state.currency ? "selected" : ""}>${t(`cur.${k}`)}</option>`).join("")}</select></div>
+                <div class="field"><label>${t("c.qty")}</label><select id="w-qty"><option value="g" ${state.qty === "g" ? "selected" : ""}>${t("qty.g")}</option><option value="kg" ${state.qty === "kg" ? "selected" : ""}>${t("qty.kg")}</option></select></div>
                 <label class="wiz-opt ${state.producer ? "on" : ""}" style="display:flex;gap:10px;align-items:flex-start;margin-top:16px;"><input type="checkbox" id="w-prod" ${state.producer ? "checked" : ""} style="margin-top:4px;"><span><b>${t("w1.producer")}</b><small style="display:block;color:var(--text-2);margin-top:3px;">${t("w1.producerSub")}</small></span></label>
             </div>
             <div class="wiz-foot"><button type="button" class="btn btn-primary" id="w-go">${t("w1.go")}</button></div>`;
@@ -65,6 +68,7 @@ export async function openSetupWizard({ onDone } = {}) {
         root.querySelectorAll("[data-lang]").forEach((o) => { o.onclick = () => { state.lang = o.dataset.lang; setLang(state.lang); draw(); }; });
         q("#w-country").onchange = (e) => { const c = countryByKey(e.target.value); state.country = c.key; state.currency = c.currency; state.units = c.units; draw(); };
         q("#w-cur").onchange = (e) => { state.currency = e.target.value; };
+        q("#w-qty").onchange = (e) => { state.qty = e.target.value === "kg" ? "kg" : "g"; };
         q("#w-prod").onchange = (e) => { state.producer = e.target.checked; draw(); };
     };
     draw();

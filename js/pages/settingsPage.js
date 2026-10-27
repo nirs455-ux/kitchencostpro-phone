@@ -9,6 +9,8 @@ import { buildReport, clearErrorLog } from "../errorLog.js";
 import { openTrashModal } from "./trashModal.js";
 import { listInvoicesWithItems } from "../repo/suppliersRepo.js";
 import { openSetupWizard } from "./setupWizard.js";
+import { saveQtyMode } from "../locale.js";
+import { getQtyMode } from "../qty.js";
 import { openTour } from "./tour.js";
 import { t, LANGS, getLang } from "../i18n.js";
 import { renderCloudCard } from "../cloud/cloudUi.js";
@@ -113,6 +115,8 @@ export async function renderSettingsPage(container) {
             <div class="px-sh"><span class="px-ic" style="background:var(--ok-soft);">🧭</span><b>עזרה ועל האפליקציה</b><span class="px-chev">${setOpen.has("help") ? "▾" : "◂"}</span></div>
             <div class="set-body" ${setOpen.has("help") ? "" : "hidden"}>
                 <div class="card"><button class="btn btn-secondary btn-block" id="btn-tour">${t("settings.tour")}</button></div>
+                <div class="card"><div class="card-title">הקלדת כמויות ${info("בגרמים מקלידים מספר שלם: 100, 1500. בקילוגרמים מקלידים עם נקודה: 0.100, 1.5. הנתונים נשמרים בגרמים בכל מקרה, ולכן אפשר להחליף בכל רגע.")}</div>
+                    <select id="set-qty"><option value="g" ${getQtyMode() === "g" ? "selected" : ""}>גרמים (100)</option><option value="kg" ${getQtyMode() === "kg" ? "selected" : ""}>ק"ג עם נקודה (0.100)</option></select></div>
                 <div class="card"><button class="btn btn-secondary btn-block" id="btn-wizard">🧭 שפה ומטבע</button></div>
                 <div class="card">
             <div class="card-title">על האפליקציה ${info("גרסת טלפון עצמאית של KitchenCostPro - כל הנתונים נשמרים רק במכשיר הזה, בלי שרת. היא לא מסונכרנת עם הגרסה שבמחשב. השתמש בייצוא וייבוא כדי להעביר נתונים בין השתיים.")}</div>
@@ -143,6 +147,7 @@ export async function renderSettingsPage(container) {
     container.querySelector("#btn-files").onclick = () => { location.hash = "files"; };
     renderCloudCard(container.querySelector("#cloud-card"));
     container.querySelector("#btn-tour").onclick = async () => openTour({ role: (await getSetting("role")) || "manager" });
+    container.querySelector("#set-qty").onchange = async (e) => { await saveQtyMode(e.target.value); toast("נשמר"); };
     container.querySelector("#btn-wizard").onclick = () => openSetupWizard({ onDone: () => location.reload() });
 
     container.querySelector("#btn-save-key").onclick = async () => {

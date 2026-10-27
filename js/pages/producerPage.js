@@ -6,7 +6,7 @@ import { getBusiness, saveBusiness, listProducts, saveProduct, deleteProduct, NU
 import { buildLabel } from "../recipeLabel.js";
 import { getLabelNames } from "../repo/labelNamesRepo.js";
 import { buildLabelHtml, LABEL_SIZES, netText } from "../producerLabel.js";
-import { textToGrams, gramsToKgText } from "../qty.js";
+import { textToGrams, gramsToKgText, isGramMode } from "../qty.js";
 import { getNutritionDb } from "../repo/nutritionRepo.js";
 import { computeNutrition } from "../nutrition.js";
 import { listRow, groupsEl } from "./listKit.js";
@@ -81,7 +81,7 @@ function openProductModal(existing, recipes, onSaved, presetRecipeId = null, pan
         <div class="field"><label>שם המוצר (כפי שיופיע על המדבקה)</label><input type="text" id="p-name" value="${escapeHtml(existing ? existing.name : preset ? preset.name : "")}"></div>
         <div class="field"><label>מתכון</label><select id="p-recipe"><option value="">בחר מתכון...</option>${recipes.map((r) => `<option value="${r.id}" ${(existing && existing.recipe_id === r.id) || (preset && preset.id === r.id) ? "selected" : ""}>${escapeHtml(r.name)}</option>`).join("")}</select></div>
         <div class="form-row">
-            <div class="field"><label>משקל נטו (ק"ג)</label><input type="text" inputmode="decimal" id="p-net" placeholder="למשל 0.350" value="${existing && existing.net_g ? gramsToKgText(existing.net_g) : ""}"></div>
+            <div class="field"><label>${isGramMode() ? "משקל נטו (גרם)" : 'משקל נטו (ק"ג)'}</label><input type="text" inputmode="decimal" id="p-net" placeholder="${isGramMode() ? "למשל 350" : "למשל 0.350"}" value="${existing && existing.net_g ? gramsToKgText(existing.net_g) : ""}"></div>
             <div class="field"><label>חיי מדף (ימים)</label><input type="text" inputmode="numeric" id="p-shelf" value="${existing && existing.shelf_days ? existing.shelf_days : ""}"></div>
         </div>
         <div class="field"><label>תנאי אחסון</label><input type="text" id="p-storage" value="${escapeHtml(existing ? existing.storage : DEFAULT_STORAGE)}"></div>
