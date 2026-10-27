@@ -40,10 +40,37 @@ export const DENSITIES = [
     { keys: ["מים", "water"], d: 1.0 },
 ];
 
+// צפיפויות שהמשתמש קבע לעצמו (נשמרות פעם אחת לפי שם נקי של מוצר): { "קמח מלא": 0.5 } = גרם למ"ל. קודמות לטבלה.
+let learned = {};
+export const learnKey = (name) => String(name || "").toLowerCase().replace(/s+/g, " ").trim();
+export function setLearnedDensities(obj) { learned = obj && typeof obj === "object" ? { ...obj } : {}; }
+export function learnedDensityFor(name) {
+    const n = learnKey(name);
+    if (!n) return null;
+    if (learned[n] > 0) return learned[n];
+    const hit = Object.keys(learned).filter((k) => k && n.includes(k)).sort((a, b) => b.length - a.length)[0]; // "קמח מלא ביו" מזהה את "קמח מלא"
+    return hit ? learned[hit] : null;
+}
+// כמה גרם יש ביחידת נפח אחת (כוס/כף/כפית) -> צפיפות בגרם למ"ל. null אם לא תקין
+export function densityFromUnitGrams(unit, gramsPerUnit) {
+    const u = UNIT_BY_KEY[unit];
+    const g = Number(gramsPerUnit);
+    if (!u || !u.volume || !(g > 0)) return null;
+    return Math.round((g / u.volume) * 1e6) / 1e6;
+}
+
 export function densityFor(name) {
+    const l = learnedDensityFor(name);
+    if (l) return l;
     const n = String(name || "").toLowerCase();
     for (const e of DENSITIES) if (e.keys.some((k) => n.includes(k))) return e.d;
     return null;
+}
+
+// הערה למשתמש: מאיפה הצפיפות (ערך שהוא שמר / טבלה / לא זוהה)
+function densityNote(name, d, tip) {
+    if (d && learnedDensityFor(name)) return "לפי הערך ששמרת למוצר הזה";
+    return d ? "הערכה לפי צפיפות ממוצעת של החומר" : `לא זוהה החומר - חושב כמו מים (1 גרם למ"ל). ${tip}`;
 }
 
 // ממיר כמות ביחידה כלשהי לגרמים. מחזיר { grams, estimated, note } או null אם לא תקין.
@@ -57,7 +84,7 @@ export function convertToGrams({ qty, unit, name }) {
     return {
         grams: Math.round(ml * (d || 1) * 10) / 10,
         estimated: true,
-        note: d ? "הערכה לפי צפיפות ממוצעת של החומר" : "לא זוהה החומר - חושב כמו מים (1 גרם למ\"ל). עדיף לשקול",
+        note: densityNote(name, d, "עדיף לשקול"),
     };
 }
 
@@ -129,7 +156,7 @@ export function convertUnits({ qty, from, to, name }) {
     if (a.volume && b.volume) return { value: round((qty * a.volume) / b.volume), estimated: false, note: "" };
     const d = densityFor(name);
     const dens = d || 1;
-    const note = d ? "הערכה לפי צפיפות ממוצעת של החומר" : "לא זוהה החומר - חושב כמו מים (1 גרם למ\"ל). הקלד חומר כמו קמח או סוכר";
+    const note = densityNote(name, d, "הקלד חומר כמו קמח או סוכר");
     if (a.volume) return { value: round((qty * a.volume * dens) / b.weight), estimated: true, note };
     return { value: round((qty * a.weight) / dens / b.volume), estimated: true, note };
 }
