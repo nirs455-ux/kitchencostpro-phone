@@ -2,6 +2,7 @@
 // הנתונים נשמרים תמיד בגרמים ובמספרים; רק התצוגה משתנה. רשימת האלרגנים האזורית משמשת רק את המתכון ומודול היצרן.
 import { getSetting, setSetting } from "./repo/settingsRepo.js";
 import { setCurrencySymbol } from "./ui.js";
+import { setQtyMode } from "./qty.js";
 
 export const CURRENCIES = {
     ILS: { symbol: "₪", label: "שקל (₪)" },
@@ -33,6 +34,12 @@ export function countryByKey(key) { return COUNTRIES.find((c) => c.key === key) 
 export async function initLocale() {
     const code = await getSetting("currency", "ILS");
     setCurrencySymbol((CURRENCIES[code] || CURRENCIES.ILS).symbol);
+    setQtyMode(await getSetting("qty_mode", "g")); // הקלדת כמויות: g (גרמים, ברירת מחדל) או kg (ק"ג עם נקודה)
+}
+
+export async function saveQtyMode(m) {
+    await setSetting("qty_mode", m === "kg" ? "kg" : "g");
+    setQtyMode(m);
 }
 
 export async function saveLocale({ country, currency, units, language }) {
