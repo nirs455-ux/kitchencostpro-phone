@@ -1,4 +1,4 @@
-// פחת / זריקות: חישוב עלות רישום וסיכום לדוח. טהור (בלי DOM/DB) כדי שאפשר לבדוק אותו ב-Node.
+// פחת: חישוב עלות רישום וסיכום לדוח. טהור (בלי DOM/DB) כדי שאפשר לבדוק אותו ב-Node.
 // עלות מוצר שנזרק: מוצר ברמה העליונה לפי מחיר הקנייה (זרקו את הגולמי), תוצר מפורק לפי מחיר אמיתי אחרי ניצולת,
 // ומתכון שהוכן לפי עלות לגרם. לא נוגעים בנוסחאות התמחור - רק קוראים ממחיר שכבר קיים.
 import { effectivePrice } from "./formulas.js";
@@ -22,7 +22,7 @@ export const WASTE_UNITS = {
 
 const round2 = (x) => Math.round(x * 100) / 100;
 
-// row: שורת מזווה; qty: כמות בהזנה; unit: g | kg | ml | l | unit. מחזיר עלות או null אם אי אפשר לחשב.
+// row: שורת חומרי גלם; qty: כמות בהזנה; unit: g | kg | ml | l | unit. מחזיר עלות או null אם אי אפשר לחשב.
 export function pantryWasteCost(row, qty, unit) {
     qty = Number(qty);
     if (!row || !(qty > 0)) return null;

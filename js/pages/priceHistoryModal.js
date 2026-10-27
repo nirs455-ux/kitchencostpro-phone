@@ -1,4 +1,4 @@
-// היסטוריית מחירים של מוצר: גרף וטבלה לפי קניות מחשבוניות (מחיר ליחידת מזווה), כולל השוואה בין ספקים.
+// היסטוריית מחירים של מוצר: גרף וטבלה לפי קניות מחשבוניות (מחיר ליחידת חומרי גלם), כולל השוואה בין ספקים.
 import { openModal, closeModal, escapeHtml, cur } from "../ui.js";
 import { priceHistory } from "../repo/suppliersRepo.js";
 import { buildPriceChartSvg, summarizePrices } from "../priceChart.js";

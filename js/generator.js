@@ -103,7 +103,7 @@ export function factorFor({ mode, value, currentWeight }) {
     return v;
 }
 
-// items: [{ pantry_item_id, ingredient_name, quantity_g, item_cost, egg_part }], rows: שורות מזווה.
+// items: [{ pantry_item_id, ingredient_name, quantity_g, item_cost, egg_part }], rows: שורות חומרי גלם.
 // מחזיר שורות מוגדלות עם כמות מעוגלת (אופציונלי) ועלות. עלות ביצים מחושבת מחדש: כל הביצים ששוברים * מחיר.
 export function scaleRecipe(items, factor, rows, { round = true } = {}) {
     const byId = new Map(rows.map((r) => [r.id, r]));

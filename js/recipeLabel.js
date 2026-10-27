@@ -6,7 +6,7 @@
 import { ALLERGENS, ALLERGEN_LABEL } from "./allergens.js";
 import { resolveAllergens } from "./allergenResolve.js";
 
-// items: [{ pantry_item_id, ingredient_name, quantity_g }], pantryById: Map/obj של שורות מזווה (עם parent_id ו-allergens)
+// items: [{ pantry_item_id, ingredient_name, quantity_g }], pantryById: Map/obj של שורות חומרי גלם (עם parent_id ו-allergens)
 // labelNames: { מזהה_מוצר: "שם בתווית" } (לא חובה)
 export function buildLabel({ items, pantryById, showPercent = false, labelNames = {} }) {
     const get = (id) => (pantryById instanceof Map ? pantryById.get(id) : pantryById[id]);

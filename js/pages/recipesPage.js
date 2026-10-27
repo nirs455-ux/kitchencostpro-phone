@@ -254,7 +254,7 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
         const isVol = !!(UNITS.find((u) => u.key === conv.unit) || {}).volume;
         return { list, sel, name, qty, res, isVol };
     };
-    // שם חומר הגלם במסכי המתכון: שם נקי ("שום" ולא "שום שלם 4 יחידות"). במזווה ובחשבוניות נשאר השם המלא.
+    // שם חומר הגלם במסכי המתכון: שם נקי ("שום" ולא "שום שלם 4 יחידות"). בחומרי הגלם ובחשבוניות נשאר השם המלא.
     const nameOf = (i) => { const row = byId.get(i.pantry_item_id); return row ? labelNameOf(row, byId, labelNames) : i.ingredient_name; };
     const nameFn = (src) => labelNameOf(src, byId, labelNames);
     // מוצר מעובד (שום מטוגן): פותח טופס מתכון חדש עם חומר הגלם (שום) וזוכה שורה ריקה לשמן, ובסיום מציע להחליף אותו במתכון הזה
@@ -268,7 +268,7 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
         const draft = {
             manual: true, name: pname, ingredients: [baseRow ? { pantry_item_id: baseRow.id, quantity_g: null } : { blank: true }, { blank: true }], source_file: null,
             onSaved: async (newId) => {
-                if (await confirmDialog(`המתכון "${escapeHtml(pname)}" נשמר. להחליף אותו במתכון "${escapeHtml(r.name)}" במקום המוצר מהמזווה? (הכמויות נשארות)`)) {
+                if (await confirmDialog(`המתכון "${escapeHtml(pname)}" נשמר. להחליף אותו במתכון "${escapeHtml(r.name)}" במקום המוצר מחומרי הגלם? (הכמויות נשארות)`)) {
                     try { await replaceIngredientWithSubRecipe(r.id, pid, newId); toast("הוחלף"); } catch (e) { toast(e.message); }
                 }
             },
@@ -338,16 +338,16 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
         const keepTop = prevModal && lastDrawnTab === tab ? prevModal.scrollTop : 0;
         lastDrawnTab = tab;
         const label = buildLabel({ items: r.items, pantryById: byId, showPercent, labelNames });
-        const labelText = label.text + (missing.length ? `\n(הרשימה כוללת רק רכיבים שכבר במזווה. חסרים ${missing.length} רכיבים: ${missing.map((m) => m.name).join(", ")})` : "");
+        const labelText = label.text + (missing.length ? `\n(הרשימה כוללת רק רכיבים שכבר בחומרי הגלם. חסרים ${missing.length} רכיבים: ${missing.map((m) => m.name).join(", ")})` : "");
 
         let body = "";
         if (tab === "recipe") {
             body = `
             <table class="simple"><thead><tr><th>רכיב</th><th>גרם</th><th class="cost-only">עלות</th></tr></thead><tbody>
-                ${[...r.direct_items].sort((a, b) => b.quantity_g - a.quantity_g).map((i) => `<tr${exists(i) ? "" : ' style="color:var(--danger);"'}><td>${exists(i) ? "" : "⚠ "}${i.sub_recipe_id != null ? "📖 " : ""}${escapeHtml(nameOf(i))}${i.egg_part && i.egg_part !== "whole" ? " (" + EGG_PART_UI[i.egg_part] + ")" : ""}${exists(i) ? "" : i.sub_recipe_id != null ? " · המתכון נמחק" : " · נמחק מהמזווה"}</td><td>${i.unit_count ? `${+Number(i.quantity_g).toFixed(2)} <span>יחידות</span>` : +Number(i.quantity_g).toFixed(1)}</td><td class="cost-only">${money(i.item_cost)}</td></tr>`).join("")}
-                ${missing.map((m) => `<tr style="color:var(--danger);"><td>⚠ ${escapeHtml(m.name)}</td><td colspan="2">${originalHtml(m) || "—"} · לא במזווה</td></tr>`).join("")}
+                ${[...r.direct_items].sort((a, b) => b.quantity_g - a.quantity_g).map((i) => `<tr${exists(i) ? "" : ' style="color:var(--danger);"'}><td>${exists(i) ? "" : "⚠ "}${i.sub_recipe_id != null ? "📖 " : ""}${escapeHtml(nameOf(i))}${i.egg_part && i.egg_part !== "whole" ? " (" + EGG_PART_UI[i.egg_part] + ")" : ""}${exists(i) ? "" : i.sub_recipe_id != null ? " · המתכון נמחק" : " · נמחק מחומרי הגלם"}</td><td>${i.unit_count ? `${+Number(i.quantity_g).toFixed(2)} <span>יחידות</span>` : +Number(i.quantity_g).toFixed(1)}</td><td class="cost-only">${money(i.item_cost)}</td></tr>`).join("")}
+                ${missing.map((m) => `<tr style="color:var(--danger);"><td>⚠ ${escapeHtml(m.name)}</td><td colspan="2">${originalHtml(m) || "—"} · לא בחומרי הגלם</td></tr>`).join("")}
             </tbody></table>
-            ${r.status === "draft" ? `<div class="hint-warn">העלות חלקית - מחושבת רק מהרכיבים שבמזווה. לחץ "השלם" כדי להוסיף את החסרים.</div>`
+            ${r.status === "draft" ? `<div class="hint-warn">העלות חלקית - מחושבת רק מהרכיבים שבחומרי הגלם. לחץ "השלם" כדי להוסיף את החסרים.</div>`
                 : `<div class="card-row cost-only" style="font-weight:700;margin:8px 0;"><span>עלות כוללת ${money(r.total_cost)}</span><span>${money(r.cost_per_gram)} / גרם</span></div>
                 <div class="hint" style="margin:-4px 0 8px;">${r.final_weight > 0 && !r.is_auto_weight ? `משקל גולמי ${Math.round(r.direct_items.reduce((n, i) => n + (i.unit_count ? 0 : Number(i.quantity_g) || 0), 0))} גרם · <b>משקל סופי ${Math.round(r.final_weight)} גרם</b>. העלות לגרם מחושבת על המשקל הסופי.` : "המשקל הוא סכום הרכיבים הגולמיים. אם יש ירידה בבישול או בסינון, מזינים משקל סופי בעריכת המתכון."}</div>`}
             ${r.direct_items.some((i) => !exists(i)) ? `<div class="hint-warn mgr-only">רכיב נמחק. העלות שלו נשארת כפי שהייתה בפעם האחרונה ואינה מתעדכנת. ערוך את המתכון והחלף אותו.</div>` : ""}
@@ -398,7 +398,7 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
                 <div class="card-title">הגדלה / הקטנה ${info("מכפילים את כל המתכון. עיגול נוח מעגל כמויות קטנות לערכים שקל לשקול (ביצים לא מעוגלות, כי הן נספרות בנפרד). העלות מחושבת מחדש, כולל מספר הביצים לשבירה.")}</div>
                 <div class="chips" id="g-quick">${[[0.25, "÷4"], [1 / 3, "÷3"], [0.5, "÷2"], [1, "×1"], [2, "×2"], [3, "×3"], [4, "×4"], [5, "×5"]].map(([v, l]) => `<button type="button" class="chip ${gen.mode === "factor" && Math.abs(Number(gen.value) - v) < 1e-6 ? "active" : ""}" data-q="${v}">${l}</button>`).join("")}</div>
                 <div class="form-row">
-                    <div class="field"><label>לפי</label><select id="g-mode"><option value="have" ${gen.mode === "have" ? "selected" : ""}>כמה יש לי מכל רכיב</option><option value="factor" ${gen.mode === "factor" ? "selected" : ""}>פי כמה</option><option value="weight" ${gen.mode === "weight" ? "selected" : ""}>${isGramMode() ? "משקל סופי (גרם)" : 'משקל סופי (ק"ג)'}</option></select></div>
+                    <div class="field"><label>לפי</label><select id="g-mode"><option value="have" ${gen.mode === "have" ? "selected" : ""}>כמות זמינה מכל רכיב</option><option value="factor" ${gen.mode === "factor" ? "selected" : ""}>פי כמה</option><option value="weight" ${gen.mode === "weight" ? "selected" : ""}>${isGramMode() ? "משקל סופי (גרם)" : 'משקל סופי (ק"ג)'}</option></select></div>
                     ${gen.mode === "have" ? "" : `<div class="field"><label>${gen.mode === "weight" ? (isGramMode() ? `גרם (עכשיו ${gramsToKgText(curWeight)})` : `ק"ג (עכשיו ${gramsToKgText(curWeight)})`) : "מקדם"}</label><input type="text" id="g-val" value="${gen.mode === "weight" ? gramsToKgText(gen.value) : +Number(gen.value).toFixed(4)}" inputmode="decimal"></div>`}
                 </div>
                 ${gen.mode === "have" ? `<div class="hint">רשום כמה יש לך מרכיב אחד או יותר. המערכת לוקחת את המגביל ביותר ומחשבת את כל השאר.</div>
@@ -415,7 +415,7 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
                 <div class="form-row"><div class="field"><label>רכיב</label><select id="cv-ing"><option value="">בחר...</option>${cv.list.map((x) => `<option value="${x.idx}" ${x.idx === conv.idx ? "selected" : ""}>${escapeHtml(nameOf(x.i))}</option>`).join("")}</select></div></div>
                 <div class="form-row"><div class="field"><label>כמות</label><input type="text" inputmode="decimal" id="cv-qty" value="${escapeHtml(conv.qty)}"></div>
                 <div class="field"><label>יחידה</label><select id="cv-unit">${CONV_UNITS.map((k) => `<option value="${k}" ${k === conv.unit ? "selected" : ""}>${UNITS.find((u) => u.key === k).label}</option>`).join("")}</select></div></div>
-                ${cv.res ? `<div class="hint"><b>= ${fmtQty(cv.res.grams)}</b>${cv.res.note ? `<br>${escapeHtml(cv.res.note)}` : ""}</div>${gen.mode === "have" && genIngs().some((x) => x.idx === cv.sel.idx) ? '<button type="button" class="btn btn-secondary btn-small" id="cv-use">השתמש ב"כמה יש לי"</button>' : ""}` : ""}
+                ${cv.res ? `<div class="hint"><b>= ${fmtQty(cv.res.grams)}</b>${cv.res.note ? `<br>${escapeHtml(cv.res.note)}` : ""}</div>${gen.mode === "have" && genIngs().some((x) => x.idx === cv.sel.idx) ? '<button type="button" class="btn btn-secondary btn-small" id="cv-use">השתמש ב"כמות זמינה"</button>' : ""}` : ""}
                 ${one ? `<div class="form-row" style="margin-top:8px;"><div class="field"><label>כמה גרם יש ב${escapeHtml(uLabel)} אחת של ${escapeHtml(cv.name)}?</label><input type="text" inputmode="decimal" id="cv-setg" placeholder="${+one.grams.toFixed(1)}"></div></div>
                 <button type="button" class="btn btn-secondary btn-small mgr-only" id="cv-save">💾 זכור למוצר הזה</button>` : ""}
             </details>`;
@@ -454,7 +454,7 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
                 <button type="button" data-t="percent" class="${tab === "percent" ? "active" : ""}">באחוזים</button>
                 <button type="button" data-t="label" class="${tab === "label" ? "active" : ""}">אלרגנים</button>
                 <button type="button" data-t="nutri" class="${tab === "nutri" ? "active" : ""}">תזונה</button>
-                ${r.status === "draft" ? "" : `<button type="button" data-t="gen" class="${tab === "gen" ? "active" : ""}">לפי מה שיש לי</button>`}
+                ${r.status === "draft" ? "" : `<button type="button" data-t="gen" class="${tab === "gen" ? "active" : ""}">התאמת כמויות</button>`}
             </div>
             ${body}
             <div class="modal-actions"><button type="button" class="btn btn-secondary" id="d-close">סגור</button>
@@ -615,7 +615,7 @@ function openAllergenModal(row, byId, labelNames, onSaved) {
     const overlay = openModal(`
         <h2>אלרגנים - ${escapeHtml(res.name)}</h2>
         <div class="hint" style="margin-bottom:6px;">מצב נוכחי: ${allergenStatusHtml(res)}</div>
-        <div class="field"><label>שם בתווית ${info("השם שיופיע ברשימת הרכיבים בתווית ובמדבקה. למשל המוצר במזווה נקרא 'שום שלם 4 יחידות', ובתווית רוצים 'שום'. ריק = שם נקי אוטומטי.")}</label><input type="text" id="al-label-name" value="${escapeHtml(labelNames[row.id] || "")}" placeholder="${escapeHtml(res.name)}"></div>
+        <div class="field"><label>שם בתווית ${info("השם שיופיע ברשימת הרכיבים בתווית ובמדבקה. למשל המוצר בחומרי הגלם נקרא 'שום שלם 4 יחידות', ובתווית רוצים 'שום'. ריק = שם נקי אוטומטי.")}</label><input type="text" id="al-label-name" value="${escapeHtml(labelNames[row.id] || "")}" placeholder="${escapeHtml(res.name)}"></div>
         <div class="card-title" style="margin:8px 0 4px;">מה המוצר מכיל? (סמן רק מה שידוע בוודאות, מהתווית)</div>
         <div class="chips" id="al-chips"></div>
         <div class="hint">אם לא סימנת כלום ולחצת שמירה - המוצר יוגדר "ללא אלרגנים". אם אתה לא יודע, בחר "השאר לא ידוע" או צלם את התווית.</div>
@@ -661,7 +661,7 @@ function scanNoticeHtml(draft) {
         if (ing.pantry_item_id && !ing.quantity_g) noQty.push(ing.original_name);
     }
     let html = "";
-    if (unmatched.length) html += `<div><b>לא נמצאו במזווה:</b> ${unmatched.map(escapeHtml).join(", ")}<br>אפשר להוסיף אותם למזווה (➕ בכל שורה), לבחור מוצר קיים, או לשמור כטיוטה ולהשלים אחר כך.</div>`;
+    if (unmatched.length) html += `<div><b>לא נמצאו בחומרי הגלם:</b> ${unmatched.map(escapeHtml).join(", ")}<br>אפשר להוסיף אותם לחומרי הגלם (➕ בכל שורה), לבחור מוצר קיים, או לשמור כטיוטה ולהשלים אחר כך.</div>`;
     if (fuzzy.length) html += `<div style="margin-top:6px;"><b>התאמות משוערות - בדוק:</b> ${fuzzy.map(escapeHtml).join(", ")}</div>`;
     if (noQty.length) html += `<div style="margin-top:6px;"><b>חסרה כמות:</b> ${noQty.map(escapeHtml).join(", ")}</div>`;
     return `<div class="hint-warn">${html || "כל המרכיבים זוהו. בדוק את הכמויות לפני שמירה."}</div>`;
@@ -706,7 +706,7 @@ async function openRecipeModal(existing, container, draft = null) {
             <div class="pg-sec">מרכיבים</div>
             <div id="ingredients-box"></div>
             <button type="button" class="pg-add" id="btn-add-row">＋ הוסף מרכיב</button>
-            <button type="button" class="pg-add" id="btn-add-manual">＋ רכיב שעדיין לא במזווה (טיוטה)</button>
+            <button type="button" class="pg-add" id="btn-add-manual">＋ רכיב שעדיין לא בחומרי הגלם (טיוטה)</button>
             <details class="pg-more"><summary>הוראות הכנה</summary><textarea id="f-method" rows="5" style="width:100%;">${src && src.method ? escapeHtml(src.method) : ""}</textarea></details>
             <div class="card-pg" style="margin-top:10px;">
                 <div class="field" style="margin:0;"><label>${isGramMode() ? "משקל סופי אחרי בישול וסינון (גרם, לא חובה)" : 'משקל סופי אחרי בישול וסינון (ק"ג, לא חובה)'} ${info('ריק = סכום הרכיבים הגולמיים. אם המתכון מתבשל, מתמצה או מסונן והמשקל יורד (למשל מ-0.733 ל-0.550), כתוב כאן את המשקל שיוצא בפועל. העלות לגרם והעלות לק"ג יחושבו על המשקל הסופי, כך שהם מדויקים.')}</label>
@@ -715,8 +715,8 @@ async function openRecipeModal(existing, container, draft = null) {
             </div>
             ${(existing && existing.source_file) || (draft && draft.source_file) ? '<div class="hint">📎 המסמך המקורי יישמר עם המתכון.</div>' : ""}
             <div class="hint" id="egg-note"></div>
-            <div class="hint" id="partial-note" style="display:none;color:var(--danger);">העלות חלקית - יש רכיבים שעדיין לא במזווה.</div>
-            <button type="button" class="btn btn-secondary" id="btn-add-missing" style="display:none;margin:6px 0;">➕ הוסף את כל החסרים למזווה (בלי מחיר)</button>
+            <div class="hint" id="partial-note" style="display:none;color:var(--danger);">העלות חלקית - יש רכיבים שעדיין לא בחומרי הגלם.</div>
+            <button type="button" class="btn btn-secondary" id="btn-add-missing" style="display:none;margin:6px 0;">➕ הוסף את כל החסרים לחומרי הגלם (בלי מחיר)</button>
             <div class="error-msg"></div>
         </div>
         <div class="pg-foot"><div class="pg-sum"><span>עלות כוללת</span><b id="total-cost-display">${cur()}0.00</b></div>
@@ -734,14 +734,14 @@ async function openRecipeModal(existing, container, draft = null) {
         rowMeta.set(id, { um, eggPart: (prefill && prefill.egg_part) || "whole", eggSize: null, eggUnit: "g", pct: (prefill && (prefill.pct_mode || prefill.est_mode)) || null });
         const row = h(`
             <div class="item-row-inputs" id="ing-row-${id}">
-                ${um && um.manual ? `<div class="field" style="margin:0 0 6px;"><input type="text" id="ing-name-${id}" placeholder="שם הרכיב (עדיין לא במזווה)" value="${escapeHtml(um.name || "")}"></div>` : um ? `<div class="hint-warn" style="margin-top:0;">
+                ${um && um.manual ? `<div class="field" style="margin:0 0 6px;"><input type="text" id="ing-name-${id}" placeholder="שם הרכיב (עדיין לא בחומרי הגלם)" value="${escapeHtml(um.name || "")}"></div>` : um ? `<div class="hint-warn" style="margin-top:0;">
                     <div class="field" style="margin:0 0 6px;"><label>מהמסמך (אפשר לתקן)</label><input type="text" id="ing-name-${id}" value="${escapeHtml(um.name || "")}"></div>
                     <div class="form-row"><div class="field"><label>כמות במסמך</label><input type="text" inputmode="decimal" id="ing-oq-${id}" value="${um.quantity != null ? escapeHtml(um.quantity) : ""}"></div>
                     <div class="field"><label>יחידה</label><select id="ing-ou-${id}"><option value=""></option>${[...new Set([...Object.keys(UNIT_HE), um.unit].filter(Boolean))].map((k) => `<option value="${escapeHtml(k)}" ${k === um.unit ? "selected" : ""}>${escapeHtml(UNIT_HE[k] || k)}</option>`).join("")}</select></div></div></div>` : ""}
                 <div class="top-line">
                     <button type="button" class="pick-btn" id="ing-pick-${id}" style="flex:2;">בחר מרכיב...</button>
                     <select id="ing-source-${id}" style="display:none;">
-                        <option value="">${um ? "בחר מוצר מהמזווה..." : "בחר מרכיב..."}</option>
+                        <option value="">${um ? "בחר מוצר מחומרי הגלם..." : "בחר מרכיב..."}</option>
                         ${selectOptions(prefill ? (prefill.sub_recipe_id != null ? "r" + prefill.sub_recipe_id : prefill.pantry_item_id) : null)}
                     </select>
                     <input type="text" inputmode="decimal" id="ing-qty-${id}" placeholder="${isGramMode() ? "גרם" : 'ק"ג'}" style="width:80px;" value="${prefill && prefill.pct_mode ? countToText(prefill.pct) : prefill && prefill.est_mode ? countToText(prefill.est_n) : prefill && prefill.quantity_g != null ? (prefill.unit_count ? countToText(prefill.quantity_g) : gramsToKgText(prefill.quantity_g)) : (um && gramsFromOriginal(um, null) != null ? gramsToKgText(gramsFromOriginal(um, null)) : "")}">
@@ -758,7 +758,7 @@ async function openRecipeModal(existing, container, draft = null) {
                     </div>
                     <div class="hint" id="ing-egg-hint-${id}"></div>
                 </div>
-                ${um ? `<button type="button" class="btn btn-secondary btn-small" id="ing-qa-btn-${id}" style="margin-top:6px;">${um.manual ? "➕ הוסף למזווה (עם מחיר)" : `➕ הוסף "${escapeHtml(um.name)}" למזווה`}</button>
+                ${um ? `<button type="button" class="btn btn-secondary btn-small" id="ing-qa-btn-${id}" style="margin-top:6px;">${um.manual ? "➕ הוסף לחומרי הגלם (עם מחיר)" : `➕ הוסף "${escapeHtml(um.name)}" לחומרי הגלם`}</button>
                 <div id="ing-qa-${id}" style="display:none;background:var(--accent-soft);color:var(--text);border-radius:8px;padding:8px;margin-top:6px;">
                     <div class="form-row">
                         <div class="field"><label>קטגוריה</label><select id="qa-cat-${id}"><option value="">בחר...</option>${Object.keys(CATEGORY_GROUPS).map((c) => `<option value="${c}">${c}</option>`).join("")}</select></div>
@@ -768,7 +768,7 @@ async function openRecipeModal(existing, container, draft = null) {
                         <div class="field"><label id="qa-price-label-${id}">מחיר לק"ג (${curLabel()})</label><input type="number" step="any" id="qa-price-${id}"></div>
                         <div class="field" id="qa-ua-wrap-${id}" style="display:none;"><label>משקל ליחידה (גרם)</label><input type="number" step="any" id="qa-ua-${id}"></div>
                     </div>
-                    <button type="button" class="btn btn-primary btn-small" id="qa-add-${id}">הוסף למזווה</button>
+                    <button type="button" class="btn btn-primary btn-small" id="qa-add-${id}">הוסף לחומרי הגלם</button>
                     <div class="error-msg" id="qa-err-${id}"></div>
                 </div>` : ""}
             </div>
@@ -778,7 +778,7 @@ async function openRecipeModal(existing, container, draft = null) {
         bindPickerButton({
             button: row.querySelector(`#ing-pick-${id}`), select: row.querySelector(`#ing-source-${id}`), title: "בחר מרכיב", keyOf: (it) => String(it.id),
             tabs: subOpts.length ? [{ key: "pantry", label: "מוצרים" }, { key: "recipe", label: "מתכונים (תת-מתכון)" }] : null,
-            // מוצר חדש תוך כדי בניית המתכון (בלי לעצור ולצאת למזווה). מחיר לא חובה.
+            // מוצר חדש תוך כדי בניית המתכון (בלי לעצור ולצאת לחומרי הגלם). מחיר לא חובה.
             onCreate: async (d) => {
                 const newId = await addPantryItem({ name: d.name, category: d.category, unit_type: d.unit_type, unit_amount: "", price: d.price, allow_no_price: true });
                 const item = await dbGet("pantryItems", newId);
@@ -828,8 +828,8 @@ async function openRecipeModal(existing, container, draft = null) {
         if (modeSel) modeSel.addEventListener("change", () => { rowMeta.get(id).pct = modeSel.value || null; recalc(); });
         const nameInp = row.querySelector(`#ing-name-${id}`);
         if (nameInp) {
-            nameInp.addEventListener("input", () => { um.name = nameInp.value; const qb = row.querySelector(`#ing-qa-btn-${id}`); if (qb && !um.manual) qb.textContent = `➕ הוסף "${um.name}" למזווה`; });
-            // שם מתוקן: מחפשים שוב במזווה, ואם נמצא מוצר ושום מוצר עוד לא נבחר - בוחרים אותו
+            nameInp.addEventListener("input", () => { um.name = nameInp.value; const qb = row.querySelector(`#ing-qa-btn-${id}`); if (qb && !um.manual) qb.textContent = `➕ הוסף "${um.name}" לחומרי הגלם`; });
+            // שם מתוקן: מחפשים שוב בחומרי הגלם, ואם נמצא מוצר ושום מוצר עוד לא נבחר - בוחרים אותו
             nameInp.addEventListener("change", () => {
                 const sel = row.querySelector(`#ing-source-${id}`);
                 if (um.manual || sel.value) return;
@@ -888,7 +888,7 @@ async function openRecipeModal(existing, container, draft = null) {
                     qa.style.display = "none";
                     row.querySelector(`#ing-qa-btn-${id}`).style.display = "none";
                     recalc();
-                    toast(`"${item.name}" נוסף למזווה`);
+                    toast(`"${item.name}" נוסף לחומרי הגלם`);
                 } catch (e) {
                     err.textContent = e.message;
                     err.style.display = "block";
@@ -917,7 +917,7 @@ async function openRecipeModal(existing, container, draft = null) {
         const liquid = EGG_SIZES[size].liquid;
         let text = meta.eggUnit === "unit" && qty > 0 ? `${qty} ${EGG_PART_UI[meta.eggPart]} = ${grams} גרם. ` : "";
         const mismatch = s.item.unit_amount > 0 && s.item.unit_amount !== liquid;
-        hint.innerHTML = escapeHtml(text) + (mismatch ? `משקל הביצה במזווה: ${s.item.unit_amount} גרם, ללא קליפה: ${liquid} גרם. <button type="button" class="btn btn-secondary btn-small" data-fix="${id}">עדכן במזווה ל-${liquid}</button>` : "");
+        hint.innerHTML = escapeHtml(text) + (mismatch ? `משקל הביצה בחומרי הגלם: ${s.item.unit_amount} גרם, ללא קליפה: ${liquid} גרם. <button type="button" class="btn btn-secondary btn-small" data-fix="${id}">עדכן בחומרי הגלם ל-${liquid}</button>` : "");
         const fix = hint.querySelector("[data-fix]");
         if (fix) fix.onclick = async () => { await setEggSize(s.id, size, { force: true }); s.item.unit_amount = liquid; s.item.egg_size = size; recalc(); };
         return { s, size, part: meta.eggPart, grams };
@@ -1091,7 +1091,7 @@ async function openRecipeModal(existing, container, draft = null) {
         if (e.target.value === "__new__") nc.focus();
     });
     overlay.querySelector("#btn-add-row").onclick = () => addRow();
-    // הוספה מרוכזת: כל הרכיבים שעדיין לא במזווה נוצרים בבת אחת (בלי מחיר, עם סימון "חסר מחיר"), ומתחברים לשורות שלהם
+    // הוספה מרוכזת: כל הרכיבים שעדיין לא בחומרי הגלם נוצרים בבת אחת (בלי מחיר, עם סימון "חסר מחיר"), ומתחברים לשורות שלהם
     overlay.querySelector("#btn-add-missing").onclick = busy(async () => {
         const todo = [];
         box.querySelectorAll(".item-row-inputs").forEach((row) => {
@@ -1101,7 +1101,7 @@ async function openRecipeModal(existing, container, draft = null) {
             if (meta && meta.um && !sel.value && String(meta.um.name || "").trim()) todo.push({ id, um: meta.um });
         });
         if (!todo.length) return;
-        if (!window.confirm(`להוסיף ${todo.length} מוצרים למזווה, בלי מחיר? את המחירים אפשר להשלים אחר כך במזווה (הם יסומנו כחסר מחיר). הקטגוריה מנוחשת לפי השם ואפשר לתקן.`)) return;
+        if (!window.confirm(`להוסיף ${todo.length} מוצרים לחומרי הגלם, בלי מחיר? את המחירים אפשר להשלים אחר כך בחומרי הגלם (הם יסומנו כחסר מחיר). הקטגוריה מנוחשת לפי השם ואפשר לתקן.`)) return;
         let added = 0, reused = 0;
         const failed = [];
         for (const x of todo) {
@@ -1136,7 +1136,7 @@ async function openRecipeModal(existing, container, draft = null) {
             if (qaBox) qaBox.style.display = "none";
         }
         recalc();
-        toast(`נוספו ${added} מוצרים למזווה${reused ? `, ${reused} כבר היו קיימים` : ""}${failed.length ? `. לא הצלחתי: ${failed.join(", ")}` : ""}`);
+        toast(`נוספו ${added} מוצרים לחומרי הגלם${reused ? `, ${reused} כבר היו קיימים` : ""}${failed.length ? `. לא הצלחתי: ${failed.join(", ")}` : ""}`);
     });
     overlay.querySelector("#btn-add-manual").onclick = () => addRow({ pantry_item_id: null, quantity_g: null, um: { name: "", quantity: null, unit: null, manual: true } });
 
@@ -1161,7 +1161,7 @@ async function openRecipeModal(existing, container, draft = null) {
             if (pantry_item_id.startsWith("r") && quantity_g) items.push({ sub_recipe_id: Number(pantry_item_id.slice(1)), quantity_g, ...pctPart });
             else if (pantry_item_id && quantity_g) items.push({ pantry_item_id, quantity_g, ...(egg ? { egg_part: egg.part } : {}), ...pctPart });
             else if (meta && meta.um && meta.um.manual) {
-                // רכיב שהוקלד ידנית ועדיין לא במזווה: נשמר בטיוטה עם הכמות בגרמים (אם הוזנה)
+                // רכיב שהוקלד ידנית ועדיין לא בחומרי הגלם: נשמר בטיוטה עם הכמות בגרמים (אם הוזנה)
                 const nm = String(meta.um.name || "").trim();
                 const g = textToGrams(overlay.querySelector(`#ing-qty-${id}`).value);
                 if (nm) draftIngredients.push({ name: nm, quantity: g || null, unit: g ? "g" : null, manual: true });
@@ -1177,7 +1177,7 @@ async function openRecipeModal(existing, container, draft = null) {
             final_weight: String(textToGrams(overlay.querySelector("#f-manual-weight").value) ?? ""),
         };
         if (!isEdit && draft && draft.source_file) data.source_file = draft.source_file;
-        if (draftIngredients.length && !window.confirm(`${draftIngredients.length} רכיבים עדיין לא במזווה:\n${draftIngredients.map((d) => d.name).join(", ")}\n\nלשמור כטיוטה ולהשלים אותם אחר כך?`)) return;
+        if (draftIngredients.length && !window.confirm(`${draftIngredients.length} רכיבים עדיין לא בחומרי הגלם:\n${draftIngredients.map((d) => d.name).join(", ")}\n\nלשמור כטיוטה ולהשלים אותם אחר כך?`)) return;
         try {
             for (const [eggId, size] of eggSizeChanges) await setEggSize(eggId, size);
             const savedId = await saveRecipe(existing ? existing.id : null, data);

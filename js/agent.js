@@ -1,8 +1,8 @@
-// "הסוכן": שרת קטן שמחזיק את מפתח Gemini של הבעלים ומגביל שימוש (ראה agent-worker/). כשהכתובת מוגדרת כאן, המשתמשים לא צריכים מפתח.
+// "עוזר AI": שרת קטן שמחזיק את מפתח Gemini של הבעלים ומגביל שימוש (ראה agent-worker/). כשהכתובת מוגדרת כאן, המשתמשים לא צריכים מפתח.
 // מי שמזין מפתח אישי בהגדרות ממשיך לעבוד ישירות מול Google (המפתח האישי גובר).
 import { getSetting } from "./repo/settingsRepo.js";
 
-// הכתובת של ה-Worker אחרי ההקמה, למשל "https://kcp-agent.<החשבון>.workers.dev". ריק = אין סוכן (כמו קודם: מפתח אישי בלבד).
+// הכתובת של ה-Worker אחרי ההקמה, למשל "https://kcp-agent.<החשבון>.workers.dev". ריק = אין עוזר AI (כמו קודם: מפתח אישי בלבד).
 export const AGENT_URL = "https://kcp-agent.nirs455.workers.dev";
 export const AGENT_SENTINEL = "__agent__";
 
@@ -17,7 +17,7 @@ export function deviceId() {
     } catch (e) { return "nodevice"; }
 }
 
-// מפתח "אפקטיבי" לשאר האפליקציה: מפתח אישי אם הוזן; אחרת סימן מיוחד שמפנה לסוכן; אחרת ריק (אין סוכן).
+// מפתח "אפקטיבי" לשאר האפליקציה: מפתח אישי אם הוזן; אחרת סימן מיוחד שמפנה לעוזר AI; אחרת ריק (אין עוזר AI).
 export async function getAgentKey() {
     const own = await getSetting("gemini_api_key");
     if (own) return own;
@@ -25,7 +25,7 @@ export async function getAgentKey() {
 }
 export async function usingAgent() { return !(await getSetting("gemini_api_key")) && !!AGENT_URL; }
 
-// קריאה לסוכן: אותו גוף כמו ל-Gemini, ותשובה באותו פורמט (או 402 כשחרגת מהמגבלה היומית).
+// קריאה לעוזר AI: אותו גוף כמו ל-Gemini, ותשובה באותו פורמט (או 402 כשחרגת מהמגבלה היומית).
 export function agentFetch(body, fetchImpl = fetch) {
     return fetchImpl(`${AGENT_URL}/gemini`, { method: "POST", headers: { "Content-Type": "application/json", "X-Device": deviceId() }, body: JSON.stringify(body) });
 }

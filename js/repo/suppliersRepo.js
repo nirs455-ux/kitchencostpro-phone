@@ -102,7 +102,7 @@ export async function listInvoicesWithItems({ trashed = false } = {}) {
     return out;
 }
 
-// אימות מלא של חשבונית בלי לכתוב כלום (לפני יצירת מוצרי מזווה חדשים)
+// אימות מלא של חשבונית בלי לכתוב כלום (לפני יצירת מוצרי חומרי גלם חדשים)
 export async function validateInvoicePayload(data) {
     const clean = parseInvoicePayload(data);
     if (!(await dbGet("suppliers", clean.supplier_id))) throw new Error("ספק לא נמצא");
@@ -186,7 +186,7 @@ export async function monthlySummaryBySupplier() {
 
 
 // ---------- התראות שינוי מחיר ----------
-// מחיר ליחידת מזווה בכל שורה = מחיר השורה / stock_factor. משווים כל קנייה לקנייה הקודמת של אותו מוצר (זיכויים לא נספרים).
+// מחיר ליחידת חומרי גלם בכל שורה = מחיר השורה / stock_factor. משווים כל קנייה לקנייה הקודמת של אותו מוצר (זיכויים לא נספרים).
 async function priceSeries() {
     const invoices = (await dbGetAll("invoices")).filter((i) => i.document_type !== "credit" && !i.deleted_at);
     const invById = Object.fromEntries(invoices.map((i) => [i.id, i]));
@@ -203,7 +203,7 @@ async function priceSeries() {
     return series;
 }
 
-// היסטוריית מחירים של מוצר מזווה: כל קנייה (מחיר ליחידת מזווה) עם תאריך וספק, מהישן לחדש. זיכויים וחשבוניות בפח לא נספרים.
+// היסטוריית מחירים של מוצר חומרי גלם: כל קנייה (מחיר ליחידת חומרי גלם) עם תאריך וספק, מהישן לחדש. זיכויים וחשבוניות בפח לא נספרים.
 export async function priceHistory(pantryItemId) {
     const series = (await priceSeries()).get(pantryItemId) || [];
     if (!series.length) return [];
@@ -239,7 +239,7 @@ export async function setSupplierPhone(id, phone) {
     await dbPut("suppliers", { ...s, phone: clean });
 }
 
-// מנות שמושפעות משינוי מחיר של מוצר מזווה (ישירות, או דרך מתכון שמשתמש בו)
+// מנות שמושפעות משינוי מחיר של מוצר חומרי גלם (ישירות, או דרך מתכון שמשתמש בו)
 export async function dishesAffectedByPantryItem(pantryItemId) {
     const allRecipeItems = await dbGetAll("recipeItems");
     const recipeIds = expandToParents(new Set(allRecipeItems.filter((r) => r.pantry_item_id === pantryItemId).map((r) => r.recipe_id)), allRecipeItems); // כולל מתכונים שמשתמשים בהם כתת-מתכון
@@ -286,7 +286,7 @@ export async function monthlyReport(ym) {
         rep.by_supplier[inv.supplier_name] = (rep.by_supplier[inv.supplier_name] || 0) + sign * inv.total_amount;
         if (inv.petty_cash) { rep.petty_cash_total += sign * inv.total_amount; rep.petty_cash_count += 1; }
         for (const it of inv.items) {
-            const cat = it.pantry_item_id && pantry[it.pantry_item_id] ? pantry[it.pantry_item_id].category : "לא משויך למזווה";
+            const cat = it.pantry_item_id && pantry[it.pantry_item_id] ? pantry[it.pantry_item_id].category : "לא משויך לחומרי הגלם";
             rep.by_category[cat] = (rep.by_category[cat] || 0) + sign * (it.line_total ?? it.quantity * it.unit_price);
         }
     }

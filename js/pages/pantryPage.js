@@ -20,8 +20,8 @@ import { openLabelScan } from "./labelModal.js";
 import { getLabelInfo } from "../repo/nutritionRepo.js";
 import { allergenLabels } from "../allergens.js";
 
-// מזווה = שלוש לשוניות: מוצרים | ספירת מלאי | עיבוד וניצולת. מצב עובד רואה רק ספירת מלאי.
-const TABS = [["products", "מוצרים"], ["inventory", "ספירה"], ["processing", "עיבוד"], ["waste", "פחת"]];
+// חומרי גלם = שלוש לשוניות: מוצרים | ספירת מלאי | עיבוד וניצולת. מצב עובד רואה רק ספירת מלאי.
+const TABS = [["products", "מוצרים"], ["inventory", "ספירת מלאי"], ["processing", "עיבוד"], ["waste", "פחת"]];
 const STAFF_TABS = ["inventory", "waste"]; // מצב עובד: ספירת מלאי ורישום פחת בלבד
 let currentTab = "products";
 export function setPantryTab(t) { collapseAll(); collapsePantryList(); currentTab = TABS.some((x) => x[0] === t) ? t : "products"; }
@@ -61,7 +61,7 @@ function pxRow(it) {
 }
 
 export async function renderPantryProducts(container) {
-    const root = container.parentElement; // כל עמוד המזווה (לשוניות + תוכן), לרענון אחרי מעבר ללשונית אחרת
+    const root = container.parentElement; // כל עמוד חומרי הגלם (לשוניות + תוכן), לרענון אחרי מעבר ללשונית אחרת
     const items = assignAutoSubs(await listTopLevelPantryItems()); // תתי-קטגוריות אוטומטיות לפי תחילת השם (צ'ילי, שום...)
     const all = await dbGetAll("pantryItems");
     const kids = new Map();
@@ -94,7 +94,7 @@ export async function renderPantryProducts(container) {
     function draw() {
         list.innerHTML = "";
         chipsEl.innerHTML = "";
-        if (!items.length) { list.innerHTML = '<div class="empty-state">אין עדיין מוצרים במזווה - לחץ על + כדי להוסיף.</div>'; return; }
+        if (!items.length) { list.innerHTML = '<div class="empty-state">אין עדיין מוצרים בחומרי הגלם - לחץ על + כדי להוסיף.</div>'; return; }
         const rows = sorted().filter(visible);
         if (view === "list") {
             const cats = orderCategories(items.map((i) => i.category));

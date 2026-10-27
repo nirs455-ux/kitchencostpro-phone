@@ -26,7 +26,7 @@ export async function resolveDishItems(items, { cache = null } = {}) {
         let ppg, sourceName, countLine = false;
         if (sourceType === "pantry") {
             const row = cache ? cache.pantry.get(sourceId) : await dbGet("pantryItems", sourceId);
-            if (!row) throw new Error("מרכיב לא נמצא במזווה");
+            if (!row) throw new Error("מרכיב לא נמצא בחומרי הגלם");
             ppg = pricePerGram(row);
             sourceName = row.name;
             if (isCountItem(row)) countLine = true;

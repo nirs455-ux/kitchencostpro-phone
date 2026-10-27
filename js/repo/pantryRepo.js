@@ -1,4 +1,4 @@
-// לוגיקת מזווה - תרגום מדויק של _validate_payload / add_item / update_item / update_item_yield / delete_item מ-main.py.
+// לוגיקת חומרי גלם - תרגום מדויק של _validate_payload / add_item / update_item / update_item_yield / delete_item מ-main.py.
 import { dbGetAll, dbGet, dbPut, dbDelete, dbGetByIndex } from "../db.js";
 import { CATEGORY_GROUPS, UNIT_TYPES } from "../constants.js";
 import { computeYieldPct, isCountItem } from "../formulas.js";
@@ -57,7 +57,7 @@ function checkUnitAmount(v) {
 async function assertUniqueName(name, excludeId = null) {
     const key = name.trim().toLowerCase();
     const clash = (await dbGetAll("pantryItems")).find((r) => !r.parent_id && r.id !== excludeId && r.name.trim().toLowerCase() === key);
-    if (clash) throw new Error("כבר קיים מוצר בשם הזה במזווה. בחר אותו מהרשימה או שנה את השם.");
+    if (clash) throw new Error("כבר קיים מוצר בשם הזה בחומרי הגלם. בחר אותו מהרשימה או שנה את השם.");
 }
 
 export async function addPantryItem(data) {
@@ -182,7 +182,7 @@ export async function updatePantryItemYield(id, data) {
     await dbPut("pantryItems", existing);
 }
 
-// מוחק פריט מזווה אחד וכל מה שתלוי בו ישירות (ספירות מלאי), ומנתק אותו משורות חשבונית.
+// מוחק פריט חומרי גלם אחד וכל מה שתלוי בו ישירות (ספירות מלאי), ומנתק אותו משורות חשבונית.
 // מתכונים/מנות שהשתמשו בו נשארים עם העלות ששמורה בהם (תמונת מצב) - לא נמחקים.
 async function purgePantryItem(id) {
     for (const c of await dbGetByIndex("inventoryCounts", "pantry_item_id", id)) {
@@ -214,8 +214,8 @@ const escHtml = (t) => String(t ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;
 
 export function deleteConfirmText(info) {
     let msg = info.is_child
-        ? `למחוק את התוצר "${escHtml(info.name)}"? חומר הגלם שלו יישאר במזווה.`
-        : `למחוק את "${escHtml(info.name)}" לגמרי, כולל מהמזווה?<br><br>זה מוחק את המוצר עצמו, לא רק את העיבוד. כדי להחזיר רק את הניצולת ל-100% השתמש בכפתור "אפס עיבוד" בעמוד עיבוד.`;
+        ? `למחוק את התוצר "${escHtml(info.name)}"? חומר הגלם שלו יישאר בחומרי הגלם.`
+        : `למחוק את "${escHtml(info.name)}" לגמרי, כולל מחומרי הגלם?<br><br>זה מוחק את המוצר עצמו, לא רק את העיבוד. כדי להחזיר רק את הניצולת ל-100% השתמש בכפתור "אפס עיבוד" בעמוד עיבוד.`;
     if (info.children.length) {
         msg += `<br><br>יימחקו גם ${info.children.length} תוצרים מפורקים שלו: ${info.children.map((c) => escHtml(c.name)).join(", ")}`;
     }

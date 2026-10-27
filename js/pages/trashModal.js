@@ -1,4 +1,4 @@
-// פח חשבוניות: שחזור או מחיקה סופית. מה שנשאר בפח יותר מ-30 יום נמחק לבד.
+// ארכיון מחוקים: שחזור או מחיקה סופית. מה שנשאר בארכיון יותר מ-30 יום נמחק לבד.
 import { openModal, closeModal, confirmDialog, toast, escapeHtml, money, info } from "../ui.js";
 import { listInvoicesWithItems, restoreInvoice, purgeInvoice } from "../repo/suppliersRepo.js";
 
@@ -6,8 +6,8 @@ export async function openTrashModal(onChange) {
     const trashed = await listInvoicesWithItems({ trashed: true });
     trashed.sort((a, b) => (b.deleted_at || "").localeCompare(a.deleted_at || ""));
     const overlay = openModal(`
-        <h2>פח חשבוניות ${info("חשבוניות שנמחקו נשמרות כאן 30 יום, ואפשר לשחזר אותן. אחר כך הן נמחקות סופית.")}</h2>
-        <div id="trash-list">${trashed.length ? "" : '<div class="empty-state">הפח ריק.</div>'}</div>
+        <h2>ארכיון מחוקים ${info("חשבוניות שנמחקו נשמרות כאן 30 יום, ואפשר לשחזר אותן. אחר כך הן נמחקות סופית.")}</h2>
+        <div id="trash-list">${trashed.length ? "" : '<div class="empty-state">הארכיון ריק.</div>'}</div>
         <div class="modal-actions"><button type="button" class="btn btn-secondary" id="trash-close">סגור</button></div>
     `);
     overlay.querySelector("#trash-close").onclick = closeModal;

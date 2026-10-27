@@ -34,9 +34,9 @@ export function includesRecipe(recipeId, targetId, allItems) {
     return false;
 }
 
-// פורש רשימת רכיבים לרמת מוצרי המזווה בלבד: שורת תת-מתכון הופכת לרכיבים שלו, בכמות יחסית לכמות שבשימוש.
+// פורש רשימת רכיבים לרמת חומרי הגלם בלבד: שורת תת-מתכון הופכת לרכיבים שלו, בכמות יחסית לכמות שבשימוש.
 // recipeById: Map מזהה -> מתכון, itemsOf(recipeId): שורות ה-recipeItems שלו.
-// תת-מתכון שנמחק לא נעלם: הוא נשאר כרכיב "רפאים" בלי מוצר מזווה (pantry_item_id: null), כדי שהתווית תסמן אותו כ"לא ידוע" ולא תשמיט אותו בשקט (אלרגנים!). מעגל או עומק יתר נשמטים.
+// תת-מתכון שנמחק לא נעלם: הוא נשאר כרכיב "רפאים" בלי מוצר חומרי גלם (pantry_item_id: null), כדי שהתווית תסמן אותו כ"לא ידוע" ולא תשמיט אותו בשקט (אלרגנים!). מעגל או עומק יתר נשמטים.
 export function flattenRecipeItems(direct, recipeById, itemsOf, factor = 1, depth = 0, trail = new Set()) {
     const out = [];
     for (const it of direct) {

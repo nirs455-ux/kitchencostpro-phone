@@ -1,4 +1,4 @@
-// דוח מכירות: שמירה, רשימה, מחיקה, ייבוא CSV, ודוח פער (עלות בפועל מול תיאורטית). הלוגיקה עצמה ב-salesCalc.js (טהור).
+// דוח מכירות: שמירה, רשימה, מחיקה, ייבוא CSV, ודוח סטיות (עלות בפועל מול תיאורטית). הלוגיקה עצמה ב-salesCalc.js (טהור).
 import { dbGetAll, dbGet, dbPut, dbDelete } from "../db.js";
 import { SALES_LINE_TYPES, SALES_LINE_LABELS, consumptionEvents, gapReport, parseSalesCsv } from "../salesCalc.js";
 
@@ -72,7 +72,7 @@ async function purchasesList() {
     return out;
 }
 
-// דוח פער לתקופה (from, to]: מחשב עלות בפועל (ספירה + קניות - ספירה) מול תיאורטית (מכירות + פחת)
+// דוח סטיות לתקופה (from, to]: מחשב עלות בפועל (ספירה + קניות - ספירה) מול תיאורטית (מכירות + פחת)
 export async function buildGapReport(from, to) {
     if (!from || !to || from >= to) throw new Error("בחר תאריך התחלה וסיום, כשההתחלה לפני הסיום");
     const ctx = await loadSalesCtx();

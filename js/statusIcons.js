@@ -1,4 +1,4 @@
-// אייקוני מצב בסרגל העליון: 🤖 סוכן (מפתח Gemini) ו-☁️ ענן (גיבוי ל-Drive). אדום = לא מחובר, כתום = דורש טיפול, ירוק = תקין.
+// אייקוני מצב בסרגל העליון: 🤖 עוזר AI (מפתח Gemini) ו-☁️ ענן (גיבוי ל-Drive). אדום = לא מחובר, כתום = דורש טיפול, ירוק = תקין.
 // לחיצה מסבירה מה זה אומר ומציעה לחבר. מוסתרים במצב טבח.
 import { getSetting } from "./repo/settingsRepo.js";
 import { getAgentKey, agentConfigured } from "./agent.js";
@@ -8,7 +8,7 @@ import { openModal, closeModal, toast, escapeHtml } from "./ui.js";
 import { isStaffMode } from "./staff.js";
 import { downloadExport } from "./export.js";
 
-// האשף הוא רק שפה ומטבע, ולכן "חבר סוכן" מוביל להגדרות (מפתח אישי) ו"חבר ל-Google" מפעיל את החיבור ישירות.
+// האשף הוא רק שפה ומטבע, ולכן "חבר עוזר AI" מוביל להגדרות (מפתח אישי) ו"חבר ל-Google" מפעיל את החיבור ישירות.
 export async function openWizardAt(step) {
     if (step === 2) {
         const { runConnectFlow } = await import("./cloud/cloudUi.js");
@@ -37,7 +37,7 @@ export async function renderStatusIcons() {
     if (isStaffMode()) { el.innerHTML = ""; return; }
     const st = await computeStatus();
     el.innerHTML = `
-        <button type="button" class="st-icon st-${st.agent}" id="st-agent" aria-label="סוכן: ${LABEL[st.agent]}" title="סוכן (Gemini): ${LABEL[st.agent]}">🤖<i></i></button>
+        <button type="button" class="st-icon st-${st.agent}" id="st-agent" aria-label="עוזר AI: ${LABEL[st.agent]}" title="עוזר AI (Gemini): ${LABEL[st.agent]}">🤖<i></i></button>
         <button type="button" class="st-icon st-${st.cloud}" id="st-cloud" aria-label="ענן: ${LABEL[st.cloud]}" title="ענן (Drive): ${LABEL[st.cloud]}">☁️<i></i></button>`;
     el.querySelector("#st-agent").onclick = () => openAgentPopup(st);
     el.querySelector("#st-cloud").onclick = () => openCloudPopup(st);
@@ -52,13 +52,13 @@ function popup(title, text, buttons) {
 async function openAgentPopup(st) {
     const hasOwnKey = !!(await getSetting("gemini_api_key"));
     if (st.agent === "ok") {
-        popup("🤖 הסוכן מחובר ✓", agentConfigured() && !hasOwnKey ? "הסוכן המשותף פעיל (עם מגבלה יומית), ואפשר לסרוק חשבוניות ומתכונים מתמונה. מי שרוצה בלי מגבלה יכול להזין מפתח Gemini אישי בהגדרות." : "מפתח Gemini שמור, ואפשר לסרוק חשבוניות ומתכונים מתמונה.", [
+        popup("🤖 עוזר AI מחובר ✓", agentConfigured() && !hasOwnKey ? "עוזר AI משותף פעיל (עם מגבלה יומית), ואפשר לסרוק חשבוניות ומתכונים מתמונה. מי שרוצה בלי מגבלה יכול להזין מפתח Gemini אישי בהגדרות." : "מפתח Gemini שמור, ואפשר לסרוק חשבוניות ומתכונים מתמונה.", [
             { label: agentConfigured() ? "מפתח אישי בהגדרות" : "בדוק או החלף מפתח", cls: "btn-primary", run: () => { if (agentConfigured()) location.hash = "settings"; else openWizardAt(1); } },
             { label: "סגור", run: () => {} },
         ]);
     } else {
-        popup("🤖 אין סוכן מחובר", "בלי סוכן (מפתח Gemini) אי אפשר לסרוק חשבוניות ומתכונים מתמונה. אפשר להמשיך לעבוד ידנית, אבל הסריקה לא תעבוד.", [
-            { label: "חבר סוכן", cls: "btn-primary", run: () => openWizardAt(1) },
+        popup("🤖 אין עוזר AI מחובר", "בלי עוזר AI (מפתח Gemini) אי אפשר לסרוק חשבוניות ומתכונים מתמונה. אפשר להמשיך לעבוד ידנית, אבל הסריקה לא תעבוד.", [
+            { label: "חבר עוזר AI", cls: "btn-primary", run: () => openWizardAt(1) },
             { label: "אחר כך", run: () => {} },
         ]);
     }

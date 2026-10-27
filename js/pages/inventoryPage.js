@@ -27,7 +27,7 @@ export async function renderInventoryPage(container) {
 
     const list = container.querySelector("#inventory-list");
     if (items.length === 0) {
-        list.innerHTML = '<div class="empty-state">אין עדיין מוצרים במזווה - הוסף מוצרים בעמוד "מזווה" תחילה.</div>';
+        list.innerHTML = '<div class="empty-state">אין עדיין מוצרים בחומרי הגלם - הוסף מוצרים בעמוד "חומרי גלם" תחילה.</div>';
     }
     // המבנה נבנה פעם אחת ורק מציגים/מסתירים, כדי שכמויות שכבר הוזנו לא יימחקו
     const sections = []; // { head, body, rows: [{ el, it }], cat, count }

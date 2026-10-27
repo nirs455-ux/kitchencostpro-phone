@@ -45,7 +45,7 @@ export const EGG_PART_LABEL = Object.fromEntries(EGG_PARTS);
 // שמות לתצוגה בממשק: "חלבון" לבד הוא גם רכיב תזונה (Protein), ולכן בתצוגה כותבים "חלבון ביצה" כדי שהתרגום יהיה נכון (Egg white)
 export const EGG_PART_UI = { whole: "שלמה", white: "חלבון ביצה", yolk: "חלמון" };
 
-// מוצר ביצה במזווה: ברמה העליונה, ביחידות, ובשם יש "ביצ"
+// מוצר ביצה בחומרי הגלם: ברמה העליונה, ביחידות, ובשם יש "ביצ"
 export function isEggProduct(row) {
     return !!row && !row.parent_id && row.unit_type === "unit" && isEggName(row.name);
 }
@@ -75,7 +75,7 @@ export function eggBreakdown({ size, wholeG = 0, whiteG = 0, yolkG = 0, eggPrice
     return { ...p, eggs, wholeEggs, size, eggsCost: Math.round(eggs * eggPrice * 100) / 100 };
 }
 
-// סיכום ביצים למתכון: items = [{ pantry_item_id, quantity_g, egg_part, egg_size? }], rows = כל שורות המזווה.
+// סיכום ביצים למתכון: items = [{ pantry_item_id, quantity_g, egg_part, egg_size? }], rows = כל שורות חומרי הגלם.
 export function recipeEggSummary(items, rows) {
     const byId = new Map(rows.map((r) => [r.id, r]));
     const groups = new Map();

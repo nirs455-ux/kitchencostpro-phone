@@ -1,4 +1,4 @@
-// לשונית פחת / זריקות (במזווה): רישום מהיר של מה שנזרק, ודוח עלות. עובד רושם בלי לראות מחירים; מנהל רואה דוח ומוחק.
+// לשונית פחת (בחומרי הגלם): רישום מהיר של מה שנזרק, ודוח עלות. עובד רושם בלי לראות מחירים; מנהל רואה דוח ומוחק.
 import { dbGetAll } from "../db.js";
 import { addWaste, listWaste, deleteWaste, restoreWaste, purchasesSince, todayIso } from "../repo/wasteRepo.js";
 import { WASTE_REASONS, REASON_LABEL, WASTE_UNITS, pantryWasteCost, recipeWasteCost, periodStart, summarizeWaste } from "../waste.js";
@@ -36,13 +36,13 @@ export async function renderWastePage(container) {
     }
 
     container.innerHTML = `
-        <button type="button" class="btn btn-primary btn-big btn-block" id="w-add" style="margin:4px 0 10px;">＋ רישום זריקה</button>
+        <button type="button" class="btn btn-primary btn-big btn-block" id="w-add" style="margin:4px 0 10px;">＋ רישום פחת</button>
         ${summaryHtml}
         <div class="card-title" style="margin:12px 2px 6px;">${staff ? "נרשם היום" : "רישומים"}</div>
         <div id="w-list"></div>`;
 
     container.querySelector("#w-add").onclick = () => openWasteModal(rerender);
-    if (takeFlag("waste-new")) openWasteModal(rerender); // נלחץ "רישום זריקה" בבית
+    if (takeFlag("waste-new")) openWasteModal(rerender); // נלחץ "רישום פחת" בבית
     container.querySelectorAll("#w-period [data-p]").forEach((b) => { b.onclick = () => { period = b.dataset.p; rerender(); }; });
 
     const list = container.querySelector("#w-list");
@@ -73,7 +73,7 @@ async function openWasteModal(onSaved) {
     try { lastBy = localStorage.getItem("kcp_waste_by") || ""; } catch (e) { /* לא קריטי */ }
 
     const overlay = openModal(`
-        <h2>רישום זריקה</h2>
+        <h2>רישום פחת</h2>
         <div class="seg" id="wm-src"><button type="button" data-s="pantry" class="active">מוצר</button><button type="button" data-s="recipe">מתכון שהוכן</button></div>
         <div class="field"><label>מה נזרק?</label><select id="wm-item"></select></div>
         <div class="form-row">
@@ -112,7 +112,7 @@ async function openWasteModal(onSaved) {
         if (!el) return;
         const it = current(), qty = parseFloat(qtyEl.value);
         const c = it && qty > 0 ? (source === "recipe" ? recipeWasteCost(it, qty, unitSel.value) : pantryWasteCost(it, qty, unitSel.value)) : null;
-        el.textContent = c != null ? `עלות הזריקה: ${money(c)}` : "";
+        el.textContent = c != null ? `עלות הפחת: ${money(c)}` : "";
     };
     q("#wm-src").querySelectorAll("[data-s]").forEach((b) => {
         b.onclick = () => { source = b.dataset.s; q("#wm-src").querySelectorAll("[data-s]").forEach((x) => x.classList.toggle("active", x === b)); fillItems(); };

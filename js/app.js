@@ -30,8 +30,8 @@ import { openModal, closeModal, dropLayers, toastAction } from "./ui.js";
 import { openDB } from "./db.js";
 
 const PAGES = {
-    home: { title: "בית", render: renderHomePage, info: "מסך הבית: סריקה מהירה, ומה שדורש תשומת לב עכשיו." },
-    pantry: { title: "מזווה", render: renderPantryPage,
+    home: { title: "בית", render: renderHomePage, info: "מסך הבית: סריקה מהירה, והתראות." },
+    pantry: { title: "חומרי גלם", render: renderPantryPage,
         info: "חומרי גלם ומחירים (מוצרים), ספירת מלאי, וניצולת/פירוק (עיבוד וניצולת) - בלשוניות למעלה." },
     processing: { title: "עיבוד", render: renderProcessingPage,
         info: "כאן קובעים ניצולת וקפוא לכל מוצר, או יוצרים ממנו תוצר מפורק (למשל: דג שלם ← פילה). המחיר האמיתי מוצג רק כאן." },
@@ -40,7 +40,7 @@ const PAGES = {
     dishes: { title: "מנות ורווחיות", render: renderDishesPage,
         info: "מנות תפריט: מחיר מכירה, עלות, ואחוז רווח ופוד-קוסט בפועל." },
     suppliers: { title: "ספקים וחשבוניות", render: renderSuppliersPage,
-        info: "מעקב הזמנות וחשבוניות לפי ספק. בחשבונית שמשויכת למוצר במזווה, המחיר והמלאי מתעדכנים." },
+        info: "מעקב הזמנות וחשבוניות לפי ספק. בחשבונית שמשויכת למוצר בחומרי הגלם, המחיר והמלאי מתעדכנים." },
     waste: { title: "פחת", render: renderPantryPage, info: "" },
     inventory: { title: "ספירת מלאי", render: renderInventoryPage,
         info: "מזינים את הכמות שנספרה בפועל, והמערכת מחשבת את היתרה התיאורטית ומציגה את ההפרש." },
@@ -67,7 +67,7 @@ const navButtons = document.querySelectorAll("#bottom-nav button");
 
 async function navigate(pageKey) {
     crumb("navigate " + pageKey);
-    await ensureCostsFresh(); // שינוי מחיר במזווה שעדיין מחושב מחדש במתכונים/מנות: ממתינים כדי שלא יוצג מספר ישן
+    await ensureCostsFresh(); // שינוי מחיר בחומרי הגלם שעדיין מחושב מחדש במתכונים/מנות: ממתינים כדי שלא יוצג מספר ישן
     if (!PAGES[pageKey]) pageKey = "home";
     // הגדרות מוגנות בקוד מנהל (אם הוגדר). יצרן לא רואה מנות.
     if (pageKey === "settings" && (await hasPin()) && !settingsUnlocked()) {
@@ -79,7 +79,7 @@ async function navigate(pageKey) {
     if (pageKey === "files" && location.hash !== "#files") openFilesFolder(null);
     location.hash = pageKey;
     try { localStorage.setItem("kcp_last_page", pageKey); } catch (e) { /* לא קריטי */ } // כדי לחזור לאותו דף אם הטלפון סגר את האפליקציה ברקע
-    // ספירת מלאי ועיבוד הם לשוניות של המזווה (הכתובות #inventory ו-#processing ממשיכות לעבוד)
+    // ספירת מלאי ועיבוד הם לשוניות של חומרי הגלם (הכתובות #inventory ו-#processing ממשיכות לעבוד)
     const inPantry = pageKey === "inventory" || pageKey === "processing" || pageKey === "waste";
     if (pageKey === "recipes") collapseRecipes();
     if (inPantry) setPantryTab(pageKey);
@@ -140,8 +140,8 @@ try { await openDB(); } catch (e) {
 }
 window.addEventListener("kcp-db-blocked", () => toastAction("האפליקציה פתוחה גם בלשונית אחרת", "רענן", () => location.reload(), 60000));
 await initLocale(); // סמל מטבע וכו' לפני שהמסכים מצוירים
-await recalcAllCosts().catch(() => {}); // ריפוי: עלויות שנשארו ישנות מגרסאות קודמות מתעדכנות לפי המזווה הנוכחי
-startAutoRecalc(); // מכאן כל שינוי במזווה מעדכן מתכונים ומנות לבד
+await recalcAllCosts().catch(() => {}); // ריפוי: עלויות שנשארו ישנות מגרסאות קודמות מתעדכנות לפי חומרי הגלם הנוכחי
+startAutoRecalc(); // מכאן כל שינוי בחומרי הגלם מעדכן מתכונים ומנות לבד
 await initLang(); // שפת האשף והסיור
 await initDomTranslate(getLang(), langDir()); // תרגום כל הממשק (עברית = בלי שינוי)
 appRole = (await getSetting("role")) || "manager"; // manager | cook | producer

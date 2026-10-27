@@ -102,9 +102,9 @@ function openProductModal(existing, recipes, onSaved, presetRecipeId = null, pan
     const drawPack = () => {
         packBox.innerHTML = "";
         packRows.forEach((r, i) => {
-            const legacy = r.pack_id == null && r.pantry_item_id; // אריזה מהמזווה (פורמט ישן)
+            const legacy = r.pack_id == null && r.pantry_item_id; // אריזה מחומרי הגלם (פורמט ישן)
             const item = r.pack_id ? packs.find((x) => x.id === r.pack_id) : null;
-            const label = legacy ? `${pantryName(r.pantry_item_id)} (מהמזווה)` : item ? `${item.name} · ${money(item.price)}` : r.pack_id ? "אריזה שנמחקה" : "בחר אריזה...";
+            const label = legacy ? `${pantryName(r.pantry_item_id)} (מחומרי הגלם)` : item ? `${item.name} · ${money(item.price)}` : r.pack_id ? "אריזה שנמחקה" : "בחר אריזה...";
             const row = h(`<div class="item-row-inputs"><div class="top-line">
                 <button type="button" class="pick-btn ${item || legacy ? "" : "pk-empty"}" data-pi="${i}" style="flex:2;">${escapeHtml(label)}</button>
                 <input type="text" inputmode="decimal" data-pq="${i}" value="${r.qty || ""}" placeholder="יחידות" style="width:80px;">
@@ -181,7 +181,7 @@ async function openPrintModal(p, recipes) {
     const warns = [
         !manualNu && calcNu && N.missing.length ? `הערכים התזונתיים מחושבים מהמתכון אבל חסרים ערכים ל: ${N.missing.map(escapeHtml).join(", ")} (מכסים ${N.coveragePct}% מהמשקל).` : "",
         !manualNu && calcNu && !(recipe.final_weight > 0 && !recipe.is_auto_weight) ? "הערכים מחולקים במשקל הגולמי של הרכיבים. אם יש ירידה בבישול, הזן משקל סופי במתכון." : "",
-        missing.length ? `במתכון יש ${missing.length} רכיבים שעדיין לא במזווה (${missing.map((m) => escapeHtml(m.name)).join(", ")}) והם לא ברשימה.` : "",
+        missing.length ? `במתכון יש ${missing.length} רכיבים שעדיין לא בחומרי הגלם (${missing.map((m) => escapeHtml(m.name)).join(", ")}) והם לא ברשימה.` : "",
         label.unknown.length ? `לא הוגדרו אלרגנים עבור: ${label.unknown.map(escapeHtml).join(", ")}. בדוק בלשונית "אלרגנים" של המתכון.` : "",
         !business.name ? "פרטי העסק עוד לא הוגדרו, ולכן לא יופיעו על המדבקה." : "",
     ].filter(Boolean);

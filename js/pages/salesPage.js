@@ -1,4 +1,4 @@
-// מכירות ודוח פער (בתוך דף המנות): מזינים מה נמכר, והאפליקציה מפרקת לחומרי גלם ומשווה לספירת המלאי: עלות מזון בפועל מול תיאורטית.
+// מכירות ודוח סטיות (בתוך דף המנות): מזינים מה נמכר, והאפליקציה מפרקת לחומרי גלם ומשווה לספירת המלאי: עלות מזון בפועל מול תיאורטית.
 import { openModal, closeModal, confirmDialog, toast, escapeHtml, money, info, busy } from "../ui.js";
 import { dbGetAll } from "../db.js";
 import { addSalesReport, listSalesLines, deleteSalesLine, parseCsvForDishes, importSalesLines, buildGapReport, todayIso, SALES_LINE_TYPES, SALES_LINE_LABELS } from "../repo/salesRepo.js";
@@ -15,7 +15,7 @@ export async function renderSalesTab(container) {
     const recipes = (await dbGetAll("recipes")).filter((r) => r.status !== "draft").sort((a, b) => a.name.localeCompare(b.name, "he"));
     const pending = [];
     container.innerHTML = `
-        <div class="hint" style="margin-bottom:8px;">מזינים מה נמכר באותו יום. האפליקציה מפרקת כל מנה לחומרי הגלם שלה, ומורידה אותם מהמלאי התיאורטי. בדוח הפער היא משווה לספירה האמיתית.</div>
+        <div class="hint" style="margin-bottom:8px;">מזינים מה נמכר באותו יום. האפליקציה מפרקת כל מנה לחומרי הגלם שלה, ומורידה אותם מהמלאי התיאורטי. בדוח הסטיות היא משווה לספירה האמיתית.</div>
         ${dishes.length || recipes.length ? `
         <div class="card">
             <div class="field"><label>תאריך</label><input type="date" id="sl-date" value="${todayIso()}"></div>
@@ -121,18 +121,18 @@ function openCsvModal(onDone) {
     ov.querySelector("#csv-close").onclick = closeModal;
 }
 
-// ---------------- לשונית דוח פער ----------------
+// ---------------- לשונית דוח סטיות ----------------
 export async function renderGapTab(container) {
     const counts = await dbGetAll("inventoryCounts");
     const dates = [...new Set(counts.map((c) => c.count_date))].sort();
     const to0 = dates.length ? dates[dates.length - 1] : todayIso();
     const from0 = dates.length > 1 ? dates[dates.length - 2] : addDays(to0, -7);
     container.innerHTML = `
-        <div class="hint" style="margin-bottom:8px;">משווה את מה שירד בפועל מהמלאי (ספירה בתחילת התקופה + קניות - ספירה בסופה) למה שהמכירות והפחת מסבירים. פער חיובי = ירד יותר ממה שמוסבר (בזבוז, מנות גדולות, טעות בספירה או גניבה). כדי שהדוח יעבוד צריך ספירה בתחילת התקופה ובסופה.</div>
+        <div class="hint" style="margin-bottom:8px;">משווה את מה שירד בפועל מהמלאי (ספירה בתחילת התקופה + קניות - ספירה בסופה) למה שהמכירות והפחת מסבירים. סטייה חיובית = ירד יותר ממה שמוסבר (בזבוז, מנות גדולות, טעות בספירה או גניבה). כדי שהדוח יעבוד צריך ספירה בתחילת התקופה ובסופה.</div>
         <div class="card">
             <div class="form-row"><div class="field"><label>מתאריך (ספירה)</label><input type="date" id="gp-from" value="${from0}"></div>
             <div class="field"><label>עד תאריך (ספירה)</label><input type="date" id="gp-to" value="${to0}"></div></div>
-            <button type="button" class="btn btn-primary btn-block" id="gp-go">חשב דוח פער</button>
+            <button type="button" class="btn btn-primary btn-block" id="gp-go">חשב דוח סטיות</button>
             <div class="error-msg" id="gp-err"></div>
         </div>
         <div id="gp-out"></div>`;
@@ -150,15 +150,15 @@ export async function renderGapTab(container) {
                     <div class="card-row"><span>הכנסה ממכירות (לפני מע"מ)</span><b>${money(t.revenue)}</b></div>
                     <div class="card-row"><span>עלות מזון תיאורטית</span><b>${money(t.theoreticalCost)} · ${pct(t.theoreticalPct)}</b></div>
                     <div class="card-row"><span>עלות מזון בפועל</span><b>${money(t.actualCost)} · ${pct(t.actualPct)}</b></div>
-                    <div class="card-row"><span>פער (בפועל פחות תיאורטי)</span><b style="color:${t.gapValue > 0.5 ? "var(--danger)" : t.gapValue < -0.5 ? "var(--ok)" : "inherit"};">${t.gapValue > 0 ? "+" : ""}${money(t.gapValue)}</b></div>
+                    <div class="card-row"><span>סטייה (בפועל פחות תיאורטי)</span><b style="color:${t.gapValue > 0.5 ? "var(--danger)" : t.gapValue < -0.5 ? "var(--ok)" : "inherit"};">${t.gapValue > 0 ? "+" : ""}${money(t.gapValue)}</b></div>
                 </div>
                 ${!r.salesCount ? '<div class="hint-warn">לא דווחו מכירות בתקופה הזאת, ולכן העלות התיאורטית היא אפס. הזן מכירות בלשונית "מכירות".</div>' : ""}
                 ${t.unpricedLines ? `<div class="hint-warn">${t.unpricedLines} שורות מכירה בלי מחיר ידוע (מתכון שנמכר ישירות או מנה שנמחקה) לא נכללו בהכנסה.</div>` : ""}
                 ${r.missing.length ? `<div class="hint">${r.missing.length} מוצרים בלי ספירה בתחילת התקופה ובסופה לא נכללו בדוח.</div>` : ""}
-                ${r.rows.length ? `<div class="card-title" style="margin:12px 4px 4px;">הפערים הגדולים ${info("לכל מוצר: כמה ירד בפועל, כמה מוסבר במכירות ובפחת, והפער בכסף לפי מחיר הקנייה.")}</div>
-                <div class="tablewrap" style="overflow-x:auto;"><table class="simple"><thead><tr><th>מוצר</th><th>בפועל</th><th>מוסבר</th><th>פער</th><th>שווי</th></tr></thead><tbody>
+                ${r.rows.length ? `<div class="card-title" style="margin:12px 4px 4px;">הסטיות הגדולות ${info("לכל מוצר: כמה ירד בפועל, כמה מוסבר במכירות ובפחת, והסטייה בכסף לפי מחיר הקנייה.")}</div>
+                <div class="tablewrap" style="overflow-x:auto;"><table class="simple"><thead><tr><th>מוצר</th><th>בפועל</th><th>מוסבר</th><th>סטייה</th><th>שווי</th></tr></thead><tbody>
                 ${r.rows.slice(0, 25).map((x) => `<tr><td>${escapeHtml(x.name)}</td><td>${x.actual} ${unitWord(x.unit_type)}</td><td>${x.theoretical}</td><td>${x.gap > 0 ? "+" : ""}${x.gap}</td><td style="color:${x.gapValue > 0.5 ? "var(--danger)" : x.gapValue < -0.5 ? "var(--ok)" : "inherit"};">${x.gapValue > 0 ? "+" : ""}${money(x.gapValue)}</td></tr>`).join("")}
-                </tbody></table></div>` : '<div class="empty-state">אין מוצרים עם שתי ספירות בתקופה. ספור מלאי בתחילת התקופה ובסופה (מזווה, לשונית "ספירה").</div>'}`;
+                </tbody></table></div>` : '<div class="empty-state">אין מוצרים עם שתי ספירות בתקופה. ספור מלאי בתחילת התקופה ובסופה (חומרי גלם, לשונית "ספירה").</div>'}`;
         } catch (e) { err.textContent = e.message; err.style.display = "block"; }
     });
 }

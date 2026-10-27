@@ -8,7 +8,7 @@ import { saveNutrition, saveLabelInfo } from "../repo/nutritionRepo.js";
 import { ALLERGENS } from "../allergens.js";
 import { NUTRIENTS } from "../nutrition.js";
 
-// item: מוצר מזווה. onDone נקרא אחרי שמירה.
+// item: מוצר חומרי גלם. onDone נקרא אחרי שמירה.
 export function openLabelScan({ item, onDone }) {
     openImagePicker({
         title: `צילום תווית: ${item.name}`,

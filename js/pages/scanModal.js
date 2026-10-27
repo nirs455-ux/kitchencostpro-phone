@@ -44,12 +44,12 @@ export async function openScanModal({ supplierAware, onDone, initialFile = null 
             <div class="hint-warn" id="scan-skipped" style="display:none;"></div>
             ${supplierAware ? `
             <div class="field">
-                <label>ספק ${info("בחירת ספק תשמור זאת גם כחשבונית בדף הספקים, ותעדכן את הקניות בדף המלאי. בלי בחירה - רק המחיר במזווה יתעדכן.")}</label>
+                <label>ספק ${info("בחירת ספק תשמור זאת גם כחשבונית בדף הספקים, ותעדכן את הקניות בדף המלאי. בלי בחירה - רק המחיר בחומרי הגלם יתעדכן.")}</label>
                 <select id="scan-supplier">
-                    <option value="">ללא שיוך לחשבונית (רק עדכון מזווה)</option>
+                    <option value="">ללא שיוך לחשבונית (רק עדכון חומרי גלם)</option>
                     ${suppliers.map((s) => `<option value="${s.id}">${escapeHtml(s.name)}</option>`).join("")}
                 </select>
-                <div class="hint-warn" id="scan-no-supplier" style="display:none;">לא נבחר ספק - החשבונית לא תישמר בדף הספקים, רק המזווה יתעדכן.</div>
+                <div class="hint-warn" id="scan-no-supplier" style="display:none;">לא נבחר ספק - החשבונית לא תישמר בדף הספקים, רק חומרי הגלם יתעדכן.</div>
             </div>
             <div class="field"><label>תאריך</label><input type="date" id="scan-date" value="${todayLocal()}"></div>
             <button type="button" class="btn-link" id="scan-petty-show">＋ זו קופה קטנה (עובד קנה והוחזר לו במזומן)</button>
@@ -245,7 +245,7 @@ export async function openScanModal({ supplierAware, onDone, initialFile = null 
         });
     }
 
-    // סוג היחידה האפקטיבי של השורה (מוצר קיים - לפי המזווה; חדש - לפי הבחירה)
+    // סוג היחידה האפקטיבי של השורה (מוצר קיים - לפי חומרי הגלם; חדש - לפי הבחירה)
     const rowUnit = (it) => (it.matched_pantry_item_id ? it.matched_unit_type : it._unit || "weight");
 
     function renderResults() {
@@ -285,17 +285,17 @@ export async function openScanModal({ supplierAware, onDone, initialFile = null 
         scannedItems.forEach((it, idx) => {
             const unitPriceNum = parseFloat(it.unit_price) || 0;
             const defFactor = it.default_factor > 0 && !it._pack && !it._case ? it.default_factor : 1;
-            const cmpPrice = unitPriceNum / defFactor; // מחיר ליחידת מזווה
+            const cmpPrice = unitPriceNum / defFactor; // מחיר ליחידת חומרי גלם
             const relChange = it.matched_pantry_item_id && it.matched_price > 0 ? Math.abs(cmpPrice - it.matched_price) / it.matched_price : 0;
             const priceChanged = it.matched_pantry_item_id && it.matched_price != null && relChange >= 0.01;
             const ut = rowUnit(it);
             const packUnits = ut === "liter" ? [["l", "ליטר"], ["ml", 'מ"ל']] : [["kg", 'ק"ג'], ["g", "גרם"]];
             const nameEmpty = !String(it.name || "").trim();
-            // חריגות שכדאי לבדוק (המחיר במזווה הוא ליחידת מזווה, לכן לא משווים כשיש גודל אריזה/ארגז)
+            // חריגות שכדאי לבדוק (המחיר בחומרי הגלם הוא ליחידת חומרי גלם, לכן לא משווים כשיש גודל אריזה/ארגז)
             const flags = [];
             if (it.matched_pantry_item_id && it.matched_price > 0 && unitPriceNum > 0 && !it._pack && !it._case) {
                 const dev = ((cmpPrice - it.matched_price) / it.matched_price) * 100;
-                if (Math.abs(dev) >= 40) flags.push(`המחיר שונה ב-${Math.round(dev)}% מהמחיר במזווה - ודא שזו לא טעות בקריאה או באריזה`);
+                if (Math.abs(dev) >= 40) flags.push(`המחיר שונה ב-${Math.round(dev)}% מהמחיר בחומרי הגלם - ודא שזו לא טעות בקריאה או באריזה`);
             }
             const qn = parseFloat(it.quantity);
             if (!(qn > 0) || qn >= 100) flags.push("כמות חריגה - ודא שהמספר נקרא נכון");
@@ -303,7 +303,7 @@ export async function openScanModal({ supplierAware, onDone, initialFile = null 
             if (nameKey && scannedItems.filter((x) => String(x.name || "").trim().toLowerCase() === nameKey).length > 1) {
                 flags.push("השם מופיע יותר מפעם אחת בקבלה - ייתכן שצריך לאחד שורות");
             }
-            // שורה "תקינה" = מוכרת במזווה, בלי חריגות ובלי שינוי מחיר מעל 5% - מוסתרת, ורק מה שדורש תשומת לב מוצג
+            // שורה "תקינה" = מוכרת בחומרי הגלם, בלי חריגות ובלי שינוי מחיר מעל 5% - מוסתרת, ורק מה שדורש תשומת לב מוצג
             const needsAttention = !it.matched_pantry_item_id || nameEmpty || flags.length > 0 || relChange >= 0.05 || !!it.suggested_pantry_item_id;
             if (needsAttention) attentionCount++; else okCount++;
             const row = h(`
@@ -322,7 +322,7 @@ export async function openScanModal({ supplierAware, onDone, initialFile = null 
                     <div class="field"><label>כמות</label><input type="number" step="any" id="scan-qty-${idx}" value="${it.quantity}"></div>
                     ${it.suggested_pantry_item_id && !it.matched_pantry_item_id ? `
                     <div class="hint-warn">
-                        האם התכוונת ל-"${escapeHtml(it.suggested_name)}" הקיים במזווה?
+                        האם התכוונת ל-"${escapeHtml(it.suggested_name)}" הקיים בחומרי הגלם?
                         <div class="btn-row">
                             <button type="button" class="btn btn-primary btn-small" data-accept="${idx}">כן, זה אותו מוצר</button>
                             <button type="button" class="btn btn-secondary btn-small" data-reject="${idx}">לא, זה מוצר חדש</button>
@@ -383,7 +383,7 @@ export async function openScanModal({ supplierAware, onDone, initialFile = null 
                 const factor = perCase * packBase;
                 const el = row.querySelector(`#scan-pantry-price-${idx}`);
                 const label = ut === "liter" ? "ליטר" : ut === "weight" ? 'ק"ג' : "יחידה";
-                el.textContent = factor !== 1 && price > 0 ? `מחיר שיישמר במזווה: ${cur()}${(price / factor).toFixed(2)} ל${label}` : "";
+                el.textContent = factor !== 1 && price > 0 ? `מחיר שיישמר בחומרי הגלם: ${cur()}${(price / factor).toFixed(2)} ל${label}` : "";
             };
             row.querySelector(`#scan-price-${idx}`).addEventListener("input", updatePreview);
             row.querySelector(`#scan-case-${idx}`).addEventListener("input", updatePreview);
@@ -514,7 +514,7 @@ export async function openScanModal({ supplierAware, onDone, initialFile = null 
             const purchaser = supplierAware ? overlay.querySelector("#scan-purchaser").value : "";
             const result = await applyScannedInvoice({ items, supplierId, invoiceDate, image, pettyCash, purchaser });
             closeModal();
-            toast(supplierId ? "נשמר גם כחשבונית בדף הספקים" : "נשמר במזווה בלבד (לא נבחר ספק)");
+            toast(supplierId ? "נשמר גם כחשבונית בדף הספקים" : "נשמר בחומרי הגלם בלבד (לא נבחר ספק)");
             if (onDone) onDone();
             if (result.invoice_id) {
                 const changes = await priceChanges({ thresholdPct: 10, invoiceId: result.invoice_id });

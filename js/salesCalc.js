@@ -1,4 +1,4 @@
-// מכירות וצריכה תיאורטית: פירוק שורות מכירה (ופחת) לחומרי גלם, מלאי תיאורטי, ודוח פער (עלות בפועל מול תיאורטית).
+// מכירות וצריכה תיאורטית: פירוק שורות מכירה (ופחת) לחומרי גלם, מלאי תיאורטי, ודוח סטיות (עלות בפועל מול תיאורטית).
 // טהור (בלי DOM/DB) כדי שאפשר לבדוק ב-Node. תרגום מהאפליקציה הישנה (explode_sales_line / consumption_events), בתוספת תת-מתכונים, ביצים ופחת.
 // לא נוגעים בנוסחאות התמחור: כאן רק פירוק כמויות, והעלות נלקחת ממחיר הקנייה שכבר קיים.
 import { ICE_GLAZE_DEDUCTION } from "./formulas.js";
@@ -83,7 +83,7 @@ export function explodeSale(line, ctx) {
     return { pantry, recipes };
 }
 
-// פחת כצריכה: מוצר מזווה לפי כמות (יחידות הקנייה), מתכון שהוכן נפרש לחומרי הגלם שלו
+// פחת כצריכה: מוצר חומרי גלם לפי כמות (יחידות הקנייה), מתכון שהוכן נפרש לחומרי הגלם שלו
 export function explodeWaste(log, ctx) {
     const pantry = {}, recipes = {};
     const qty = Number(log.qty) || 0;
@@ -136,8 +136,8 @@ export function theoreticalStock({ lastCounted = 0, purchased = 0, soldConsumed 
     return round3(lastCounted + purchased - soldConsumed - wasted);
 }
 
-// ---- דוח פער: עלות בפועל מול תיאורטית לתקופה (from, to] ----
-// products: שורות מזווה ראשיות; counts: [{pantry_item_id, count_date, counted_quantity}]; purchases: [{pantry_item_id, date, qty}] (ביחידות קנייה, זיכוי שלילי)
+// ---- דוח סטיות: עלות בפועל מול תיאורטית לתקופה (from, to] ----
+// products: שורות חומרי גלם ראשיות; counts: [{pantry_item_id, count_date, counted_quantity}]; purchases: [{pantry_item_id, date, qty}] (ביחידות קנייה, זיכוי שלילי)
 // events: מ-consumptionEvents; salesLines: שורות מכירה; dishes: Map(id->מנה) לחישוב הכנסה (price_before_vat)
 export function gapReport({ from, to, products, counts, purchases, events, salesLines, dishes }) {
     const byProd = new Map();

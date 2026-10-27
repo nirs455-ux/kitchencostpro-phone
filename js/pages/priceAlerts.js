@@ -24,7 +24,7 @@ export async function showPriceChangesDialog(changes, title = "שינויי מח
     if (!changes.length) return;
     const html = await renderPriceChangeRows(changes);
     const overlay = openModal(`
-        <h2>${title} ${info("מחיר ליחידת מזווה מול הקנייה הקודמת של אותו מוצר (שינוי של 10% ומעלה).")}</h2>
+        <h2>${title} ${info("מחיר ליחידת חומרי גלם מול הקנייה הקודמת של אותו מוצר (שינוי של 10% ומעלה).")}</h2>
         ${html}
         <div class="modal-actions"><button type="button" class="btn btn-primary" id="pa-close">הבנתי</button></div>
     `);

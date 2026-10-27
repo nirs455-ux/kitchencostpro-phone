@@ -6,7 +6,7 @@ import { ensureEggDefaults } from "./pantryRepo.js";
 import { isEggProduct, eggSizeOf, allocateEggCosts } from "../eggs.js";
 import { isSubRow, includesRecipe, expandToParents, flattenRecipeItems } from "./subRecipes.js";
 
-// r.direct_items = השורות כפי שנשמרו (כולל תת-מתכונים). r.items = אותן שורות פרושות למוצרי מזווה בלבד (לתווית, אלרגנים, תזונה, אחוזים ומחולל).
+// r.direct_items = השורות כפי שנשמרו (כולל תת-מתכונים). r.items = אותן שורות פרושות למוצרי חומרי גלם בלבד (לתווית, אלרגנים, תזונה, אחוזים ומחולל).
 export async function listRecipesWithItems() {
     const recipes = await dbGetAll("recipes");
     const allItems = await dbGetAll("recipeItems");
@@ -80,10 +80,10 @@ export async function resolveRecipeItems(items, { selfId = null, cache = null } 
         if (Number.isNaN(pantryId) || Number.isNaN(qty)) throw new Error("מרכיב עם נתונים לא תקינים");
         if (qty <= 0) throw new Error("כמות חייבת להיות גדולה מ-0");
         let row = await getPantry(pantryId);
-        if (!row) throw new Error("מרכיב לא נמצא במזווה");
+        if (!row) throw new Error("מרכיב לא נמצא בחומרי הגלם");
         const eggPart = ["whole", "white", "yolk"].includes(it.egg_part) && isEggProduct(row) ? it.egg_part : null;
         if (eggPart) row = await ensureEggDefaults(row); // גודל ומשקל ללא קליפה אוטומטיים אם חסרים
-        if (isCountItem(row) && isEggProduct(row)) throw new Error(`'${row.name}' חסר משקל ליחידה - השלם אותו במזווה לפני השימוש במתכון`);
+        if (isCountItem(row) && isEggProduct(row)) throw new Error(`'${row.name}' חסר משקל ליחידה - השלם אותו בחומרי הגלם לפני השימוש במתכון`);
         const count = isCountItem(row);
         const ppg = pricePerGram(row);
         const cost = calcItemCost(ppg, qty);
@@ -121,7 +121,7 @@ export async function saveRecipe(existingId, data) {
     data = { ...data, category: String(data.category || "").replace(/\s+/g, " ").trim() };
     if (!data.category || data.category.length > 30) throw new Error("קטגוריה לא תקינה");
     await ensureRecipeCategory(data.category);
-    // רכיבים שעדיין לא במזווה נשמרים כטיוטה (draft_ingredients) ואפשר להשלים אותם אחר כך; העלות מחושבת רק מהרכיבים שבמזווה
+    // רכיבים שעדיין לא בחומרי הגלם נשמרים כטיוטה (draft_ingredients) ואפשר להשלים אותם אחר כך; העלות מחושבת רק מהרכיבים שבחומרי הגלם
     const draftIngredients = (data.draft_ingredients || [])
         .map((d) => ({ name: String(d.name || "").trim(), quantity: d.quantity ?? null, unit: d.unit ?? null, ...(d.manual ? { manual: true } : {}) }))
         .filter((d) => d.name);
@@ -167,7 +167,7 @@ export async function saveRecipe(existingId, data) {
     return recipeId;
 }
 
-// מחליף בכל שורות המתכון את מוצר המזווה pantryItemId בתת-מתכון subId (אותה כמות בגרמים). שאר המתכון נשמר כמו שהוא.
+// מחליף בכל שורות המתכון את מוצר חומרי הגלם pantryItemId בתת-מתכון subId (אותה כמות בגרמים). שאר המתכון נשמר כמו שהוא.
 export async function replaceIngredientWithSubRecipe(recipeId, pantryItemId, subId) {
     const recipe = await dbGet("recipes", recipeId);
     if (!recipe) throw new Error("מתכון לא נמצא");
@@ -198,7 +198,7 @@ export async function deleteRecipe(id) {
     await dbDelete("recipes", id);
 }
 
-// שומר את בחירת הבסיס (למתכון באחוזים): ids = מזהי מוצרי מזווה, source = manual | auto | ai
+// שומר את בחירת הבסיס (למתכון באחוזים): ids = מזהי מוצרי חומרי גלם, source = manual | auto | ai
 export async function setRecipeBase(id, { base_ids, base_source, base_reason }) {
     const r = await dbGet("recipes", id);
     if (!r) throw new Error("מתכון לא נמצא");

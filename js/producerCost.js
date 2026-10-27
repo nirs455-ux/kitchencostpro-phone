@@ -1,11 +1,11 @@
 // עלות מוצר של יצרן: תוכן (המתכון) + אריזה. טהור (בלי DOM/DB) כדי שאפשר לבדוק ב-Node.
-// אריזה = מוצרים מהמזווה (צנצנת, מכסה, קופסה, מדבקה...). מוצר ביחידות: כמות ביחידות. מוצר במשקל/נפח: כמות בק"ג/ליטר.
+// אריזה = מוצרים מחומרי הגלם (צנצנת, מכסה, קופסה, מדבקה...). מוצר ביחידות: כמות ביחידות. מוצר במשקל/נפח: כמות בק"ג/ליטר.
 import { effectivePrice } from "./formulas.js";
 
 const r2 = (n) => Math.round(n * 100) / 100;
 
-// packaging: [{ pack_id, qty }] (רשימת האריזות של היצרן, מחיר ליחידה) או בפורמט הישן [{ pantry_item_id, qty }] (מהמזווה)
-// packById: Map/obj של אריזות היצרן. pantryById: Map/obj של שורות מזווה (לתאימות לאחור)
+// packaging: [{ pack_id, qty }] (רשימת האריזות של היצרן, מחיר ליחידה) או בפורמט הישן [{ pantry_item_id, qty }] (מחומרי הגלם)
+// packById: Map/obj של אריזות היצרן. pantryById: Map/obj של שורות חומרי גלם (לתאימות לאחור)
 export function packagingCost(packaging, pantryById = {}, packById = {}) {
     const get = (m, id) => (m instanceof Map ? m.get(id) : m && m[id]);
     const lines = [];

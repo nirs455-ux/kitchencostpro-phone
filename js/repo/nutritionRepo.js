@@ -1,4 +1,4 @@
-// ערכים תזונתיים של מוצרי מזווה: שמירה (לפי מזהה מוצר, מחוץ לטבלת המזווה) וחיפוש במאגרים (USDA, Open Food Facts).
+// ערכים תזונתיים של מוצרי חומרי גלם: שמירה (לפי מזהה מוצר, מחוץ לטבלת חומרי הגלם) וחיפוש במאגרים (USDA, Open Food Facts).
 // נשמר בטבלת ההגדרות, כך שנכלל בגיבוי בלי שינוי מבנה מסד.
 import { getSetting, setSetting } from "./settingsRepo.js";
 import { parseUsdaFoods, parseOffProduct, cleanNutrition } from "../nutrition.js";
@@ -41,7 +41,7 @@ export async function rememberChoice(cleanName, per100, label = "") {
     await setSetting(CHOICES_KEY, all);
 }
 
-// מקבל שורות מזווה (חומרי גלם) ופונקציית שם נקי; ממלא ערכים למי שחסר ויש עבורו בחירה שנזכרה. מחזיר את מסד הערכים המעודכן.
+// מקבל שורות חומרי גלם (חומרי גלם) ופונקציית שם נקי; ממלא ערכים למי שחסר ויש עבורו בחירה שנזכרה. מחזיר את מסד הערכים המעודכן.
 export async function applyRememberedNutrition(rows, nameFn) {
     const db = await getNutritionDb();
     const choices = await getNutritionChoices();
@@ -65,7 +65,7 @@ export async function removeNutrition(pantryId) {
     return db;
 }
 
-// פרטי תווית של מוצר מוכן (רכיבים כפי שהודפסו + "עלול להכיל"). נשמר בהגדרות, מחוץ לטבלת המזווה.
+// פרטי תווית של מוצר מוכן (רכיבים כפי שהודפסו + "עלול להכיל"). נשמר בהגדרות, מחוץ לטבלת חומרי הגלם.
 const LABEL_KEY = "label_info";
 export async function getLabelInfo() {
     const v = await getSetting(LABEL_KEY);

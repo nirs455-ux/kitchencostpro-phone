@@ -27,15 +27,15 @@ async function allSources() {
     return out;
 }
 
-// מוצר מזווה ביחידות בלי משקל: הכמות במנה היא מספר יחידות
+// מוצר חומרי גלם ביחידות בלי משקל: הכמות במנה היא מספר יחידות
 const isCountSrc = (src) => !!src && src.source_type === "pantry" && isCountItem(src.ppgSource);
 function ppgFor(src) {
     return src.source_type === "recipe" ? src.recipeCostPerGram : pricePerGram(src.ppgSource);
 }
 
-// לשוניות הדף: מנות | מכירות | דוח פער
+// לשוניות הדף: מנות | מכירות | דוח סטיות
 let dishTab = "dishes";
-const DISH_TABS = [["dishes", "מנות"], ["sales", "מכירות"], ["gap", "דוח פער"]];
+const DISH_TABS = [["dishes", "מנות"], ["sales", "מכירות"], ["gap", "דוח סטיות"]];
 const segHtml = () => `<div class="seg" id="ds-seg">${DISH_TABS.map(([k, l]) => `<button type="button" data-tab="${k}" class="${k === dishTab ? "active" : ""}">${l}</button>`).join("")}</div>`;
 function wireSeg(container) { container.querySelectorAll("#ds-seg [data-tab]").forEach((b) => { b.onclick = () => { dishTab = b.dataset.tab; renderDishesPage(container); }; }); }
 

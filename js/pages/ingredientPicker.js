@@ -36,7 +36,7 @@ export function rankResults(items, query) {
     });
 }
 
-// סדר קטגוריות: קודם לפי הרשימה הקבועה של המזווה, אחר כך לפי א-ב
+// סדר קטגוריות: קודם לפי הרשימה הקבועה של חומרי הגלם, אחר כך לפי א-ב
 export function orderCategories(cats) {
     const fixed = Object.keys(CATEGORY_GROUPS);
     return [...new Set(cats)].sort((a, b) => {
@@ -103,12 +103,12 @@ export async function openIngredientPicker({ title = "בחר מרכיב", items,
     // טופס קצר למוצר חדש: שם, קטגוריה, יחידת מדידה ומחיר (לא חובה)
     function drawCreate(name) {
         layer.innerHTML = `
-            <div class="pk-top"><button type="button" class="pk-close" id="pk-back" aria-label="חזרה">→</button><div class="pk-title">מוצר חדש במזווה</div></div>
+            <div class="pk-top"><button type="button" class="pk-close" id="pk-back" aria-label="חזרה">→</button><div class="pk-title">מוצר חדש בחומרי הגלם</div></div>
             <div style="padding:0 16px 16px;overflow:auto;flex:1;">
                 <div class="field"><label>שם המוצר</label><input type="text" id="pk-n-name" value="${escapeHtml(name)}"></div>
                 <div class="field"><label>קטגוריה</label><select id="pk-n-cat"><option value="">בחר...</option>${Object.keys(CATEGORY_GROUPS).map((c) => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join("")}</select></div>
                 <div class="field"><label>נמדד ב-</label><select id="pk-n-unit">${UNIT_TYPES.map((u) => `<option value="${u}">${escapeHtml(UNIT_TYPE_LABELS[u])}</option>`).join("")}</select></div>
-                <div class="field"><label>מחיר (לא חובה)</label><input type="text" inputmode="decimal" id="pk-n-price" placeholder="אפשר להשלים אחר כך"><div class="hint">בלי מחיר, העלות של המרכיב הזה תהיה אפס עד שתשלים אותו במזווה.</div></div>
+                <div class="field"><label>מחיר (לא חובה)</label><input type="text" inputmode="decimal" id="pk-n-price" placeholder="אפשר להשלים אחר כך"><div class="hint">בלי מחיר, העלות של המרכיב הזה תהיה אפס עד שתשלים אותו בחומרי הגלם.</div></div>
                 <div class="error-msg" id="pk-n-err"></div>
                 <button type="button" class="btn btn-primary" id="pk-n-save">הוסף ובחר</button>
             </div>`;

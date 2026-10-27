@@ -14,7 +14,7 @@ const TOP = 3; // כמה התאמות מוצגות מיד; השאר תחת "הצ
 
 const summary = (p) => ["kcal", "protein", "fat", "carbs"].filter((k) => p[k] != null).map((k) => `${NUTRIENTS.find((n) => n.key === k).short} ${+Number(p[k]).toFixed(1)}`).join(" · ");
 
-// name = שם המוצר במזווה, cleanName = שם נקי של חומר הגלם (לחיפוש ולזיכרון). onSaved(db) נקרא אחרי שמירה או הסרה
+// name = שם המוצר בחומרי הגלם, cleanName = שם נקי של חומר הגלם (לחיפוש ולזיכרון). onSaved(db) נקרא אחרי שמירה או הסרה
 // onCreateRecipe: אם הועבר, בהערת "מוצר מעובד" מופיע כפתור שיוצר מתכון למוצר (למשל שום מטוגן = שום + שמן)
 export async function openNutritionLookup({ name, cleanName, pantryId, onSaved, onDone, onCreateRecipe }) {
     const shown = cleanName || name;

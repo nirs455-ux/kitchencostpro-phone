@@ -22,7 +22,7 @@ export function cleanIngredientName(name) {
 }
 
 // שם לתווית: שם שהוגדר ידנית (labelNames לפי מזהה) > שם המוצר שממנו נגזר (לתוצר מפורק) > שם נקי
-// byId: Map או אובייקט של שורות מזווה
+// byId: Map או אובייקט של שורות חומרי גלם
 export function labelNameOf(row, byId, labelNames = {}) {
     if (!row) return "";
     const get = (id) => (byId instanceof Map ? byId.get(id) : byId && byId[id]);

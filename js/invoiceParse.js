@@ -77,10 +77,10 @@ export function mergeDiscountLines(items) {
     return merged;
 }
 
-// גודל אריזה -> ק"ג/ליטר (יחידת המזווה). משקל: g/kg. נפח: ml/l.
+// גודל אריזה -> ק"ג/ליטר (יחידת חומרי הגלם). משקל: g/kg. נפח: ml/l.
 export const PACKAGE_UNIT_TO_BASE = { weight: { g: 0.001, kg: 1.0 }, liter: { ml: 0.001, l: 1.0 } };
 
-// כמה יחידות מזווה (ק"ג/ליטר/יחידות) יש ביחידה אחת של שורת החשבונית. מחזיר { factor, error }.
+// כמה יחידות חומרי גלם (ק"ג/ליטר/יחידות) יש ביחידה אחת של שורת החשבונית. מחזיר { factor, error }.
 export function computeStockFactor(unitType, unitsPerCase, packageSize, packageUnit) {
     const caseN = unitsPerCase && unitsPerCase > 0 ? unitsPerCase : 1.0;
     let pack = 1.0;

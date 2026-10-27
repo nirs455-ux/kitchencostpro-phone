@@ -53,7 +53,7 @@ export function cleanProduct(p) {
         storage: String(p.storage || "").trim(),
         barcode: String(p.barcode || "").trim(),
         sell_price: num(p.sell_price) || 0, // מחיר מכירה ליחידה לפני מע"מ
-        // אריזה: מרשימת האריזות של היצרן (pack_id), או בפורמט הישן ממוצרי המזווה (pantry_item_id); והכמות ליחידת מוצר אחת
+        // אריזה: מרשימת האריזות של היצרן (pack_id), או בפורמט הישן מחומרי הגלם (pantry_item_id); והכמות ליחידת מוצר אחת
         packaging: (Array.isArray(p.packaging) ? p.packaging : [])
             .map((x) => (x.pack_id ? { pack_id: Number(x.pack_id), qty: num(x.qty) || 0 } : { pantry_item_id: Number(x.pantry_item_id), qty: num(x.qty) || 0 }))
             .filter((x) => (x.pack_id || x.pantry_item_id) && x.qty > 0),

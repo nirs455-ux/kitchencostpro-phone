@@ -2,7 +2,7 @@
 // אבל עצמאי לגמרי - שתי הגרסאות לא מסונכרנות זו עם זו (ראה ייצוא/ייבוא).
 
 const DB_NAME = "kitchencostpro";
-const DB_VERSION = 4; // 2: נוסף מאגר scanQueue (תור סריקות שממתינות לעיבוד). 3: נוסף wasteLogs (פחת / זריקות). 4: נוסף salesLines (דוח מכירות)
+const DB_VERSION = 4; // 2: נוסף מאגר scanQueue (תור סריקות שממתינות לעיבוד). 3: נוסף wasteLogs (פחת). 4: נוסף salesLines (דוח מכירות)
 
 const STORES = {
     pantryItems: "id",

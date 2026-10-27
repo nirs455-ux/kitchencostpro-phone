@@ -1,4 +1,4 @@
-// רישום פחת / זריקות. כל רישום שומר תמונת מצב של השם והעלות בזמן הרישום (כך שינוי מחיר אחר כך לא משנה היסטוריה).
+// רישום פחת. כל רישום שומר תמונת מצב של השם והעלות בזמן הרישום (כך שינוי מחיר אחר כך לא משנה היסטוריה).
 import { dbGetAll, dbGet, dbPut, dbDelete } from "../db.js";
 import { pantryWasteCost, recipeWasteCost, REASON_LABEL, WASTE_UNITS } from "../waste.js";
 

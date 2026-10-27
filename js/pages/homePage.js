@@ -1,4 +1,4 @@
-// מסך בית: פעולה ראשית אחת (סריקה), ומה שדורש תשומת לב עכשיו. מי שפותח בפעם הראשונה רואה צעדים ברורים.
+// מסך בית: פעולה ראשית אחת (סריקה), והתראות. מי שפותח בפעם הראשונה רואה צעדים ברורים.
 import { h, toast, escapeHtml, money, setFlag } from "../ui.js";
 import { getSetting } from "../repo/settingsRepo.js";
 import { getAgentKey } from "../agent.js";
@@ -26,7 +26,7 @@ function renderStaffHome(container) {
         <div class="hint" style="text-align:center;margin-bottom:14px;">הקבלה נשלחת לבדיקה של המנהל</div>
         <button class="btn btn-secondary btn-big btn-block" id="staff-recipes" style="margin-bottom:10px;">📖 מתכונים</button>
         <button class="btn btn-secondary btn-big btn-block" id="staff-count">📋 ספירת מלאי</button>
-        <button class="btn btn-secondary btn-big btn-block" id="staff-waste" style="margin-top:10px;">🗑 רישום זריקה</button>
+        <button class="btn btn-secondary btn-big btn-block" id="staff-waste" style="margin-top:10px;">🗑 רישום פחת</button>
         <div id="staff-sent" class="hint" style="text-align:center;margin-top:14px;"></div>`;
     const input = container.querySelector("#staff-file");
     container.querySelector("#staff-shoot").onclick = () => input.click();
@@ -65,11 +65,11 @@ export async function renderHomePage(container) {
     if (stale()) return;
 
     container.innerHTML = `
-        <div class="sec-title">מה דורש תשומת לב</div>
+        <div class="sec-title">התראות</div>
         <div id="home-attn"></div>
         <div class="sec-title">פעולה מהירה</div>
         <div class="qa-grid">
-            <button type="button" class="qa-tile" id="qa-waste"><span class="qa-ic">🗑</span>רישום זריקה</button>
+            <button type="button" class="qa-tile" id="qa-waste"><span class="qa-ic">🗑</span>רישום פחת</button>
             <button type="button" class="qa-tile" id="qa-recipe"><span class="qa-ic">📖</span>מתכון חדש</button>
             <button type="button" class="qa-tile" id="qa-count"><span class="qa-ic">📋</span>ספירת מלאי</button>
             <button type="button" class="qa-tile" id="qa-files"><span class="qa-ic">📁</span>קבצים</button>
@@ -82,7 +82,7 @@ export async function renderHomePage(container) {
     container.querySelector("#qa-count").onclick = () => go("inventory");
     container.querySelector("#qa-files").onclick = () => go("files");
 
-    // ---- מה דורש תשומת לב ----
+    // ---- התראות ----
     const attn = container.querySelector("#home-attn");
     const items = [];
     if (queue.length) items.push({ cls: "warn", icon: "⏳", text: `${queue.length} חשבוניות מחכות לעיבוד`, btn: "עבד", fn: () => processQueue(queue, rerender) });
@@ -93,14 +93,14 @@ export async function renderHomePage(container) {
     if (counts.length && daysSince(lastCount) >= 14) items.push({ cls: "warn", icon: "📋", text: `ספירת המלאי האחרונה לפני ${daysSince(lastCount)} ימים`, btn: "לספירה", fn: () => go("inventory") });
     const sts = await computeStatus();
     if (stale()) return;
-    if (sts.agent === "bad") items.unshift({ cls: "danger", icon: "🤖", text: "אין סוכן מחובר - אי אפשר לסרוק חשבוניות ומתכונים מתמונה", btn: "חבר", fn: () => openWizardAt(1) });
+    if (sts.agent === "bad") items.unshift({ cls: "danger", icon: "🤖", text: "אין עוזר AI מחובר - אי אפשר לסרוק חשבוניות ומתכונים מתמונה", btn: "חבר", fn: () => openWizardAt(1) });
     if (sts.cloud === "bad") items.push({ cls: "warn", icon: "☁️", text: sts.cloudAvailable ? "אין גיבוי בענן - הנתונים שמורים רק בטלפון הזה" : "אין גיבוי בענן (החיבור עדיין לא הוגדר) - ייצא גיבוי ידני", btn: sts.cloudAvailable ? "חבר" : "ייצא", fn: sts.cloudAvailable ? () => openWizardAt(2) : async () => { await downloadExport(); rerender(); } });
     const cst = getCloudStatus();
     if (cst.enabled && (cst.state === "conflict" || cst.state === "needs-auth" || cst.state === "error")) {
         const text = cst.state === "conflict" ? "הענן שונה ממכשיר אחר" : cst.state === "needs-auth" ? "הגיבוי לענן מחכה לאישור שלך" : "הגיבוי לענן נכשל";
         items.unshift({ cls: "warn", icon: "☁️", text, btn: "טפל", fn: async () => { await resolveCloudIssue(); rerender(); } });
     }
-    if (!pantry.length && !invoices.length) items.push({ cls: "ok", icon: "🧪", text: "רוצה לנסות עם נתוני דוגמה? (מזווה, מתכונים, מנות ומוצר יצרן)", btn: "טען", fn: async () => { await loadDemoData(); toast("נתוני הדוגמה נטענו"); rerender(); } });
+    if (!pantry.length && !invoices.length) items.push({ cls: "ok", icon: "🧪", text: "רוצה לנסות עם נתוני דוגמה? (חומרי גלם, מתכונים, מנות ומוצר יצרן)", btn: "טען", fn: async () => { await loadDemoData(); toast("נתוני הדוגמה נטענו"); rerender(); } });
     const order = { danger: 0, warn: 1, ok: 2 };
     items.sort((x, y) => (order[x.cls] ?? 1) - (order[y.cls] ?? 1));
     if (items.length) {
@@ -110,14 +110,14 @@ export async function renderHomePage(container) {
             attn.appendChild(row);
         }
     } else {
-        attn.innerHTML = `<div class="tint-row ok"><span class="tr-ic">✓</span><span class="tr-text">הכול בסדר, אין משהו שדורש תשומת לב</span></div>`;
+        attn.innerHTML = `<div class="tint-row ok"><span class="tr-ic">✓</span><span class="tr-text">הכול בסדר, אין התראות</span></div>`;
     }
 
-    // ---- פעילות אחרונה: חשבוניות וזריקות, מהחדש לישן ----
+    // ---- פעילות אחרונה: חשבוניות ופחת, מהחדש לישן ----
     const recent = container.querySelector("#home-recent");
     const acts = [
         ...invoices.map((i) => ({ date: i.invoice_date || "", ic: "🧾", title: i.supplier_name, sub: i.items.slice(0, 2).map((x) => x.product_name).join(", "), amt: money(i.total_amount), go: () => { setSuppliersView("invoices", {}); go("suppliers"); } })),
-        ...wasteLogs.map((l) => ({ date: l.date || "", ic: "🗑", title: `זריקה: ${l.name}`, sub: l.note || "", amt: money(l.cost), go: () => go("waste") })),
+        ...wasteLogs.map((l) => ({ date: l.date || "", ic: "🗑", title: `פחת: ${l.name}`, sub: l.note || "", amt: money(l.cost), go: () => go("waste") })),
     ].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 4);
     if (!acts.length) recent.innerHTML = '<div class="empty-state" style="padding:14px;">עדיין אין פעילות.</div>';
     for (const a of acts) {

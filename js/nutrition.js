@@ -63,9 +63,9 @@ export function cleanNutrition(v) {
     return out;
 }
 
-// items: [{ pantry_item_id, ingredient_name, quantity_g }], byId: Map של מוצרי מזווה, nutritionById: { [id]: per100 },
+// items: [{ pantry_item_id, ingredient_name, quantity_g }], byId: Map של מוצרי חומרי גלם, nutritionById: { [id]: per100 },
 // weightG: המשקל שאליו מחלקים (משקל סופי אחרי בישול, או סכום הרכיבים הגולמי אם לא הוגדר)
-// nameFn(src): שם להצגה (למשל שם נקי של חומר גלם). ברירת מחדל: שם המוצר במזווה
+// nameFn(src): שם להצגה (למשל שם נקי של חומר גלם). ברירת מחדל: שם המוצר בחומרי הגלם
 export function computeNutrition({ items, byId, nutritionById, weightG, nameFn = null }) {
     const get = (id) => (byId instanceof Map ? byId.get(id) : byId[id]);
     const rowsMap = new Map();

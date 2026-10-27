@@ -1,4 +1,4 @@
-// הופך JSON שחילץ ה-AI מתמונת מתכון לטיוטה: כמויות לגרם, והתאמת כל מרכיב למוצר במזווה.
+// הופך JSON שחילץ ה-AI מתמונת מתכון לטיוטה: כמויות לגרם, והתאמת כל מרכיב למוצר בחומרי הגלם.
 // טהור (בלי רשת/DB) - משקף את build_recipe_draft ב-main.py, ונבדק מול אותו קלט בדיוק.
 import { getCloseMatches } from "./fuzzyMatch.js";
 import { smartMatch, quantityInName, cleanName, sizeInName } from "./nameMatch.js";
@@ -50,13 +50,13 @@ export function buildRecipeDraft(parsed, pantryItems, categories = RECIPE_CATEGO
         const key = ingName.toLowerCase();
         let match = byName.get(key) || null;
         let fuzzy = false;
-        // "מיץ לימון טרי" = סחוט מלימונים: לא מתאימים למיץ קנוי שיש במזווה, אלא מחשבים מהפרי
+        // "מיץ לימון טרי" = סחוט מלימונים: לא מתאימים למיץ קנוי שיש בחומרי הגלם, אלא מחשבים מהפרי
         const wantsFresh = /טרי|טרייה/.test(ingName) && !!juiceFruitName(ingName);
         if (!match && !wantsFresh) { // התאמה לפי מילים: מתעלמת ממספרים, יחידות וריכוז ("חומץ 5%" מול "חומץ"), ומרבים/יחיד
             const sm = smartMatch(ingName, pantryItems);
             if (sm) { match = sm.item; fuzzy = !sm.exact; }
         }
-        // "מיץ לימון 300 מ"ל" ובמזווה יש לימון: מחשבים כמה לימונים צריך (לפי ממוצע)
+        // "מיץ לימון 300 מ"ל" ובחומרי הגלם יש לימון: מחשבים כמה לימונים צריך (לפי ממוצע)
         let est = null;
         if (!match) {
             const fruit = juiceFruitName(ingName);
@@ -85,7 +85,7 @@ export function buildRecipeDraft(parsed, pantryItems, categories = RECIPE_CATEGO
             }
         }
 
-        // "6 עגבניות בינוניות" ובמזווה עגבניות בק"ג: מעריכים משקל לפי ממוצע (קטנה/בינונית/גדולה)
+        // "6 עגבניות בינוניות" ובחומרי הגלם עגבניות בק"ג: מעריכים משקל לפי ממוצע (קטנה/בינונית/גדולה)
         if (!est && unit === "unit" && qty > 0 && match && match.unit_type === "weight") {
             const size = sizeInName(String((ing && ing.name) || ""));
             const w = unitWeightG(match.name, size);

@@ -22,7 +22,7 @@ export async function renderProcessingPage(container) {
 
     container.innerHTML = `<div class="px-top"><input type="search" id="pr-q" placeholder="חיפוש מוצר..." autocomplete="off"></div><div id="processing-list"></div>`;
     const list = container.querySelector("#processing-list");
-    if (topLevel.length === 0) { list.innerHTML = '<div class="empty-state">אין עדיין מוצרים במזווה.</div>'; return; }
+    if (topLevel.length === 0) { list.innerHTML = '<div class="empty-state">אין עדיין מוצרים בחומרי הגלם.</div>'; return; }
 
     const rowFor = (it, indent) => {
         const eff = effectivePrice(it.price, it.yield_pct, it.is_frozen);
@@ -96,7 +96,7 @@ function openProcSheet(it, container) {
         <div class="sh-actions" style="margin-top:8px;">
             ${isProcessed(it) ? '<button type="button" class="btn btn-secondary" id="ps-reset">אפס עיבוד</button>' : ""}
             ${kids ? '<button type="button" class="btn btn-secondary" id="ps-delkids">מחק תוצרים</button>' : ""}
-            <button type="button" class="btn btn-danger" id="ps-del">${it.parent_id ? "מחק תוצר" : "מחק מהמזווה"}</button>
+            <button type="button" class="btn btn-danger" id="ps-del">${it.parent_id ? "מחק תוצר" : "מחק מחומרי הגלם"}</button>
         </div>
         <button type="button" class="btn btn-secondary btn-block" id="ps-close" style="margin-top:8px;">סגור</button>`);
     ov.querySelector("#ps-close").onclick = closeModal;
@@ -106,7 +106,7 @@ function openProcSheet(it, container) {
     const rs = ov.querySelector("#ps-reset");
     if (rs) rs.onclick = async () => {
         closeModal();
-        if (!(await confirmDialog("לאפס את העיבוד? הניצולת תחזור ל-100% והמחיר האמיתי יהיה שווה למחיר הקנייה.<br><br>המוצר יישאר במזווה."))) return;
+        if (!(await confirmDialog("לאפס את העיבוד? הניצולת תחזור ל-100% והמחיר האמיתי יהיה שווה למחיר הקנייה.<br><br>המוצר יישאר בחומרי הגלם."))) return;
         try {
             await updatePantryItemYield(it.id, { name: it.name, yield_pct: 100, weight_before: "", weight_after: "", is_frozen: !!it.is_frozen });
             toast("העיבוד אופס");
@@ -116,7 +116,7 @@ function openProcSheet(it, container) {
     const dk = ov.querySelector("#ps-delkids");
     if (dk) dk.onclick = async () => {
         closeModal();
-        if (!(await confirmDialog(`למחוק את כל ${kids} התוצרים המפורקים של "${escapeHtml(it.name)}"?<br><br>חומר הגלם עצמו יישאר במזווה.`))) return;
+        if (!(await confirmDialog(`למחוק את כל ${kids} התוצרים המפורקים של "${escapeHtml(it.name)}"?<br><br>חומר הגלם עצמו יישאר בחומרי הגלם.`))) return;
         await deleteAllChildren(it.id);
         toast("נמחק");
         renderProcessingPage(container);

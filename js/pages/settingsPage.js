@@ -55,7 +55,7 @@ export async function renderSettingsPage(container) {
             <div class="px-sh"><span class="px-ic" style="background:var(--brand-soft);">🤖</span><b>סריקה ובינה מלאכותית</b><span class="px-chev">${setOpen.has("scan") ? "▾" : "◂"}</span></div>
             <div class="set-body" ${setOpen.has("scan") ? "" : "hidden"}>
                 <div class="card">
-            <div class="card-title">${agentConfigured() ? "מפתח Gemini אישי (לא חובה)" : "מפתח Gemini API"} ${info(agentConfigured() ? "בלי מפתח האפליקציה משתמשת בסוכן משותף עם מגבלה יומית. אם תזין מפתח אישי, הסריקה תעבור ישירות לחשבון שלך בגוגל, בלי המגבלה. נשמר רק בתוך הטלפון הזה, ולא נשלח לשום מקום חוץ מ-Google." : "נדרש לסריקת חשבוניות. נשמר רק בתוך הטלפון הזה, ולא נשלח לשום מקום חוץ מ-Google.")}</div>
+            <div class="card-title">${agentConfigured() ? "מפתח Gemini אישי (לא חובה)" : "מפתח Gemini API"} ${info(agentConfigured() ? "בלי מפתח האפליקציה משתמשת בעוזר AI משותף עם מגבלה יומית. אם תזין מפתח אישי, הסריקה תעבור ישירות לחשבון שלך בגוגל, בלי המגבלה. נשמר רק בתוך הטלפון הזה, ולא נשלח לשום מקום חוץ מ-Google." : "נדרש לסריקת חשבוניות. נשמר רק בתוך הטלפון הזה, ולא נשלח לשום מקום חוץ מ-Google.")}</div>
             <div class="field" style="margin-top:8px;"><input type="text" id="f-apikey" value="${apiKey}" placeholder="הדבק כאן את המפתח"></div>
             <button class="btn btn-primary btn-small" id="btn-save-key">שמירה</button>
         </div>
@@ -96,14 +96,14 @@ export async function renderSettingsPage(container) {
             </div>
         </div>
         <div class="px-sec set-sec" data-sec="tools">
-            <div class="px-sh"><span class="px-ic" style="background:var(--surface-2);">🧰</span><b>כלים (קבצים, פח, דוח תקלה)</b><span class="px-chev">${setOpen.has("tools") ? "▾" : "◂"}</span></div>
+            <div class="px-sh"><span class="px-ic" style="background:var(--surface-2);">🧰</span><b>כלים (קבצים, ארכיון, דוח תקלה)</b><span class="px-chev">${setOpen.has("tools") ? "▾" : "◂"}</span></div>
             <div class="set-body" ${setOpen.has("tools") ? "" : "hidden"}>
                 <div class="card"><button class="btn btn-secondary btn-block" id="btn-producer">🏭 יצרן: מוצרים ומדבקות</button></div>
                 <div class="card"><button class="btn btn-secondary btn-block" id="btn-demo">🧪 טען נתוני דוגמה (להדגמה)</button></div>
                 <div class="card"><button class="btn btn-secondary btn-block" id="btn-files">📁 קבצים (קבלות, מתכונים, התקבלו)</button></div>
                 <div class="card">
-            <div class="card-title">פח חשבוניות</div>
-            <button class="btn btn-secondary btn-small" id="btn-trash-open">🗑 פתח פח (${trashCount})</button>
+            <div class="card-title">ארכיון מחוקים</div>
+            <button class="btn btn-secondary btn-small" id="btn-trash-open">🗑 פתח ארכיון (${trashCount})</button>
         </div>
                 <div class="card">
             <div class="card-title">דיווח על תקלה ${info("אם משהו לא עובד: לחץ, כתוב כמה מילים על מה קרה, ושתף את הדוח (וואטסאפ, מייל ועוד) או העתק אותו. הדוח לא נשלח אוטומטית לשום מקום ולא כולל חשבוניות או מחירים: רק גרסה, סוג מכשיר, כמה נתונים יש, והתקלות האחרונות.")}</div>
@@ -140,7 +140,7 @@ export async function renderSettingsPage(container) {
         location.reload();
     };
     container.querySelector("#btn-demo").onclick = async () => {
-        if (!(await confirmDialog("להוסיף נתוני דוגמה (מזווה, מתכונים, מנות, חשבונית ומוצר יצרן)?<br><br>הנתונים הקיימים שלך לא יימחקו, רק יתווספו פריטים חדשים."))) return;
+        if (!(await confirmDialog("להוסיף נתוני דוגמה (חומרי גלם, מתכונים, מנות, חשבונית ומוצר יצרן)?<br><br>הנתונים הקיימים שלך לא יימחקו, רק יתווספו פריטים חדשים."))) return;
         try { await loadDemoData(); toast("נתוני הדוגמה נטענו"); location.hash = "home"; } catch (e) { toast("לא הצלחתי לטעון: " + e.message); }
     };
     container.querySelector("#btn-producer").onclick = () => { location.hash = "producer"; };
