@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<!-- Copyright (c) 2026 nirs455-ux. All rights reserved. Proprietary - do not copy or re-implement without written permission. -->
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<title>KitchenCostPro</title>
+<meta name="theme-color" content="#a8541b">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700&display=swap" rel="stylesheet">
+<script>
+    /* מחיל את ערכת העיצוב שנבחרה לפני הציור הראשון (בלי הבהוב) */
+    try { var t = localStorage.getItem("kcp_theme"); if (t) document.documentElement.setAttribute("data-theme", t); } catch (e) {}
+</script>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div class="top-bar">
+    <span class="app-name"><span id="page-title">KitchenCostPro</span><span id="page-info"></span></span>
+    <span id="status-icons" class="status-icons"></span>
+    <button type="button" class="top-icon" id="btn-settings" aria-label="הגדרות">⚙️</button>
+    <button type="button" class="top-icon" id="btn-unlock" aria-label="פתח מצב מנהל" style="display:none;">🔒</button>
+</div>
+
+<div id="view"></div>
+<div id="modal-root"></div>
+<div class="toast" id="toast"></div>
+
+<div class="bottom-nav" id="bottom-nav">
+    <button data-page="home"><span class="icon">🏠</span>בית</button>
+    <button data-page="pantry"><span class="icon">🧺</span>חומרי גלם</button>
+    <button data-page="recipes"><span class="icon">📖</span>מתכונים</button>
+    <button data-page="dishes"><span class="icon">🍽️</span>מנות</button>
+    <button data-page="suppliers"><span class="icon">🚚</span>ספקים</button>
+    <button data-page="producer" style="display:none;"><span class="icon">🏭</span>יצרן</button>
+    <button data-page="inventory" style="display:none;"><span class="icon">📋</span>מלאי ופחת</button>
+</div>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
