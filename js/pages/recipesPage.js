@@ -10,7 +10,7 @@ import { pricePerGram, itemCost as calcItemCost, effectivePrice, isCountItem } f
 import { h, openModal, closeModal, confirmDialog, toast, escapeHtml, money, busy, attemptClose, info, cur, curLabel, takeFlag } from "../ui.js";
 import { openImagePicker } from "../imagePicker.js";
 import { scanRecipeImage, suggestRecipeBase } from "../repo/scanRepo.js";
-import { getSetting } from "../repo/settingsRepo.js";
+import { getSetting, setSetting } from "../repo/settingsRepo.js";
 import { getAgentKey } from "../agent.js";
 import { dbGetAll, dbGet } from "../db.js";
 import { buildLabel } from "../recipeLabel.js";
@@ -26,10 +26,11 @@ import { getNutritionDb, applyRememberedNutrition } from "../repo/nutritionRepo.
 import { computeNutrition, perServing, NUTRIENTS } from "../nutrition.js";
 import { assignAutoSubs, subOf } from "../autoGroups.js";
 import { guessCategory } from "../guessCategory.js";
+import { smartMatch } from "../nameMatch.js";
 import { crumb } from "../errorLog.js";
 import { getRecipeCategories, addRecipeCategory, renameRecipeCategory, deleteRecipeCategory, recipeCategoryCounts, FALLBACK_CATEGORY } from "../repo/recipeCategories.js";
 import { unitWeightG, juiceInfo, gramsFromJuiceMl, fruitsFromJuiceMl } from "../produceKb.js";
-import { factorFor, scaleRecipe, fmtQty } from "../generator.js";
+import { factorFor, scaleRecipe, fmtQty, UNITS, convertUnits, convertToGrams, setLearnedDensities, densityFor, densityFromUnitGrams, learnKey } from "../generator.js";
 import { recipeEggSummary, eggSummaryText, allocateEggCosts, isEggProduct, eggSizeOf, partGrams, eggBreakdown, EGG_SIZES, EGG_PARTS, EGG_PART_UI } from "../eggs.js";
 import { showImageFullscreen } from "../imageUtil.js";
 import { whatsappUrl, recipeShareText, categoryShareText } from "../shareText.js";
@@ -53,6 +54,7 @@ const UNIT_HE = { g: "גרם", kg: 'ק"ג', ml: 'מ"ל', l: "ליטר", tbsp: "�
 // כמה גרם זה הכמות שכתובה במסמך (אם אפשר לדעת): יחידות מידה קבועות, או "יחידות" x משקל ליחידה של המוצר שנבחר
 function gramsFromOriginal(um, item) {
     if (!um || !(Number(um.quantity) > 0)) return null;
+    if (item && (um.unit === "cup" || um.unit === "tbsp" || um.unit === "tsp") && densityFor(item.name)) return Math.round(convertToGrams({ qty: um.quantity, unit: um.unit, name: item.name }).grams * 100) / 100;
     if (um.unit in RECIPE_UNIT_GRAMS) return Math.round(um.quantity * RECIPE_UNIT_GRAMS[um.unit] * 100) / 100;
     if (um.unit === "unit" && item && item.unit_type === "unit" && item.unit_amount) return Math.round(um.quantity * item.unit_amount * 100) / 100;
     return null;
@@ -205,6 +207,7 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
     const byId = new Map(rows.map((p) => [p.id, p]));
     let nutriDb = await getNutritionDb();
     const labelNames = await getLabelNames(); // "שם בתווית" לכל מוצר (שום שלם 4 יחידות -> שום)
+    setLearnedDensities(await getSetting("unit_density", {})); // ממיר כמות: צפיפות שנקבעה פעם אחת לפי שם נקי של מוצר
     // מוצר בלי ערכים תזונתיים שיש לו שם נקי שכבר בחרת עבורו בעבר: ממלאים אוטומטית (נזכר מבחירה קודמת)
     try {
         const seenSrc = new Map();
@@ -239,6 +242,18 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
     };
     // ברירת מחדל: "כמה יש לי" (מתכון אומר 900 פלפלים ויש רק 710: מקלידים 0.710 וכל השאר מתעדכן)
     gen = { ...gen, mode: "have", have: {} };
+    const conv = { idx: null, qty: "", unit: "cup", open: false }; // ממיר כמות (חלק מהמחולל)
+    const CONV_UNITS = ["cup", "tbsp", "tsp", "ml", "l", "oz", "lb", "floz"];
+    const convView = () => {
+        const list = r.items.map((i, idx) => ({ i, idx })).filter((x) => !x.i.unit_count);
+        const sel = list.find((x) => x.idx === conv.idx) || null;
+        const name = sel ? nameOf(sel.i) : "";
+        const qty = parseFloat(String(conv.qty).replace(",", "."));
+        const r0 = sel && qty > 0 ? convertUnits({ qty, from: conv.unit, to: "g", name }) : null;
+        const res = r0 && { grams: r0.value, note: r0.note };
+        const isVol = !!(UNITS.find((u) => u.key === conv.unit) || {}).volume;
+        return { list, sel, name, qty, res, isVol };
+    };
     // שם חומר הגלם במסכי המתכון: שם נקי ("שום" ולא "שום שלם 4 יחידות"). במזווה ובחשבוניות נשאר השם המלא.
     const nameOf = (i) => { const row = byId.get(i.pantry_item_id); return row ? labelNameOf(row, byId, labelNames) : i.ingredient_name; };
     const nameFn = (src) => labelNameOf(src, byId, labelNames);
@@ -391,6 +406,20 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
                 ${gf.lim ? `<div class="hint"><b>המגביל: ${escapeHtml(nameOf(gf.lim.i))}</b> · פי ${+f.toFixed(3)}</div>` : ""}` : ""}
                 <div class="checkbox-field"><input type="checkbox" id="g-round" ${gen.round ? "checked" : ""}><label for="g-round">עיגול נוח</label></div>
             </div>
+            ${(() => {
+                const cv = convView();
+                const one0 = cv.sel && cv.isVol ? convertUnits({ qty: 1, from: conv.unit, to: "g", name: cv.name }) : null;
+                const one = one0 && { grams: one0.value };
+                const uLabel = (UNITS.find((u) => u.key === conv.unit) || {}).label || "";
+                return `<details class="card" id="cv-box" ${conv.open ? "open" : ""}><summary class="card-title" style="cursor:pointer;">🔁 ממיר כמות ${info("ממיר כוס, כף, כפית, אונקיה וליברה לגרמים עבור רכיב מהמתכון. כוס קמח אינה כוס סוכר, ולכן בוחרים רכיב. אפשר לקבוע פעם אחת כמה גרם יש בכוס של המוצר, והמערכת תזכור אותו גם במתכונים אחרים.")}</summary>
+                <div class="form-row"><div class="field"><label>רכיב</label><select id="cv-ing"><option value="">בחר...</option>${cv.list.map((x) => `<option value="${x.idx}" ${x.idx === conv.idx ? "selected" : ""}>${escapeHtml(nameOf(x.i))}</option>`).join("")}</select></div></div>
+                <div class="form-row"><div class="field"><label>כמות</label><input type="text" inputmode="decimal" id="cv-qty" value="${escapeHtml(conv.qty)}"></div>
+                <div class="field"><label>יחידה</label><select id="cv-unit">${CONV_UNITS.map((k) => `<option value="${k}" ${k === conv.unit ? "selected" : ""}>${UNITS.find((u) => u.key === k).label}</option>`).join("")}</select></div></div>
+                ${cv.res ? `<div class="hint"><b>= ${fmtQty(cv.res.grams)}</b>${cv.res.note ? `<br>${escapeHtml(cv.res.note)}` : ""}</div>${gen.mode === "have" && genIngs().some((x) => x.idx === cv.sel.idx) ? '<button type="button" class="btn btn-secondary btn-small" id="cv-use">השתמש ב"כמה יש לי"</button>' : ""}` : ""}
+                ${one ? `<div class="form-row" style="margin-top:8px;"><div class="field"><label>כמה גרם יש ב${escapeHtml(uLabel)} אחת של ${escapeHtml(cv.name)}?</label><input type="text" inputmode="decimal" id="cv-setg" placeholder="${+one.grams.toFixed(1)}"></div></div>
+                <button type="button" class="btn btn-secondary btn-small mgr-only" id="cv-save">💾 זכור למוצר הזה</button>` : ""}
+            </details>`;
+            })()}
             ${sc ? `
             <table class="simple"><thead><tr><th>רכיב</th><th>כמות</th><th class="cost-only">עלות</th></tr></thead><tbody>
                 ${[...sc.rows].sort((a, b) => b.grams - a.grams).map((o) => `<tr><td>${escapeHtml(nameOf(o))}${o.egg_part && o.egg_part !== "whole" ? " (" + EGG_PART_UI[o.egg_part] + ")" : ""}</td><td>${o.unit_count ? `${o.grams} <span>יחידות</span>` : fmtQty(o.grams)}${o.egg_part ? `<br><span class="muted">= ${o.eggUnits} ${o.egg_part === "white" ? "חלבונים" : o.egg_part === "yolk" ? "חלמונים" : "ביצים"}</span>` : ""}</td><td class="cost-only">${money(o.cost)}</td></tr>`).join("")}
@@ -512,6 +541,24 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
         overlay.querySelectorAll(".g-have").forEach((inp) => { inp.onchange = () => { gen.have[inp.dataset.idx] = inp.value; draw(); }; });
         bind("#g-val", "onchange", (e) => { gen.value = gen.mode === "weight" ? textToGrams(e.target.value) : parseFloat(String(e.target.value).replace(",", ".")); draw(); });
         bind("#g-round", "onchange", (e) => { gen.round = e.target.checked; draw(); });
+        bind("#cv-box", "ontoggle", (e) => { conv.open = e.target.open; });
+        bind("#cv-ing", "onchange", (e) => { conv.idx = e.target.value === "" ? null : Number(e.target.value); conv.open = true; draw(); });
+        bind("#cv-qty", "onchange", (e) => { conv.qty = e.target.value; conv.open = true; draw(); });
+        bind("#cv-unit", "onchange", (e) => { conv.unit = e.target.value; conv.open = true; draw(); });
+        bind("#cv-use", "onclick", () => { const cv = convView(); if (cv.res) { gen.have[cv.sel.idx] = gramsToKgText(cv.res.grams); conv.open = true; draw(); } });
+        bind("#cv-save", "onclick", busy(async () => {
+            const cv = convView();
+            const gPerUnit = parseFloat(String(overlay.querySelector("#cv-setg").value).replace(",", ".")); // תמיד בגרמים, בלי קשר למצב ההקלדה
+            const d = densityFromUnitGrams(conv.unit, gPerUnit);
+            if (!cv.sel || !d) { toast("כתוב כמה גרם יש ביחידה אחת"); return; }
+            const all = await getSetting("unit_density", {});
+            all[learnKey(cv.name)] = d;
+            await setSetting("unit_density", all);
+            setLearnedDensities(all);
+            toast("נשמר: " + cv.name);
+            conv.open = true;
+            draw();
+        }));
         if (tab === "gen") {
             const f = genFactor().f;
             const sc = f ? scaleRecipe(r.items, f, rows, { round: gen.round }) : null;
@@ -622,6 +669,7 @@ function scanNoticeHtml(draft) {
 
 async function openRecipeModal(existing, container, draft = null) {
     resetPickerMemory();
+    setLearnedDensities(await getSetting("unit_density", {})); // כוס/כף של מוצר שנקבע בממיר
     const sources = await ingredientSources();
     const isEdit = !!existing;
     const src = existing || draft;
@@ -686,7 +734,10 @@ async function openRecipeModal(existing, container, draft = null) {
         rowMeta.set(id, { um, eggPart: (prefill && prefill.egg_part) || "whole", eggSize: null, eggUnit: "g", pct: (prefill && (prefill.pct_mode || prefill.est_mode)) || null });
         const row = h(`
             <div class="item-row-inputs" id="ing-row-${id}">
-                ${um && um.manual ? `<div class="field" style="margin:0 0 6px;"><input type="text" id="ing-name-${id}" placeholder="שם הרכיב (עדיין לא במזווה)" value="${escapeHtml(um.name || "")}"></div>` : um ? `<div class="hint-warn" style="margin-top:0;">מהמסמך: <b>${escapeHtml(um.name)}</b> ${originalHtml(um)}</div>` : ""}
+                ${um && um.manual ? `<div class="field" style="margin:0 0 6px;"><input type="text" id="ing-name-${id}" placeholder="שם הרכיב (עדיין לא במזווה)" value="${escapeHtml(um.name || "")}"></div>` : um ? `<div class="hint-warn" style="margin-top:0;">
+                    <div class="field" style="margin:0 0 6px;"><label>מהמסמך (אפשר לתקן)</label><input type="text" id="ing-name-${id}" value="${escapeHtml(um.name || "")}"></div>
+                    <div class="form-row"><div class="field"><label>כמות במסמך</label><input type="text" inputmode="decimal" id="ing-oq-${id}" value="${um.quantity != null ? escapeHtml(um.quantity) : ""}"></div>
+                    <div class="field"><label>יחידה</label><select id="ing-ou-${id}"><option value=""></option>${[...new Set([...Object.keys(UNIT_HE), um.unit].filter(Boolean))].map((k) => `<option value="${escapeHtml(k)}" ${k === um.unit ? "selected" : ""}>${escapeHtml(UNIT_HE[k] || k)}</option>`).join("")}</select></div></div></div>` : ""}
                 <div class="top-line">
                     <button type="button" class="pick-btn" id="ing-pick-${id}" style="flex:2;">בחר מרכיב...</button>
                     <select id="ing-source-${id}" style="display:none;">
@@ -723,6 +774,7 @@ async function openRecipeModal(existing, container, draft = null) {
             </div>
         `);
         box.appendChild(row);
+        if (um) rowMeta.get(id).autoQty = row.querySelector(`#ing-qty-${id}`).value; // מולא מהמסמך, לא הוקלד
         bindPickerButton({
             button: row.querySelector(`#ing-pick-${id}`), select: row.querySelector(`#ing-source-${id}`), title: "בחר מרכיב", keyOf: (it) => String(it.id),
             tabs: subOpts.length ? [{ key: "pantry", label: "מוצרים" }, { key: "recipe", label: "מתכונים (תת-מתכון)" }] : null,
@@ -752,10 +804,12 @@ async function openRecipeModal(existing, container, draft = null) {
         row.querySelector(`#ing-source-${id}`).addEventListener("change", () => {
             // שורה מהמסמך שנבחר לה מוצר: אם אין כמות בגרם - מחשבים מהכמות שכתובה במסמך
             const qtyEl = row.querySelector(`#ing-qty-${id}`);
-            if (um && !qtyEl.value) {
+            // (גם כמות שמולאה אוטומטית לפני שנבחר מוצר מתעדכנת: כוס קמח אחרת מכוס מים)
+            if (um && (!qtyEl.value || qtyEl.value === rowMeta.get(id).autoQty)) {
                 const s = sources.find((x) => String(x.id) === row.querySelector(`#ing-source-${id}`).value);
                 if (s && isCountItem(s.item) && um.unit === "unit" && Number(um.quantity) > 0) qtyEl.value = countToText(um.quantity);
                 else { const g = gramsFromOriginal(um, s && s.item); if (g != null) qtyEl.value = gramsToKgText(g); }
+                rowMeta.get(id).autoQty = qtyEl.value;
             }
             recalc();
         });
@@ -773,7 +827,33 @@ async function openRecipeModal(existing, container, draft = null) {
         const modeSel = row.querySelector(`#ing-mode-${id}`);
         if (modeSel) modeSel.addEventListener("change", () => { rowMeta.get(id).pct = modeSel.value || null; recalc(); });
         const nameInp = row.querySelector(`#ing-name-${id}`);
-        if (nameInp) nameInp.addEventListener("input", () => { um.name = nameInp.value; });
+        if (nameInp) {
+            nameInp.addEventListener("input", () => { um.name = nameInp.value; const qb = row.querySelector(`#ing-qa-btn-${id}`); if (qb && !um.manual) qb.textContent = `➕ הוסף "${um.name}" למזווה`; });
+            // שם מתוקן: מחפשים שוב במזווה, ואם נמצא מוצר ושום מוצר עוד לא נבחר - בוחרים אותו
+            nameInp.addEventListener("change", () => {
+                const sel = row.querySelector(`#ing-source-${id}`);
+                if (um.manual || sel.value) return;
+                const m = smartMatch(um.name, sources.map((x) => x.item));
+                if (m) { sel.value = String(m.item.id); refreshPickerButton(row.querySelector(`#ing-pick-${id}`), sel); sel.dispatchEvent(new Event("change")); }
+            });
+        }
+        // כמות/יחידה שנקראו מהמסמך ותוקנו: מעדכנים את הכמות בגרמים לפי המוצר שנבחר
+        const oq = row.querySelector(`#ing-oq-${id}`), ou = row.querySelector(`#ing-ou-${id}`);
+        if (oq && ou) {
+            const onOrig = () => {
+                const q = parseFloat(String(oq.value).replace(",", "."));
+                um.quantity = q > 0 ? q : null;
+                um.unit = ou.value || null;
+                const s = sources.find((x) => String(x.id) === row.querySelector(`#ing-source-${id}`).value);
+                const qtyEl = row.querySelector(`#ing-qty-${id}`);
+                if (s && isCountItem(s.item) && um.unit === "unit" && um.quantity) qtyEl.value = countToText(um.quantity);
+                else { const g = gramsFromOriginal(um, s ? s.item : null); if (g != null) qtyEl.value = gramsToKgText(g); }
+                rowMeta.get(id).autoQty = qtyEl.value;
+                recalc();
+            };
+            oq.addEventListener("change", onOrig);
+            ou.addEventListener("change", onOrig);
+        }
         row.querySelector("[data-remove]").onclick = () => { row.remove(); rowMeta.delete(id); recalc(); };
 
         if (um) {

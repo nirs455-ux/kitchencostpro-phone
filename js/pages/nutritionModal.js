@@ -6,8 +6,10 @@ import { getNutritionDb, saveNutrition, removeNutrition, getUsdaKey, toEnglishFo
 import { NUTRIENTS, rankUsdaFoods } from "../nutrition.js";
 import { preparedWord } from "../allergenResolve.js";
 import { openLabelScan } from "./labelModal.js";
+import { getSetting, setSetting } from "../repo/settingsRepo.js";
+import { loadCiqual, searchCiqual, CIQUAL_CREDIT } from "../ciqual.js";
 
-const SRC_LABEL = { usda: "USDA", off: "Open Food Facts", manual: "הזנה ידנית", label: "תווית יצרן", remembered: "נזכר מבחירה קודמת" };
+const SRC_LABEL = { usda: "USDA", ciqual: "Ciqual (אירופה)", off: "Open Food Facts", manual: "הזנה ידנית", label: "תווית יצרן", remembered: "נזכר מבחירה קודמת" };
 const TOP = 3; // כמה התאמות מוצגות מיד; השאר תחת "הצג עוד"
 
 const summary = (p) => ["kcal", "protein", "fat", "carbs"].filter((k) => p[k] != null).map((k) => `${NUTRIENTS.find((n) => n.key === k).short} ${+Number(p[k]).toFixed(1)}`).join(" · ");
@@ -19,11 +21,13 @@ export async function openNutritionLookup({ name, cleanName, pantryId, onSaved, 
     const db = await getNutritionDb();
     const cur = db[pantryId] || null;
     const prepared = preparedWord(name) || preparedWord(shown);
+    let src = (await getSetting("nutri_src", "usda")) === "ciqual" ? "ciqual" : "usda"; // המאגר שנבחר נזכר
     const ov = openModal(`
         <h2>ערכים תזונתיים: ${escapeHtml(shown)}</h2>
         ${prepared ? `<div class="hint-warn">השם "${escapeHtml(prepared)}" מרמז על מוצר מעובד, וערכי המאגר הם לחומר גלם. אם זה מוצר שהכנת (למשל שום מטוגן), עדיף ליצור אותו כמתכון (למשל שום + שמן) ולהשתמש בו כתת-מתכון: התזונה תחושב מהרכיבים האמיתיים.${onCreateRecipe ? '<div style="margin-top:8px;"><button type="button" class="btn btn-primary btn-small" id="nu-make-recipe">➕ צור מתכון למוצר הזה</button></div>' : ""}</div>` : ""}
         ${cur ? `<div class="hint-warn" style="background:var(--ok-soft);border-color:var(--ok);">יש ערכים שמורים (${escapeHtml(SRC_LABEL[cur._source] || "")}${cur._label ? ": " + escapeHtml(cur._label) : ""}). אפשר להחליף או להסיר.</div>` : ""}
-        <div class="card-title" style="margin:8px 0 4px;">חיפוש במאגר USDA</div>
+        <div class="card-title" style="margin:8px 0 4px;">חיפוש במאגר</div>
+        <div class="seg" id="nu-src" style="margin-bottom:6px;"><button type="button" data-src="usda" class="${src === "usda" ? "active" : ""}">USDA (ארה"ב)</button><button type="button" data-src="ciqual" class="${src === "ciqual" ? "active" : ""}">אירופה (Ciqual)</button></div>
         <div class="field" style="margin:0 0 6px;"><input type="text" id="nu-q" value="${escapeHtml(shown)}" placeholder="שם המוצר"></div>
         <button type="button" class="btn btn-secondary btn-small" id="nu-search">🔍 חפש</button>
         <div id="nu-results" style="margin-top:8px;"></div>
@@ -42,7 +46,7 @@ export async function openNutritionLookup({ name, cleanName, pantryId, onSaved, 
     const save = async (per100, source, label) => {
         try {
             const newDb = await saveNutrition(pantryId, per100, { source, label });
-            if (source === "usda") await rememberChoice(shown, per100, label); // זיכרון לפי שם נקי
+            if (source === "usda" || source === "ciqual") await rememberChoice(shown, per100, label); // זיכרון לפי שם נקי
             closeModal(); toast("נשמר"); if (onSaved) onSaved(newDb); if (onDone) onDone();
         } catch (e) { toast(e.message); }
     };
@@ -64,18 +68,31 @@ export async function openNutritionLookup({ name, cleanName, pantryId, onSaved, 
         box.innerHTML = '<div class="hint">מחפש...</div>';
         const q = ov.querySelector("#nu-q").value;
         const en = await toEnglishFoodName(await getAgentKey(), q);
-        const { foods, error } = await searchUsda(en, await getUsdaKey());
+        let foods, error;
+        if (src === "ciqual") {
+            try { foods = searchCiqual(await loadCiqual(), en); } catch (e) { foods = []; error = e.message; }
+        } else ({ foods, error } = await searchUsda(en, await getUsdaKey()));
         box.innerHTML = "";
         if (error) { box.innerHTML = `<div class="hint-warn">${escapeHtml(error)}</div>`; return; }
         if (!foods.length) { box.innerHTML = `<div class="hint">לא נמצאו תוצאות עבור "${escapeHtml(en)}". נסה שם באנגלית (למשל olive oil).</div>`; return; }
-        const ranked = rankUsdaFoods(foods, en);
+        const ranked = src === "ciqual" ? foods : rankUsdaFoods(foods, en);
+        const tag = src === "ciqual" ? "ciqual" : "usda";
         box.appendChild(h(`<div class="hint" style="margin-bottom:4px;">חיפשתי: ${escapeHtml(en)}. ההתאמות הטובות ביותר (ל-100 גרם), מסודרות לפי קרבה לחומר גלם:</div>`));
-        ranked.slice(0, TOP).forEach((f, i) => box.appendChild(rowFor(f.name, summary(f.per100), f.per100, "usda", f.name, i === 0)));
+        ranked.slice(0, TOP).forEach((f, i) => box.appendChild(rowFor(f.name, summary(f.per100), f.per100, tag, f.name, i === 0)));
         if (ranked.length > TOP) {
             const more = h(`<button type="button" class="btn-link" style="margin-top:6px;">הצג עוד ${ranked.length - TOP} אפשרויות</button>`);
-            more.onclick = () => { more.remove(); ranked.slice(TOP).forEach((f) => box.appendChild(rowFor(f.name, summary(f.per100), f.per100, "usda", f.name))); };
+            more.onclick = () => { more.remove(); ranked.slice(TOP).forEach((f) => box.appendChild(rowFor(f.name, summary(f.per100), f.per100, tag, f.name))); };
             box.appendChild(more);
         }
+        if (src === "ciqual") box.appendChild(h(`<div class="hint" style="margin-top:6px;">${escapeHtml(CIQUAL_CREDIT)}</div>`));
+    });
+    ov.querySelectorAll("#nu-src [data-src]").forEach((b) => {
+        b.onclick = async () => {
+            src = b.dataset.src;
+            await setSetting("nutri_src", src);
+            ov.querySelectorAll("#nu-src [data-src]").forEach((x) => x.classList.toggle("active", x === b));
+            ov.querySelector("#nu-search").click();
+        };
     });
     ov.querySelector("#nu-search").onclick = runSearch;
     ov.querySelector("#nu-q").addEventListener("keydown", (e) => { if (e.key === "Enter") ov.querySelector("#nu-search").click(); });
