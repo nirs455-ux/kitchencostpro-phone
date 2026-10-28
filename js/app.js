@@ -214,6 +214,7 @@ async function maybeShowBackupBanner() {
     } catch (e) { /* תזכורת בלבד - לא קריטי */ }
 }
 maybeShowBackupBanner();
+setTimeout(() => import("./orderReminders.js").then((m) => m.maybeShowOrderPopup()).catch(() => {}), 1500);
 
 if ("serviceWorker" in navigator) {
     window.addEventListener("load", () => {

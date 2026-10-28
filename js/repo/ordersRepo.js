@@ -5,6 +5,8 @@ import { dbGet, dbGetAll, dbPut } from "../db.js";
 const MAX_HISTORY = 60;
 const txt = (v) => String(v == null ? "" : v).trim();
 let seq = 0;
+const pad = (n) => String(n).padStart(2, "0");
+export const localDate = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const newKey = () => `l${Date.now().toString(36)}${(seq++).toString(36)}`;
 
 // זהות שורה: חומר גלם (או שם) + גודל היחידה בחשבונית, כך שקילו וארגז של אותו מוצר הן שתי שורות נפרדות
@@ -67,7 +69,7 @@ export async function setSupplierContact(supplierId, { phone, email, days, cutof
 // שומר הזמנה שנשלחה. via: whatsapp / email / copy
 export async function recordOrder(supplierId, { lines, note, via }) {
     const s = await mustGet(supplierId);
-    const entry = { id: Date.now(), date: new Date().toISOString().slice(0, 10), via: via || "", note: txt(note), lines: lines.map((l) => ({ name: txt(l.name), qty: txt(l.qty), unit: txt(l.unit) })) };
+    const entry = { id: Date.now(), date: localDate(new Date()), via: via || "", note: txt(note), lines: lines.map((l) => ({ name: txt(l.name), qty: txt(l.qty), unit: txt(l.unit) })) };
     const history = [entry, ...(s.order_history || [])].slice(0, MAX_HISTORY);
     await dbPut("suppliers", { ...s, order_history: history });
     return entry;
@@ -118,4 +120,24 @@ export async function suggestOrderLines(supplierId) {
     return [...groups.values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, "he")).map((g) => ({
         name: g.name, unit: g.unit, qty: String(fmt(g.sum / g.count)), pantry_item_id: g.pantry_item_id, stock_factor: g.stock_factor, count: g.count,
     }));
+}
+
+// הזמנות שצריך לבצע: ספקים שהיום (או מחר) הוא אחד מימי החלוקה שלהם ועוד לא נשלחה להם הזמנה היום.
+// overdue = שעת הסגירה עברה. today/tomorrow: רשימות של { supplier, cutoff, overdue }.
+export async function dueOrders(now = new Date()) {
+    const suppliers = await dbGetAll("suppliers");
+    const todayStr = localDate(now);
+    const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+    const nowHM = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+    const out = { today: [], tomorrow: [] };
+    for (const s of suppliers) {
+        const days = s.order_days || [];
+        if (!days.length) continue;
+        const cutoff = s.order_cutoff || "";
+        if (days.includes(now.getDay()) && !(s.order_history || []).some((o) => o.date === todayStr)) out.today.push({ supplier: s, cutoff, overdue: !!cutoff && nowHM > cutoff });
+        if (days.includes(tomorrow.getDay()) && !(s.order_history || []).some((o) => o.date === todayStr)) out.tomorrow.push({ supplier: s, cutoff, overdue: false });
+    }
+    const byName = (x, y) => x.supplier.name.localeCompare(y.supplier.name, "he");
+    out.today.sort(byName); out.tomorrow.sort(byName);
+    return out;
 }

@@ -15,6 +15,7 @@ import { getCloudStatus } from "../cloud/cloudGlue.js";
 import { computeStatus, openWizardAt } from "../statusIcons.js";
 import { resolveCloudIssue } from "../cloud/cloudUi.js";
 import { loadDemoData } from "../demoData.js";
+import { orderAttnItems } from "../orderReminders.js";
 
 const go = (page) => { location.hash = page; };
 
@@ -101,6 +102,8 @@ export async function renderHomePage(container) {
         items.unshift({ cls: "warn", icon: "☁️", text, btn: "טפל", fn: async () => { await resolveCloudIssue(); rerender(); } });
     }
     if (!pantry.length && !invoices.length) items.push({ cls: "ok", icon: "🧪", text: "רוצה לנסות עם נתוני דוגמה? (חומרי גלם, מתכונים, מנות ומוצר יצרן)", btn: "טען", fn: async () => { await loadDemoData(); toast("נתוני הדוגמה נטענו"); rerender(); } });
+    try { items.unshift(...(await orderAttnItems(rerender))); } catch (e) { /* תזכורות הזמנה הן עזר */ }
+    if (stale()) return;
     const order = { danger: 0, warn: 1, ok: 2 };
     items.sort((x, y) => (order[x.cls] ?? 1) - (order[y.cls] ?? 1));
     if (items.length) {

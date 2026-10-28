@@ -4,6 +4,7 @@ import { listRecipesWithItems, saveRecipe, deleteRecipe, recipeDishCount, recipe
 import { listAllPantryItems, addPantryItem, setItemAllergens, clearItemAllergens, setEggSize } from "../repo/pantryRepo.js";
 import { getLabelNames, setLabelName } from "../repo/labelNamesRepo.js";
 import { resolveAllergens, labelNameOf, preparedWord } from "../allergenResolve.js";
+import { openStickerModal } from "./stickerModal.js";
 import { ALLERGENS, allergenLabels } from "../allergens.js";
 import { RECIPE_CATEGORIES, NON_FOOD_CATEGORIES, CATEGORY_GROUPS, UNIT_TYPES, UNIT_TYPE_LABELS } from "../constants.js";
 import { pricePerGram, itemCost as calcItemCost, effectivePrice, isCountItem } from "../formulas.js";
@@ -308,6 +309,17 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
         }
         return out;
     };
+    // אלרגנים של כל המתכון כטקסט (איחוד האלרגנים של הרכיבים), לתווית במדבקה
+    const recipeAllergenText = () => {
+        const keys = new Set();
+        for (const i of r.items) {
+            const row = byId.get(i.pantry_item_id);
+            if (!row) continue;
+            const src = row.parent_id ? byId.get(row.parent_id) || row : row;
+            for (const k of resolveAllergens(src, byId, labelNames).keys || []) keys.add(k);
+        }
+        return allergenLabels([...keys]).join(", ");
+    };
     // אחוזים: "מהמשקל הסופי" (כל רכיב חלקי סך המשקל, סכום 100%) או "אחוזי אופים" (הקמחים = 100%, שאר הרכיבים ביחס אליהם)
     let pctMode = "baker"; // ברירת מחדל: מתכון באחוזים לפי בסיס (השורש = 100%)
     const pctView = () => {
@@ -442,6 +454,7 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
                 <button type="button" class="btn btn-secondary btn-small" id="d-copy">📋 העתק</button>
                 <button type="button" class="btn btn-secondary btn-small" id="d-share">📤 שתף</button>
                 <button type="button" class="btn btn-secondary btn-small" id="d-print">🖨 הדפס</button>
+                <button type="button" class="btn btn-secondary btn-small" id="d-sticker">🏷 מדבקה</button>
             </div>`;
         }
 
@@ -593,6 +606,8 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
         };
         const dPrint = overlay.querySelector("#d-print");
         if (dPrint) dPrint.onclick = () => printLabel(r.name, labelText);
+        const dSticker = overlay.querySelector("#d-sticker");
+        if (dSticker) dSticker.onclick = () => openStickerModal({ recipeId: r.id, name: r.name, allergens: recipeAllergenText() });
     };
     draw();
 }
