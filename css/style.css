@@ -454,3 +454,7 @@ body[data-cook="1"] .cost-only, body[data-cook="1"] .mgr-only { display: none !i
 }
 
 .btn-link { display: block; width: 100%; margin: 10px 0 2px; padding: 10px; border: 0; background: none; color: var(--accent); font-family: inherit; font-size: 14px; text-decoration: underline; cursor: pointer; text-align: center; }
+
+/* גלילה למעלה בטלפון לא מרעננת את הדף (איבוד מה שהוקלד); גם בתוך חלונות וגלילה פנימית */
+html, body { overscroll-behavior-y: none; }
+.modal, .pg-body, .modal-overlay { overscroll-behavior: contain; }
