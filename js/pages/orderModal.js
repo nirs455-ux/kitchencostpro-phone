@@ -1,58 +1,201 @@
-// הזמנה לספק: רשימת המוצרים שקנית ממנו (לפי חשבוניות), מזינים כמויות ושולחים בוואטסאפ או מעתיקים. לא נשמר דבר מלבד טלפון הספק.
-import { openModal, closeModal, toast, escapeHtml, cur } from "../ui.js";
-import { listSupplierProducts, setSupplierPhone } from "../repo/suppliersRepo.js";
-import { buildInventoryView } from "../repo/inventoryRepo.js";
-import { whatsappUrl, orderText, normalizePhoneIL } from "../shareText.js";
+// הזמנות לספק: רשימת הזמנה קבועה (נשמרת), שליחה בוואטסאפ / במייל / העתקה, והיסטוריית הזמנות.
+import { openModal, closeModal, toast, escapeHtml, confirmDialog } from "../ui.js";
+import { listAllPantryItems } from "../repo/pantryRepo.js";
+import { getOrderBook, saveOrderList, setSupplierContact, recordOrder, deleteOrder, normalizeLine, lineQtyText, validEmail, suggestOrderLines, lineIdentity } from "../repo/ordersRepo.js";
+import { whatsappUrl, mailtoUrl, orderText, normalizePhoneIL } from "../shareText.js";
 
 const shortDate = (d) => { const [y, m, day] = String(d || "").split("-"); return day ? `${parseInt(day, 10)}.${parseInt(m, 10)}.${y.slice(2)}` : String(d || ""); };
+const VIA = { whatsapp: "💬 וואטסאפ", email: "✉️ מייל", copy: "📋 הועתק" };
+const defaultUnit = (p) => (p.unit_type === "weight" ? 'ק"ג' : p.unit_type === "liter" ? "ליטר" : "יח'");
 
-export async function openOrderModal(supplier, onChanged) {
-    const products = await listSupplierProducts(supplier.id);
-    let stock = new Map();
-    try { stock = new Map((await buildInventoryView()).map((x) => [x.id, x])); } catch (e) { /* המלאי הוא רק רמז */ }
-    const today = new Date().toLocaleDateString("he-IL");
-    const rowsHtml = products.map((p, i) => {
-        const st = p.pantry_item_id ? stock.get(p.pantry_item_id) : null;
-        const stockHint = st && Number.isFinite(Number(st.theoretical_quantity)) ? ` · מלאי תיאורטי ${+Number(st.theoretical_quantity).toFixed(2)}` : "";
-        const hint = `קנית בתאריך ${escapeHtml(shortDate(p.last_date))}: ${p.last_qty != null ? +Number(p.last_qty).toFixed(3) : "?"}${p.last_price != null ? ` · ${cur()}${Number(p.last_price).toFixed(2)}` : ""}${stockHint}`;
-        return `<div class="item-row-inputs"><div class="top-line"><div style="flex:2;min-width:0;"><div style="font-weight:600;">${escapeHtml(p.name)}</div><div class="hint" style="margin:0;">${hint}</div></div>
-            <input type="text" inputmode="decimal" data-oq="${i}" placeholder="כמות" style="width:84px;"></div></div>`;
-    }).join("");
-    const ov = openModal(`
-        <h2>הזמנה: ${escapeHtml(supplier.name)}</h2>
-        ${products.length ? `<div class="hint" style="margin-bottom:6px;">הזן כמות רק למה שרוצים להזמין. אפשר לכתוב גם עם יחידה (למשל "5 ק"ג" או "2 ארגזים").</div>` : '<div class="empty-state">עדיין אין מוצרים של הספק הזה בחשבוניות. אפשר לכתוב את ההזמנה ידנית למטה.</div>'}
-        <div id="oq-list">${rowsHtml}</div>
-        <div class="field" style="margin-top:8px;"><label>מוצרים נוספים / הערות</label><textarea id="oq-note" rows="3" style="width:100%;" placeholder="למשל: 3 ארגזי עגבניות, לספק עד 7 בבוקר"></textarea></div>
-        <div class="field"><label>טלפון הספק (לוואטסאפ)</label><input type="tel" id="oq-phone" value="${escapeHtml(supplier.phone || "")}" placeholder="050-1234567"></div>
-        <div class="error-msg"></div>
-        <div class="modal-actions" style="flex-wrap:wrap;">
-            <button type="button" class="btn btn-secondary" id="oq-close">סגור</button>
-            <button type="button" class="btn btn-secondary" id="oq-copy">📋 העתק</button>
-            <button type="button" class="btn btn-primary" id="oq-send">💬 שלח בוואטסאפ</button>
-        </div>`);
+export async function openOrderModal(supplier, onChanged, startTab = "order") {
+    let seeded = false;
+    let book = await getOrderBook(supplier.id);
+    let pantry = [];
+    try { pantry = (await listAllPantryItems()).filter((p) => !p.parent_id); } catch (e) { /* ההשלמה האוטומטית היא רק עזר */ }
+    // רשימה ריקה: נבנית אוטומטית מהחשבוניות של הספק (כל מוצר ביחידה שבה נקנה, כמות רגילה = ממוצע הקניות)
+    if (!book.list.length && !book.history.length) {
+        try { const seed = (await suggestOrderLines(supplier.id)).slice(0, 60); if (seed.length) { book.list = await saveOrderList(supplier.id, seed); seeded = true; } } catch (e) { /* בונים ידנית */ }
+    }
+    let tab = startTab;
+    const qtys = new Map(); // key -> כמות להזמנה הנוכחית
+    let note = "";
+    let phone = book.phone;
+    let email = book.email;
 
-    const build = () => {
-        const lines = [];
-        ov.querySelectorAll("[data-oq]").forEach((inp) => {
-            const q = inp.value.trim();
-            if (q) lines.push({ name: products[Number(inp.dataset.oq)].name, qty: q });
+    const ov = openModal(`<div id="oq-root"></div>`, { page: true });
+    const root = ov.querySelector("#oq-root");
+    const changed = () => { if (onChanged) onChanged(); };
+
+    // שומר את מה שהוקלד לפני בנייה מחדש של המסך
+    const grab = () => {
+        root.querySelectorAll("[data-oq]").forEach((i) => qtys.set(i.dataset.oq, i.value));
+        const n = root.querySelector("#oq-note"); if (n) note = n.value;
+        const p = root.querySelector("#oq-phone"); if (p) phone = p.value;
+        const e = root.querySelector("#oq-email"); if (e) email = e.value;
+    };
+    const persistList = async () => { book.list = await saveOrderList(supplier.id, book.list); };
+
+    function draw() {
+        root.innerHTML = `
+            <h2>הזמנות: ${escapeHtml(supplier.name)}</h2>
+            <div class="seg" id="oq-seg">
+                <button data-t="order" class="${tab === "order" ? "active" : ""}">הזמנה חדשה</button>
+                <button data-t="list" class="${tab === "list" ? "active" : ""}">רשימת הזמנה <span class="seg-n">${book.list.length}</span></button>
+                <button data-t="history" class="${tab === "history" ? "active" : ""}">היסטוריה <span class="seg-n">${book.history.length}</span></button>
+            </div>
+            <div id="oq-body" style="margin-top:10px;"></div>
+            <div class="modal-actions"><button type="button" class="btn btn-secondary" id="oq-close">סגור</button></div>`;
+        root.querySelectorAll("#oq-seg button").forEach((b) => { b.onclick = () => { grab(); tab = b.dataset.t; draw(); }; });
+        root.querySelector("#oq-close").onclick = closeModal;
+        const body = root.querySelector("#oq-body");
+        if (tab === "list") drawList(body); else if (tab === "history") drawHistory(body); else drawOrder(body);
+    }
+
+    // ---------- הזמנה חדשה ----------
+    function drawOrder(body) {
+        const rows = book.list.map((l) => `
+            <div class="item-row-inputs"><div class="top-line">
+                <div style="flex:2;min-width:0;"><div style="font-weight:600;">${escapeHtml(l.name)}</div>${l.qty || l.unit ? `<div class="hint" style="margin:0;">רגיל: ${escapeHtml(lineQtyText(l))}</div>` : ""}</div>
+                <input type="text" inputmode="decimal" data-oq="${l.key}" value="${escapeHtml(qtys.get(l.key) || "")}" placeholder="כמות" style="width:74px;">
+                <span style="min-width:34px;font-size:13px;">${escapeHtml(l.unit)}</span>
+            </div></div>`).join("");
+        body.innerHTML = `
+            ${book.list.length ? `<div class="card-row" style="margin-bottom:6px;"><span class="hint" style="margin:0;">מלא כמות רק למה שרוצים להזמין.</span><button type="button" class="btn btn-secondary btn-small" id="oq-fill">מלא כמויות רגילות</button></div><div id="oq-list">${rows}</div>`
+                : `<div class="empty-state">אין עדיין חשבוניות של הספק הזה, ולכן הרשימה ריקה.<br>אפשר להוסיף פריטים ידנית.</div><button type="button" class="btn btn-primary btn-block" id="oq-build">הוספת פריטים</button>`}
+            <div class="field" style="margin-top:8px;"><label>הערות או מוצרים נוספים להזמנה הזו</label><textarea id="oq-note" rows="2" style="width:100%;" placeholder="למשל: לספק עד 7 בבוקר">${escapeHtml(note)}</textarea></div>
+            <div class="field"><label>טלפון (וואטסאפ)</label><input type="tel" id="oq-phone" value="${escapeHtml(phone)}" placeholder="050-1234567"></div>
+            <div class="field"><label>מייל</label><input type="email" id="oq-email" dir="ltr" value="${escapeHtml(email)}" placeholder="orders@supplier.com"></div>
+            <div class="error-msg"></div>
+            <div class="modal-actions" style="flex-wrap:wrap;">
+                <button type="button" class="btn btn-secondary" id="oq-copy">📋 העתק</button>
+                <button type="button" class="btn btn-secondary" id="oq-mail">✉️ שלח במייל</button>
+                <button type="button" class="btn btn-primary" id="oq-send">💬 שלח בוואטסאפ</button>
+            </div>`;
+        const err = body.querySelector(".error-msg");
+        const fail = (m) => { err.textContent = m; err.style.display = "block"; };
+        const fill = body.querySelector("#oq-fill");
+        if (fill) fill.onclick = () => { grab(); book.list.forEach((l) => { if (l.qty) qtys.set(l.key, l.qty); }); draw(); };
+        const bld = body.querySelector("#oq-build");
+        if (bld) bld.onclick = () => { grab(); tab = "list"; draw(); };
+
+        const collect = () => {
+            grab();
+            const lines = book.list.filter((l) => (qtys.get(l.key) || "").trim()).map((l) => ({ name: l.name, unit: l.unit, qty: qtys.get(l.key).trim() }));
+            return { lines, note };
+        };
+        const textOf = (c) => orderText(supplier.name, new Date().toLocaleDateString("he-IL"), c.lines.map((l) => ({ name: l.name, qty: lineQtyText(l) })), c.note);
+        const finish = async (c, via) => {
+            await recordOrder(supplier.id, { lines: c.lines, note: c.note, via });
+            book = await getOrderBook(supplier.id);
+            qtys.clear(); note = "";
+            toast("ההזמנה נשמרה בהיסטוריה");
+            changed();
+            draw();
+        };
+        const check = (c) => { if (!c.lines.length && !c.note.trim()) { fail("לא הוזנה אף כמות."); return false; } return true; };
+        const saveContact = async () => {
+            try { await setSupplierContact(supplier.id, { phone, email }); supplier.phone = phone.trim(); supplier.email = email.trim(); return true; }
+            catch (e) { fail(e.message); return false; }
+        };
+
+        body.querySelector("#oq-copy").onclick = async () => {
+            const c = collect(); if (!check(c)) return;
+            try { await navigator.clipboard.writeText(textOf(c)); } catch (e) { fail("לא הצלחתי להעתיק"); return; }
+            await finish(c, "copy");
+        };
+        body.querySelector("#oq-send").onclick = async () => {
+            const c = collect(); if (!check(c)) return;
+            if (phone.trim() && !normalizePhoneIL(phone)) { fail("מספר הטלפון לא תקין."); return; }
+            if (!(await saveContact())) return;
+            window.open(whatsappUrl(textOf(c), phone), "_blank", "noopener");
+            await finish(c, "whatsapp");
+        };
+        body.querySelector("#oq-mail").onclick = async () => {
+            const c = collect(); if (!check(c)) return;
+            if (!validEmail(email)) { fail("יש להזין כתובת מייל תקינה של הספק."); return; }
+            if (!(await saveContact())) return;
+            const subject = `הזמנה ל-${new Date().toLocaleDateString("he-IL")} - ${supplier.name}`;
+            window.location.href = mailtoUrl(email, subject, textOf(c));
+            await finish(c, "email");
+        };
+    }
+
+    // ---------- רשימת הזמנה ----------
+    async function drawList(body) {
+        const inList = new Set(book.list.map(lineIdentity));
+        let suggestions = [];
+        try { suggestions = (await suggestOrderLines(supplier.id)).filter((p) => !inList.has(lineIdentity(p))).slice(0, 40); } catch (e) { /* הצעות הן רק עזר */ }
+        const rows = book.list.map((l, i) => `
+            <div class="item-row-inputs" data-i="${i}"><div class="top-line">
+                <div style="flex:2;min-width:0;font-weight:600;">${escapeHtml(l.name)}</div>
+                <button type="button" class="btn btn-secondary btn-small" data-up="${i}" ${i === 0 ? "disabled" : ""}>↑</button>
+                <button type="button" class="btn btn-secondary btn-small" data-down="${i}" ${i === book.list.length - 1 ? "disabled" : ""}>↓</button>
+                <button type="button" class="btn btn-danger btn-small" data-del="${i}">✕</button>
+            </div><div class="top-line" style="margin-top:4px;">
+                <input type="text" inputmode="decimal" data-dq="${i}" value="${escapeHtml(l.qty)}" placeholder="כמות רגילה" style="width:42%;">
+                <input type="text" data-du="${i}" value="${escapeHtml(l.unit)}" placeholder="יחידה (למשל ארגז)" style="width:50%;">
+            </div></div>`).join("");
+        body.innerHTML = `
+            <div class="hint">הרשימה נבנתה מהחשבוניות של הספק ונשמרת. הכמות הרגילה היא ממוצע הקניות הקודמות. אפשר לשנות, להוסיף ולסדר.</div>
+            <div id="oq-rows">${rows || '<div class="empty-state">הרשימה ריקה.</div>'}</div>
+            <div class="field" style="margin-top:8px;"><label>הוספת פריט (חומר גלם או שם חופשי)</label>
+                <div class="top-line"><input type="text" id="oq-add" list="oq-pantry-dl" placeholder="התחל להקליד שם" style="flex:1;"><button type="button" class="btn btn-primary btn-small" id="oq-add-btn">הוסף</button></div>
+                <datalist id="oq-pantry-dl">${pantry.map((p) => `<option value="${escapeHtml(p.name)}"></option>`).join("")}</datalist></div>
+            ${suggestions.length ? `<div class="field"><label>מהחשבוניות של הספק, עוד לא ברשימה <button type="button" class="btn btn-secondary btn-small" id="oq-all">הוסף את כולם</button></label>
+                <div class="fchips" style="flex-wrap:wrap;">${suggestions.map((p, i) => `<button type="button" class="chip" data-sg="${i}">+ ${escapeHtml(p.name)}${p.unit ? ` (${escapeHtml(p.unit)})` : ""}</button>`).join("")}</div></div>` : ""}`;
+
+        const reload = async () => { await persistList(); changed(); draw(); };
+        body.querySelectorAll("[data-dq]").forEach((i) => { i.onchange = async () => { book.list[+i.dataset.dq].qty = i.value.trim(); await persistList(); }; });
+        body.querySelectorAll("[data-du]").forEach((i) => { i.onchange = async () => { book.list[+i.dataset.du].unit = i.value.trim(); await persistList(); }; });
+        body.querySelectorAll("[data-del]").forEach((b) => { b.onclick = async () => { book.list.splice(+b.dataset.del, 1); await reload(); }; });
+        body.querySelectorAll("[data-up]").forEach((b) => { b.onclick = async () => { const i = +b.dataset.up; [book.list[i - 1], book.list[i]] = [book.list[i], book.list[i - 1]]; await reload(); }; });
+        body.querySelectorAll("[data-down]").forEach((b) => { b.onclick = async () => { const i = +b.dataset.down; [book.list[i + 1], book.list[i]] = [book.list[i], book.list[i + 1]]; await reload(); }; });
+
+        const addLine = (line) => book.list.push(normalizeLine(line));
+        const addByName = async () => {
+            const inp = body.querySelector("#oq-add");
+            const name = inp.value.trim();
+            if (!name) return;
+            const p = pantry.find((x) => x.name.trim().toLowerCase() === name.toLowerCase());
+            addLine(p ? { name: p.name, unit: defaultUnit(p), pantry_item_id: p.id } : { name });
+            await reload();
+        };
+        body.querySelector("#oq-add-btn").onclick = addByName;
+        body.querySelector("#oq-add").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); addByName(); } });
+        const sugLine = (s) => ({ name: s.name, unit: s.unit, qty: s.qty, pantry_item_id: s.pantry_item_id, stock_factor: s.stock_factor });
+        body.querySelectorAll("[data-sg]").forEach((b) => { b.onclick = async () => { addLine(sugLine(suggestions[+b.dataset.sg])); await reload(); }; });
+        const all = body.querySelector("#oq-all");
+        if (all) all.onclick = async () => { suggestions.forEach((s) => addLine(sugLine(s))); await reload(); };
+    }
+
+    // ---------- היסטוריה ----------
+    function drawHistory(body) {
+        if (!book.history.length) { body.innerHTML = '<div class="empty-state">עוד לא נשלחה אף הזמנה לספק הזה.</div>'; return; }
+        body.innerHTML = book.history.map((o) => `
+            <details class="card" style="padding:8px 10px;margin-bottom:6px;"><summary style="cursor:pointer;">
+                <b>${escapeHtml(shortDate(o.date))}</b> · ${o.lines.length} פריטים · ${escapeHtml(VIA[o.via] || "")}</summary>
+                <div style="margin-top:6px;">${o.lines.map((l) => `<div>• ${escapeHtml(l.name)} - ${escapeHtml(lineQtyText(l))}</div>`).join("")}${o.note ? `<div class="hint">${escapeHtml(o.note)}</div>` : ""}</div>
+                <div class="modal-actions" style="margin-top:6px;"><button type="button" class="btn btn-danger btn-small" data-hd="${o.id}">מחק</button><button type="button" class="btn btn-primary btn-small" data-hr="${o.id}">הזמן שוב</button></div>
+            </details>`).join("");
+        body.querySelectorAll("[data-hd]").forEach((b) => { b.onclick = async () => { if (!(await confirmDialog("למחוק את ההזמנה מההיסטוריה?"))) return; await deleteOrder(supplier.id, +b.dataset.hd); book = await getOrderBook(supplier.id); changed(); draw(); }; });
+        body.querySelectorAll("[data-hr]").forEach((b) => {
+            b.onclick = async () => {
+                const o = book.history.find((x) => x.id === +b.dataset.hr);
+                qtys.clear();
+                for (const l of o.lines) {
+                    let row = book.list.find((x) => x.name.trim().toLowerCase() === l.name.trim().toLowerCase());
+                    if (!row) { row = normalizeLine({ name: l.name, unit: l.unit }); book.list.push(row); }
+                    qtys.set(row.key, l.qty);
+                }
+                note = o.note || "";
+                await persistList(); // מפתחות השורות החדשות נשמרים יחד עם הרשימה
+                tab = "order";
+                draw();
+            };
         });
-        return { lines, text: orderText(supplier.name, today, lines, ov.querySelector("#oq-note").value) };
-    };
-    const hasContent = (b) => b.lines.length || ov.querySelector("#oq-note").value.trim();
-    const err = ov.querySelector(".error-msg");
-    ov.querySelector("#oq-close").onclick = closeModal;
-    ov.querySelector("#oq-copy").onclick = async () => {
-        const b = build();
-        if (!hasContent(b)) { err.textContent = "לא הוזנה אף כמות."; err.style.display = "block"; return; }
-        try { await navigator.clipboard.writeText(b.text); toast("ההזמנה הועתקה"); } catch (e) { toast("לא הצלחתי להעתיק"); }
-    };
-    ov.querySelector("#oq-send").onclick = async () => {
-        const b = build();
-        if (!hasContent(b)) { err.textContent = "לא הוזנה אף כמות."; err.style.display = "block"; return; }
-        const phone = ov.querySelector("#oq-phone").value.trim();
-        if (phone && !normalizePhoneIL(phone)) { err.textContent = "מספר הטלפון לא תקין."; err.style.display = "block"; return; }
-        try { if (phone !== (supplier.phone || "")) { await setSupplierPhone(supplier.id, phone); supplier.phone = phone; if (onChanged) onChanged(); } } catch (e) { err.textContent = e.message; err.style.display = "block"; return; }
-        window.open(whatsappUrl(b.text, phone), "_blank", "noopener");
-    };
+    }
+
+    if (seeded) changed();
+    draw();
 }

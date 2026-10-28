@@ -11,6 +11,7 @@ import { dbGet, dbPut, dbDelete } from "../db.js";
 import { h, openModal, closeModal, confirmDialog, toast, escapeHtml, money, info, busy, attemptClose, toastAction, cur } from "../ui.js";
 import { openScanModal } from "./scanModal.js";
 import { openOrderModal } from "./orderModal.js";
+import { ordersOverview } from "../repo/ordersRepo.js";
 import { listRow, groupsEl } from "./listKit.js";
 import { compressImage, showImageFullscreen } from "../imageUtil.js";
 
@@ -54,6 +55,7 @@ export async function renderSuppliersPage(container) {
             <button data-tab="invoices">חשבוניות <span class="seg-n">${invoices.length}</span></button>
             <button data-tab="summary">סיכום</button>
             <button data-tab="suppliers">ספקים <span class="seg-n">${suppliers.length}</span></button>
+            <button data-tab="orders">הזמנות</button>
         </div>
         <div id="tab-body"></div>
     `;
@@ -78,6 +80,7 @@ export async function renderSuppliersPage(container) {
         segBtns.forEach((b) => b.classList.toggle("active", b.dataset.tab === t));
         if (t === "invoices") renderInvoicesTab();
         else if (t === "summary") renderSummaryTab();
+        else if (t === "orders") renderOrdersTab();
         else renderSuppliersTab();
     };
     segBtns.forEach((b) => { b.onclick = () => showTab(b.dataset.tab); });
@@ -239,6 +242,20 @@ export async function renderSuppliersPage(container) {
         draw();
     }
 
+    // ================= לשונית הזמנות =================
+    async function renderOrdersTab() {
+        body.innerHTML = '<div class="hint">בחר ספק כדי להכין ולשלוח הזמנה. הרשימה של כל ספק נבנית מהחשבוניות שלו ונשמרת.</div><div id="ord-list"></div>';
+        const list = body.querySelector("#ord-list");
+        const rows = await ordersOverview();
+        if (!rows.length) { list.innerHTML = '<div class="empty-state">עדיין אין ספקים.<br>הם נוספים אוטומטית בסריקה, או ידנית בלשונית ספקים.</div>'; return; }
+        for (const r of rows) {
+            const meta = r.last ? `הזמנה אחרונה ${shortDate(r.last)} · ${r.orders} הזמנות` : "עוד לא נשלחה הזמנה";
+            const row = listRow({ ic: "📦", tint: "var(--accent-soft)", name: r.supplier.name, meta, end: `${r.items}<small>פריטים</small>` });
+            row.onclick = () => openOrderModal(r.supplier, () => { if (uiTab === "orders") renderOrdersTab(); });
+            list.appendChild(row);
+        }
+    }
+
     // ================= לשונית ספקים =================
     function renderSuppliersTab() {
         body.innerHTML = `<button type="button" class="btn btn-secondary btn-block" id="btn-add-supplier" style="margin-bottom:10px;">+ ספק חדש</button><div id="sup-list"></div>`;
@@ -255,7 +272,7 @@ export async function renderSuppliersPage(container) {
                 const overlay = openModal(`
                     <h2>${escapeHtml(s.name)}</h2>
                     <div class="modal-actions" style="flex-wrap:wrap;">
-                        <button type="button" class="btn btn-primary" id="s-order">📝 הזמנה</button>
+                        <button type="button" class="btn btn-primary" id="s-order">📦 הזמנות</button>
                         <button type="button" class="btn btn-secondary" id="s-show">הצג חשבוניות</button>
                         <button type="button" class="btn btn-danger" id="s-del">מחק ספק</button>
                     </div>

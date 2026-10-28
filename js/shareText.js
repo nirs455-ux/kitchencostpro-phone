@@ -17,6 +17,11 @@ export function whatsappUrl(text, phone = "") {
     return p ? `https://wa.me/${p}?text=${t}` : `https://wa.me/?text=${t}`;
 }
 
+// קישור למייל (נפתח באפליקציית המייל של הטלפון). אורך הגוף מוגבל כדי שהקישור לא יהיה ארוך מדי.
+export function mailtoUrl(email, subject, body) {
+    return `mailto:${encodeURIComponent(String(email || "").trim())}?subject=${encodeURIComponent(subject || "")}&body=${encodeURIComponent(String(body || "").slice(0, 1800))}`;
+}
+
 // כמות בגרמים -> טקסט לקריאה ("600 גרם" / '1.25 ק"ג')
 export function qtyText(g) {
     const n = Number(g) || 0;
