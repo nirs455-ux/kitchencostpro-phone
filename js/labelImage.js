@@ -7,6 +7,22 @@ export const LABEL_SIZES = {
 };
 const PX_PER_MM = 12;
 
+// מידות בפועל: לאורך = הצלעות מוחלפות (50×30 הופך 30×50). קונפיגורציה אחת לכל המדבקות.
+export function labelDims(size, portrait) {
+    const spec = LABEL_SIZES[size] || LABEL_SIZES["50x30"];
+    return portrait ? { w: spec.h, h: spec.w } : { w: spec.w, h: spec.h };
+}
+export const labelSizeText = (size, portrait) => { const d = labelDims(size, portrait); return `${d.w}×${d.h}`; };
+
+// סיבוב 90 מעלות (למדפסת שמוציאה את התמונה מסובבת)
+export function rotateCanvas(c) {
+    const out = document.createElement("canvas");
+    out.width = c.height; out.height = c.width;
+    const x = out.getContext("2d");
+    x.translate(out.width, 0); x.rotate(Math.PI / 2); x.drawImage(c, 0, 0);
+    return out;
+}
+
 export const shortDateText = (d) => `${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")}.${String(d.getFullYear()).slice(2)}`;
 
 // עוטף טקסט לשורות לפי רוחב (בפיקסלים) עם הפונט הנוכחי של ה-context
@@ -46,8 +62,8 @@ export function layoutLabel(ctx, W, H, blocks) {
     return null;
 }
 
-export function renderLabel({ size, name, prepared, expiry, allergens, weight }) {
-    const spec = LABEL_SIZES[size] || LABEL_SIZES["50x30"];
+export function renderLabel({ size, name, prepared, expiry, allergens, weight, portrait = false, rotate = false }) {
+    const spec = labelDims(size, portrait);
     const W = spec.w * PX_PER_MM;
     const H = spec.h * PX_PER_MM;
     const canvas = document.createElement("canvas");
@@ -77,13 +93,13 @@ export function renderLabel({ size, name, prepared, expiry, allergens, weight })
             y += r.gap;
         }
     }
-    return canvas;
+    return rotate ? rotateCanvas(canvas) : canvas;
 }
 
 // מדבקת ערכים תזונתיים: טבלה של ערכים ל-100 גרם (ובמדבקה רחבה גם למנה). במדבקה הקטנה רק הערכים העיקריים.
 // nutrients: [{ key, label, short, dec }], per100 / perServing: { [key]: number }
-export function renderNutritionLabel({ size, name, nutrients, per100, perServing }) {
-    const spec = LABEL_SIZES[size] || LABEL_SIZES["50x30"];
+export function renderNutritionLabel({ size, name, nutrients, per100, perServing, portrait = false, rotate = false }) {
+    const spec = labelDims(size, portrait);
     const W = spec.w * PX_PER_MM;
     const H = spec.h * PX_PER_MM;
     const canvas = document.createElement("canvas");
@@ -92,11 +108,11 @@ export function renderNutritionLabel({ size, name, nutrients, per100, perServing
     ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, W, H);
     ctx.fillStyle = "#000"; ctx.strokeStyle = "#000";
     ctx.textBaseline = "middle";
-    const small = spec.w <= 35;
+    const small = spec.w * spec.h < 1200; // רק המדבקה הקטנה (31×31) מקבלת את הערכים העיקריים
     const m = Math.round(1.2 * PX_PER_MM);
     const innerW = W - 2 * m;
     const list = small ? nutrients.filter((n) => ["kcal", "fat", "carbs", "protein"].includes(n.key)) : nutrients;
-    const withServing = !!perServing && !small;
+    const withServing = !!perServing && !small && spec.w >= 40;
     const font = (px, bold) => `${bold ? "700 " : "400 "}${px}px Arial, "Segoe UI", sans-serif`;
     const rows = list.length + 1; // כותרת עמודות + שורות
     const titleH = Math.round(H * (small ? 0.17 : 0.15));
@@ -108,12 +124,12 @@ export function renderNutritionLabel({ size, name, nutrients, per100, perServing
     ctx.font = font(tsize, true);
     while (ctx.measureText(name).width > innerW && tsize > 10) { tsize -= 2; ctx.font = font(tsize, true); }
     ctx.fillText(name, W - m, m + titleH / 2, innerW);
-    const col2 = m + Math.round(innerW * (withServing ? 0.18 : 0.0));
-    const colA = m + Math.round(innerW * (withServing ? 0.42 : 0.0)); // עמודת "ל-100 גרם" (שמאלית יותר כשיש גם למנה)
-    const valueX = withServing ? [colA, col2] : [m + Math.round(innerW * 0.2)];
+    // עמודות הערכים בצד שמאל, התוויות בצד ימין: לא נוגעות זו בזו
+    const valueX = withServing ? [m + Math.round(innerW * 0.35), m + Math.round(innerW * 0.09)] : [m + Math.round(innerW * 0.2)];
+    const labelW = innerW * (withServing ? 0.5 : 0.64);
     let y = m + titleH;
     // כותרות עמודות
-    ctx.font = font(fs, true);
+    ctx.font = font(Math.round(fs * 0.7), true);
     ctx.textAlign = "center";
     ctx.fillText("ל-100 גרם", valueX[0], y + rowH / 2);
     if (withServing) ctx.fillText("למנה", valueX[1], y + rowH / 2);
@@ -122,11 +138,11 @@ export function renderNutritionLabel({ size, name, nutrients, per100, perServing
     for (const n of list) {
         ctx.beginPath(); ctx.moveTo(m, y); ctx.lineTo(W - m, y); ctx.stroke();
         ctx.direction = "rtl"; ctx.textAlign = "right"; ctx.font = font(fs, n.key === "kcal");
-        ctx.fillText(small ? n.short : n.label, W - m, y + rowH / 2, innerW * 0.55);
+        ctx.fillText(small ? n.short : n.label, W - m, y + rowH / 2, labelW);
         ctx.textAlign = "center"; ctx.direction = "ltr"; ctx.font = font(fs, true);
         ctx.fillText(String(per100[n.key] ?? 0), valueX[0], y + rowH / 2);
         if (withServing) ctx.fillText(String(perServing[n.key] ?? 0), valueX[1], y + rowH / 2);
         y += rowH;
     }
-    return canvas;
+    return rotate ? rotateCanvas(canvas) : canvas;
 }
