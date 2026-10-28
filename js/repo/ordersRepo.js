@@ -31,6 +31,8 @@ export async function getOrderBook(supplierId) {
         history: (s.order_history || []).slice().sort((a, b) => b.id - a.id),
         phone: s.phone || "",
         email: s.email || "",
+        days: (s.order_days || []).slice(),
+        cutoff: s.order_cutoff || "",
     };
 }
 
@@ -49,13 +51,17 @@ export async function saveOrderList(supplierId, list) {
     return clean;
 }
 
-export async function setSupplierContact(supplierId, { phone, email }) {
+// פרטי הספק להזמנות: טלפון, מייל, ימי חלוקה (0 = ראשון ... 6 = שבת) ושעת סגירת הזמנות (HH:MM)
+export async function setSupplierContact(supplierId, { phone, email, days, cutoff }) {
     const s = await mustGet(supplierId);
     const p = txt(phone);
     const e = txt(email);
     if (p && !/^[\d+\-\s()]{7,20}$/.test(p)) throw new Error("מספר טלפון לא תקין");
     if (e && !validEmail(e)) throw new Error("כתובת המייל לא תקינה");
-    await dbPut("suppliers", { ...s, phone: p, email: e });
+    const c = txt(cutoff);
+    if (c && !/^([01]\d|2[0-3]):[0-5]\d$/.test(c)) throw new Error("שעה לא תקינה");
+    const d = [...new Set((days || []).map(Number).filter((n) => n >= 0 && n <= 6))].sort();
+    await dbPut("suppliers", { ...s, phone: p, email: e, order_days: d, order_cutoff: c });
 }
 
 // שומר הזמנה שנשלחה. via: whatsapp / email / copy
@@ -77,7 +83,7 @@ export async function ordersOverview() {
     const rows = await dbGetAll("suppliers");
     return rows.sort((a, b) => a.name.localeCompare(b.name, "he")).map((s) => {
         const h = (s.order_history || []).slice().sort((x, y) => y.id - x.id);
-        return { supplier: s, items: (s.order_list || []).length, orders: h.length, last: h[0] ? h[0].date : "", via: h[0] ? h[0].via : "" };
+        return { supplier: s, days: s.order_days || [], cutoff: s.order_cutoff || "", items: (s.order_list || []).length, orders: h.length, last: h[0] ? h[0].date : "", via: h[0] ? h[0].via : "" };
     });
 }
 

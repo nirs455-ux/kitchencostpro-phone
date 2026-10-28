@@ -22,8 +22,10 @@ export async function openOrderModal(supplier, onChanged, startTab = "order") {
     let note = "";
     let phone = book.phone;
     let email = book.email;
+    let days = book.days.slice();
+    let cutoff = book.cutoff;
 
-    const ov = openModal(`<div id="oq-root"></div>`, { page: true });
+    const ov = openModal(`<div id="oq-root" style="display:flex;flex-direction:column;height:100%;min-height:0;"></div>`, { page: true });
     const root = ov.querySelector("#oq-root");
     const changed = () => { if (onChanged) onChanged(); };
 
@@ -33,23 +35,50 @@ export async function openOrderModal(supplier, onChanged, startTab = "order") {
         const n = root.querySelector("#oq-note"); if (n) note = n.value;
         const p = root.querySelector("#oq-phone"); if (p) phone = p.value;
         const e = root.querySelector("#oq-email"); if (e) email = e.value;
+        const c = root.querySelector("#oq-cutoff"); if (c) cutoff = c.value;
+        if (root.querySelector("#oq-days")) days = [...root.querySelectorAll("#oq-days input:checked")].map((i) => +i.value);
     };
     const persistList = async () => { book.list = await saveOrderList(supplier.id, book.list); };
 
     function draw() {
         root.innerHTML = `
-            <h2>הזמנות: ${escapeHtml(supplier.name)}</h2>
-            <div class="seg" id="oq-seg">
-                <button data-t="order" class="${tab === "order" ? "active" : ""}">הזמנה חדשה</button>
-                <button data-t="list" class="${tab === "list" ? "active" : ""}">רשימת הזמנה <span class="seg-n">${book.list.length}</span></button>
+            <div class="pg-top"><button type="button" class="pg-back" id="oq-close" aria-label="חזרה">→</button><div class="pg-title">הזמנות: ${escapeHtml(supplier.name)}</div></div>
+            <div class="seg" id="oq-seg" style="margin:8px 14px 0;">
+                <button data-t="order" class="${tab === "order" ? "active" : ""}">הזמנה</button>
+                <button data-t="list" class="${tab === "list" ? "active" : ""}">רשימה <span class="seg-n">${book.list.length}</span></button>
                 <button data-t="history" class="${tab === "history" ? "active" : ""}">היסטוריה <span class="seg-n">${book.history.length}</span></button>
+                <button data-t="details" class="${tab === "details" ? "active" : ""}">פרטי ספק</button>
             </div>
-            <div id="oq-body" style="margin-top:10px;"></div>
-            <div class="modal-actions"><button type="button" class="btn btn-secondary" id="oq-close">סגור</button></div>`;
+            <div class="pg-body" id="oq-body"></div>
+            <div class="pg-foot" id="oq-foot" hidden></div>`;
         root.querySelectorAll("#oq-seg button").forEach((b) => { b.onclick = () => { grab(); tab = b.dataset.t; draw(); }; });
         root.querySelector("#oq-close").onclick = closeModal;
         const body = root.querySelector("#oq-body");
-        if (tab === "list") drawList(body); else if (tab === "history") drawHistory(body); else drawOrder(body);
+        if (tab === "list") drawList(body); else if (tab === "history") drawHistory(body); else if (tab === "details") drawDetails(body); else drawOrder(body);
+    }
+
+    // ---------- פרטי ספק ----------
+    const DAY_NAMES = ["א׳", "ב׳", "ג׳", "ד׳", "ה׳", "ו׳", "ש׳"];
+    function drawDetails(body) {
+        body.innerHTML = `
+            <div class="hint">הפרטים האלה משמשים לשליחת ההזמנה ולתזכורות.</div>
+            <div class="field"><label>טלפון (וואטסאפ)</label><input type="tel" id="oq-phone" value="${escapeHtml(phone)}" placeholder="050-1234567"></div>
+            <div class="field"><label>מייל</label><input type="email" id="oq-email" dir="ltr" value="${escapeHtml(email)}" placeholder="orders@supplier.com"></div>
+            <div class="field"><label>ימי חלוקה של הספק</label>
+                <div id="oq-days" class="fchips" style="flex-wrap:wrap;">${DAY_NAMES.map((n, i) => `<label class="chip ${days.includes(i) ? "active" : ""}" style="cursor:pointer;"><input type="checkbox" value="${i}" ${days.includes(i) ? "checked" : ""} style="display:none;">${n}</label>`).join("")}</div></div>
+            <div class="field"><label>שעת סגירת הזמנות (עד מתי אפשר להזמין לחלוקה)</label><input type="time" id="oq-cutoff" value="${escapeHtml(cutoff)}"></div>
+            <div class="error-msg"></div>
+            <button type="button" class="btn btn-primary btn-block" id="oq-save-details">שמירת פרטי הספק</button>`;
+        body.querySelectorAll("#oq-days input").forEach((i) => { i.onchange = () => i.parentElement.classList.toggle("active", i.checked); });
+        const err = body.querySelector(".error-msg");
+        body.querySelector("#oq-save-details").onclick = async () => {
+            grab();
+            try { await setSupplierContact(supplier.id, { phone, email, days, cutoff }); } catch (e) { err.textContent = e.message; err.style.display = "block"; return; }
+            supplier.phone = phone.trim(); supplier.email = email.trim();
+            book = await getOrderBook(supplier.id);
+            toast("נשמר");
+            changed();
+        };
     }
 
     // ---------- הזמנה חדשה ----------
@@ -64,15 +93,16 @@ export async function openOrderModal(supplier, onChanged, startTab = "order") {
             ${book.list.length ? `<div class="card-row" style="margin-bottom:6px;"><span class="hint" style="margin:0;">מלא כמות רק למה שרוצים להזמין.</span><button type="button" class="btn btn-secondary btn-small" id="oq-fill">מלא כמויות רגילות</button></div><div id="oq-list">${rows}</div>`
                 : `<div class="empty-state">אין עדיין חשבוניות של הספק הזה, ולכן הרשימה ריקה.<br>אפשר להוסיף פריטים ידנית.</div><button type="button" class="btn btn-primary btn-block" id="oq-build">הוספת פריטים</button>`}
             <div class="field" style="margin-top:8px;"><label>הערות או מוצרים נוספים להזמנה הזו</label><textarea id="oq-note" rows="2" style="width:100%;" placeholder="למשל: לספק עד 7 בבוקר">${escapeHtml(note)}</textarea></div>
-            <div class="field"><label>טלפון (וואטסאפ)</label><input type="tel" id="oq-phone" value="${escapeHtml(phone)}" placeholder="050-1234567"></div>
-            <div class="field"><label>מייל</label><input type="email" id="oq-email" dir="ltr" value="${escapeHtml(email)}" placeholder="orders@supplier.com"></div>
-            <div class="error-msg"></div>
-            <div class="modal-actions" style="flex-wrap:wrap;">
+            <div class="hint" style="margin-top:6px;">${phone || email ? `יישלח אל: ${escapeHtml([phone, email].filter(Boolean).join(" · "))}` : "עוד לא הוזנו טלפון או מייל של הספק. אפשר להוסיף בלשונית פרטי ספק."}</div>`;
+        const foot = root.querySelector("#oq-foot");
+        foot.hidden = false;
+        foot.innerHTML = `<div class="error-msg"></div>
+            <div class="modal-actions" style="margin-top:0;flex-wrap:wrap;">
                 <button type="button" class="btn btn-secondary" id="oq-copy">📋 העתק</button>
-                <button type="button" class="btn btn-secondary" id="oq-mail">✉️ שלח במייל</button>
-                <button type="button" class="btn btn-primary" id="oq-send">💬 שלח בוואטסאפ</button>
+                <button type="button" class="btn btn-secondary" id="oq-mail">✉️ מייל</button>
+                <button type="button" class="btn btn-primary" id="oq-send">💬 וואטסאפ</button>
             </div>`;
-        const err = body.querySelector(".error-msg");
+        const err = foot.querySelector(".error-msg");
         const fail = (m) => { err.textContent = m; err.style.display = "block"; };
         const fill = body.querySelector("#oq-fill");
         if (fill) fill.onclick = () => { grab(); book.list.forEach((l) => { if (l.qty) qtys.set(l.key, l.qty); }); draw(); };
@@ -94,27 +124,21 @@ export async function openOrderModal(supplier, onChanged, startTab = "order") {
             draw();
         };
         const check = (c) => { if (!c.lines.length && !c.note.trim()) { fail("לא הוזנה אף כמות."); return false; } return true; };
-        const saveContact = async () => {
-            try { await setSupplierContact(supplier.id, { phone, email }); supplier.phone = phone.trim(); supplier.email = email.trim(); return true; }
-            catch (e) { fail(e.message); return false; }
-        };
 
-        body.querySelector("#oq-copy").onclick = async () => {
+        foot.querySelector("#oq-copy").onclick = async () => {
             const c = collect(); if (!check(c)) return;
             try { await navigator.clipboard.writeText(textOf(c)); } catch (e) { fail("לא הצלחתי להעתיק"); return; }
             await finish(c, "copy");
         };
-        body.querySelector("#oq-send").onclick = async () => {
+        foot.querySelector("#oq-send").onclick = async () => {
             const c = collect(); if (!check(c)) return;
-            if (phone.trim() && !normalizePhoneIL(phone)) { fail("מספר הטלפון לא תקין."); return; }
-            if (!(await saveContact())) return;
+            if (!normalizePhoneIL(phone)) { fail("חסר טלפון תקין של הספק. אפשר להוסיף בלשונית פרטי ספק."); return; }
             window.open(whatsappUrl(textOf(c), phone), "_blank", "noopener");
             await finish(c, "whatsapp");
         };
-        body.querySelector("#oq-mail").onclick = async () => {
+        foot.querySelector("#oq-mail").onclick = async () => {
             const c = collect(); if (!check(c)) return;
-            if (!validEmail(email)) { fail("יש להזין כתובת מייל תקינה של הספק."); return; }
-            if (!(await saveContact())) return;
+            if (!validEmail(email)) { fail("חסרה כתובת מייל תקינה של הספק. אפשר להוסיף בלשונית פרטי ספק."); return; }
             const subject = `הזמנה ל-${new Date().toLocaleDateString("he-IL")} - ${supplier.name}`;
             window.location.href = mailtoUrl(email, subject, textOf(c));
             await finish(c, "email");
