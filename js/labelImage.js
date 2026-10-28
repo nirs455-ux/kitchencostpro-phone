@@ -120,10 +120,11 @@ export function renderNutritionLabel({ size, name, nutrients, per100, perServing
     const fs = Math.min(Math.round(rowH * 0.78), Math.round(W * 0.075));
     // כותרת: שם המנה, מותאמת לרוחב
     ctx.direction = "rtl"; ctx.textAlign = "right";
+    const titleW = innerW;
     let tsize = Math.round(titleH * 0.8);
     ctx.font = font(tsize, true);
-    while (ctx.measureText(name).width > innerW && tsize > 10) { tsize -= 2; ctx.font = font(tsize, true); }
-    ctx.fillText(name, W - m, m + titleH / 2, innerW);
+    while (ctx.measureText(name).width > titleW && tsize > 10) { tsize -= 2; ctx.font = font(tsize, true); }
+    ctx.fillText(name, W - m, m + titleH / 2, titleW);
     // עמודות הערכים בצד שמאל, התוויות בצד ימין: לא נוגעות זו בזו
     const valueX = withServing ? [m + Math.round(innerW * 0.35), m + Math.round(innerW * 0.09)] : [m + Math.round(innerW * 0.2)];
     const labelW = innerW * (withServing ? 0.5 : 0.64);

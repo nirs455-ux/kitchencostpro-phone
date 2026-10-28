@@ -1,4 +1,4 @@
-const CACHE_NAME = "kcp-v102";
+const CACHE_NAME = "kcp-v103";
 const ASSETS = [
     "./",
     "./index.html",
@@ -112,6 +112,8 @@ const ASSETS = [
     "./js/pages/scanModal.js",
     "./icons/icon-192.png",
     "./icons/icon-512.png",
+    "./icons/icon-maskable-512.png",
+    "./icons/icon-180.png",
 ];
 
 self.addEventListener("install", (event) => {
