@@ -59,10 +59,10 @@ export function renderLabel({ size, name, prepared, expiry, allergens, weight })
     const small = spec.w <= 35;
     const blocks = [{ text: name, base: 0.3, bold: true, maxLines: 2 }];
     if (small) {
-        if (prepared) blocks.push({ text: `הוכן: ${prepared}`, base: 0.13, bold: false, maxLines: 1 });
+        if (prepared) blocks.push({ text: `ייצור: ${prepared}`, base: 0.13, bold: false, maxLines: 1 });
         if (expiry) blocks.push({ text: `תוקף: ${expiry}`, base: 0.15, bold: true, maxLines: 1 });
     } else {
-        const dates = [prepared ? `הוכן: ${prepared}` : "", expiry ? `תוקף: ${expiry}` : ""].filter(Boolean).join("   ");
+        const dates = [prepared ? `ייצור: ${prepared}` : "", expiry ? `תוקף: ${expiry}` : ""].filter(Boolean).join("   ");
         if (dates) blocks.push({ text: dates, base: 0.14, bold: true, maxLines: 1 });
     }
     if (weight) blocks.push({ text: weight, base: 0.12, bold: false, maxLines: 1 });
@@ -76,6 +76,57 @@ export function renderLabel({ size, name, prepared, expiry, allergens, weight })
             for (const line of r.lines) { ctx.fillText(line, W - lay.m, y, lay.innerW); y += r.lh; }
             y += r.gap;
         }
+    }
+    return canvas;
+}
+
+// מדבקת ערכים תזונתיים: טבלה של ערכים ל-100 גרם (ובמדבקה רחבה גם למנה). במדבקה הקטנה רק הערכים העיקריים.
+// nutrients: [{ key, label, short, dec }], per100 / perServing: { [key]: number }
+export function renderNutritionLabel({ size, name, nutrients, per100, perServing }) {
+    const spec = LABEL_SIZES[size] || LABEL_SIZES["50x30"];
+    const W = spec.w * PX_PER_MM;
+    const H = spec.h * PX_PER_MM;
+    const canvas = document.createElement("canvas");
+    canvas.width = W; canvas.height = H;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = "#000"; ctx.strokeStyle = "#000";
+    ctx.textBaseline = "middle";
+    const small = spec.w <= 35;
+    const m = Math.round(1.2 * PX_PER_MM);
+    const innerW = W - 2 * m;
+    const list = small ? nutrients.filter((n) => ["kcal", "fat", "carbs", "protein"].includes(n.key)) : nutrients;
+    const withServing = !!perServing && !small;
+    const font = (px, bold) => `${bold ? "700 " : "400 "}${px}px Arial, "Segoe UI", sans-serif`;
+    const rows = list.length + 1; // כותרת עמודות + שורות
+    const titleH = Math.round(H * (small ? 0.17 : 0.15));
+    const rowH = (H - 2 * m - titleH) / rows;
+    const fs = Math.min(Math.round(rowH * 0.78), Math.round(W * 0.075));
+    // כותרת: שם המנה, מותאמת לרוחב
+    ctx.direction = "rtl"; ctx.textAlign = "right";
+    let tsize = Math.round(titleH * 0.8);
+    ctx.font = font(tsize, true);
+    while (ctx.measureText(name).width > innerW && tsize > 10) { tsize -= 2; ctx.font = font(tsize, true); }
+    ctx.fillText(name, W - m, m + titleH / 2, innerW);
+    const col2 = m + Math.round(innerW * (withServing ? 0.18 : 0.0));
+    const colA = m + Math.round(innerW * (withServing ? 0.42 : 0.0)); // עמודת "ל-100 גרם" (שמאלית יותר כשיש גם למנה)
+    const valueX = withServing ? [colA, col2] : [m + Math.round(innerW * 0.2)];
+    let y = m + titleH;
+    // כותרות עמודות
+    ctx.font = font(fs, true);
+    ctx.textAlign = "center";
+    ctx.fillText("ל-100 גרם", valueX[0], y + rowH / 2);
+    if (withServing) ctx.fillText("למנה", valueX[1], y + rowH / 2);
+    y += rowH;
+    ctx.lineWidth = 2;
+    for (const n of list) {
+        ctx.beginPath(); ctx.moveTo(m, y); ctx.lineTo(W - m, y); ctx.stroke();
+        ctx.direction = "rtl"; ctx.textAlign = "right"; ctx.font = font(fs, n.key === "kcal");
+        ctx.fillText(small ? n.short : n.label, W - m, y + rowH / 2, innerW * 0.55);
+        ctx.textAlign = "center"; ctx.direction = "ltr"; ctx.font = font(fs, true);
+        ctx.fillText(String(per100[n.key] ?? 0), valueX[0], y + rowH / 2);
+        if (withServing) ctx.fillText(String(perServing[n.key] ?? 0), valueX[1], y + rowH / 2);
+        y += rowH;
     }
     return canvas;
 }

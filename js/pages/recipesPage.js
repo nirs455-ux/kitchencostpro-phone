@@ -4,7 +4,7 @@ import { listRecipesWithItems, saveRecipe, deleteRecipe, recipeDishCount, recipe
 import { listAllPantryItems, addPantryItem, setItemAllergens, clearItemAllergens, setEggSize } from "../repo/pantryRepo.js";
 import { getLabelNames, setLabelName } from "../repo/labelNamesRepo.js";
 import { resolveAllergens, labelNameOf, preparedWord } from "../allergenResolve.js";
-import { openStickerModal } from "./stickerModal.js";
+import { openStickerModal, openNutritionStickerModal } from "./stickerModal.js";
 import { ALLERGENS, allergenLabels } from "../allergens.js";
 import { RECIPE_CATEGORIES, NON_FOOD_CATEGORIES, CATEGORY_GROUPS, UNIT_TYPES, UNIT_TYPE_LABELS } from "../constants.js";
 import { pricePerGram, itemCost as calcItemCost, effectivePrice, isCountItem } from "../formulas.js";
@@ -397,7 +397,7 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
             <table class="simple"><thead><tr><th></th><th>ל-100 גרם</th>${sv ? "<th>למנה</th>" : ""}<th>סה"כ</th></tr></thead><tbody>
                 ${NUTRIENTS.map((n) => `<tr><td>${escapeHtml(n.label)}</td><td><b>${N.per100[n.key]}</b></td>${sv ? `<td>${sv[n.key]}</td>` : ""}<td>${N.total[n.key]}</td></tr>`).join("")}
             </tbody></table>
-            <div class="btn-row"><button type="button" class="btn btn-secondary btn-small" id="nu-copy">📋 העתק</button><button type="button" class="btn btn-secondary btn-small" id="nu-print">🖨 הדפס</button></div>
+            <div class="btn-row"><button type="button" class="btn btn-secondary btn-small" id="nu-copy">📋 העתק</button><button type="button" class="btn btn-secondary btn-small" id="nu-print">🖨 הדפס</button><button type="button" class="btn btn-secondary btn-small" id="nu-sticker">🏷 מדבקה</button></div>
             <div class="hint" style="margin-top:8px;">הערכים הם הערכה בלבד. לתיוג רשמי נדרשת בדיקה מקצועית.</div>`
             : '<div class="hint-warn">אין רכיבים עם כמות.</div>';
         } else if (tab === "gen") {
@@ -542,6 +542,11 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
         if (nuCopy) nuCopy.onclick = async () => { try { await navigator.clipboard.writeText(nutriText()); toast("הועתק"); } catch (e) { toast("לא הצלחתי להעתיק"); } };
         const nuPrint = overlay.querySelector("#nu-print");
         if (nuPrint) nuPrint.onclick = () => printLabel(r.name + " - ערכים תזונתיים", nutriText());
+        const nuSticker = overlay.querySelector("#nu-sticker");
+        if (nuSticker) nuSticker.onclick = () => {
+            const N = computeNutrition({ items: r.items, byId, nutritionById: nutriDb, weightG: r.final_weight > 0 && !r.is_auto_weight ? r.final_weight : 0, nameFn });
+            openNutritionStickerModal({ name: r.name, nutrients: NUTRIENTS, per100: N.per100, servingG, perServingFn: perServing });
+        };
 
         // ---- לשונית מחולל ----
         const bind = (sel, ev, fn) => { const el = overlay.querySelector(sel); if (el) el[ev] = fn; };
