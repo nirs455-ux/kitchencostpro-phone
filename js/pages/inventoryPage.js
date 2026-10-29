@@ -1,5 +1,5 @@
 import { buildInventoryView, saveInventoryCounts } from "../repo/inventoryRepo.js";
-import { h, toast, escapeHtml } from "../ui.js";
+import { h, toast, escapeHtml, busy } from "../ui.js";
 import { orderCategories, matchesDeep, normalize } from "./listKit.js";
 import { assignAutoSubs, subOf } from "../autoGroups.js";
 import { openCountSheet, openCountPhoto, openCountVoice } from "./countAssistModals.js";
@@ -116,7 +116,7 @@ export async function renderInventoryPage(container) {
     container.querySelector("#ca-photo").onclick = () => openCountPhoto(countRows, applyCounts);
     container.querySelector("#ca-voice").onclick = () => openCountVoice(countRows, applyCounts);
 
-    container.querySelector("#btn-save").onclick = async () => {
+    container.querySelector("#btn-save").onclick = busy(async () => {
         const errEl = container.querySelector("#save-error");
         errEl.style.display = "none";
         const countDate = container.querySelector("#count-date").value;
@@ -135,5 +135,5 @@ export async function renderInventoryPage(container) {
             errEl.textContent = e.message;
             errEl.style.display = "block";
         }
-    };
+    });
 }

@@ -104,22 +104,45 @@ export async function dbGet(storeName, key) {
     });
 }
 
+// כתיבה נחשבת הצלחה רק כשהטרנזקציה נסגרה (oncomplete): שגיאת מכסה או ביטול מתגלים בזמן ה-commit, אחרי ש-onsuccess של הבקשה כבר ירה.
+function writeOne(storeName, run) {
+    return openDB().then((db) => new Promise((resolve, reject) => {
+        const t = db.transaction(storeName, "readwrite");
+        const req = run(t.objectStore(storeName));
+        t.oncomplete = () => { notify(storeName); resolve(req.result); };
+        t.onerror = () => reject(t.error || req.error);
+        t.onabort = () => reject(t.error || req.error || new Error("השמירה בוטלה"));
+    }));
+}
+
 export async function dbPut(storeName, value) {
-    const db = await openDB();
-    return new Promise((resolve, reject) => {
-        const req = tx(db, storeName, "readwrite").put(value);
-        req.onsuccess = () => { notify(storeName); resolve(req.result); };
-        req.onerror = () => reject(req.error);
-    });
+    return writeOne(storeName, (os) => os.put(value));
 }
 
 export async function dbDelete(storeName, key) {
-    const db = await openDB();
-    return new Promise((resolve, reject) => {
-        const req = tx(db, storeName, "readwrite").delete(key);
-        req.onsuccess = () => { notify(storeName); resolve(); };
-        req.onerror = () => reject(req.error);
-    });
+    await writeOne(storeName, (os) => os.delete(key));
+}
+
+// כמה שינויים בכמה מאגרים בטרנזקציה אחת: או שהכול נשמר או שכלום. fn(t) רץ סינכרונית ומקבל את הטרנזקציה
+// (שורות חדשות עם מזהה אוטומטי: מקבלים את המזהה ב-request.onsuccess ומוסיפים שם עוד בקשות).
+export function dbAtomic(storeNames, fn) {
+    return openDB().then((db) => new Promise((resolve, reject) => {
+        const t = db.transaction(storeNames, "readwrite");
+        t.oncomplete = () => { for (const n of storeNames) notify(n); resolve(); };
+        t.onerror = () => reject(t.error);
+        t.onabort = () => reject(t.error || new Error("השמירה בוטלה"));
+        try { fn(t); } catch (e) { try { t.abort(); } catch (e2) { /* כבר בוטל */ } reject(e); }
+    }));
+}
+
+// בתוך dbAtomic: מוחק את כל השורות של parentId במאגר הבנים ומכניס את rows במקומן
+export function txReplaceChildren(t, storeName, indexName, parentId, rows) {
+    const os = t.objectStore(storeName);
+    const req = os.index(indexName).openKeyCursor(IDBKeyRange.only(parentId));
+    req.onsuccess = () => {
+        const c = req.result;
+        if (c) { os.delete(c.primaryKey); c.continue(); } else for (const r of rows) os.put(r);
+    };
 }
 
 export async function dbDeleteWhere(storeName, indexName, value) {

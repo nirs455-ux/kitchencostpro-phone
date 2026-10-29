@@ -4,7 +4,7 @@ import { dbGetAll, dbGet, dbPut } from "../db.js";
 import { geminiFetch } from "./gemini.js";
 import { getCloseMatches } from "../fuzzyMatch.js";
 import { CATEGORY_GROUPS, UNIT_TYPES } from "../constants.js";
-import { saveInvoice } from "./suppliersRepo.js";
+import { saveInvoice, validateInvoicePayload } from "./suppliersRepo.js";
 import { getSetting, setSetting } from "./settingsRepo.js";
 import { compressImage } from "../imageUtil.js";
 import { prepareParts } from "../filePrep.js";
@@ -197,6 +197,11 @@ export async function applyScannedInvoice({ items, supplierId, invoiceDate, imag
     if (supplierId) {
         if (!invoiceDate) throw new Error("יש להזין תאריך לחשבונית");
         if (!(await dbGet("suppliers", parseInt(supplierId, 10)))) throw new Error("ספק לא נמצא");
+        // אימות מלא (שנה סבירה, סכומים) לפני שמחירי חומרי הגלם משתנים: טעות OCR בשנה לא משאירה מחירים מעודכנים בלי חשבונית
+        await validateInvoicePayload({
+            supplier_id: supplierId, invoice_date: invoiceDate, document_type: "invoice", petty_cash: pettyCash, purchaser,
+            items: plan.map((p) => ({ product_name: p.name, quantity: p.quantity, unit_price: p.unitPrice, stock_factor: p.stockFactor })),
+        });
     }
 
     // שלב 2: כתיבה

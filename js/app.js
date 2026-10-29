@@ -26,7 +26,7 @@ import { initStatusIcons, renderStatusIcons } from "./statusIcons.js";
 import { installErrorHandlers, crumb } from "./errorLog.js";
 import { openScanModal } from "./pages/scanModal.js";
 import { scanRecipeFile } from "./pages/recipesPage.js";
-import { openModal, closeModal, dropLayers, toastAction } from "./ui.js";
+import { openModal, closeModal, dropLayers, toastAction, escapeHtml } from "./ui.js";
 import { openDB } from "./db.js";
 
 const PAGES = {
@@ -95,7 +95,7 @@ async function navigate(pageKey) {
         await shown.render(view);
     } catch (e) {
         console.error(e);
-        view.innerHTML = `<div class="empty-state">שגיאה בטעינת הדף: ${e.message}</div>`;
+        view.innerHTML = `<div class="empty-state">שגיאה בטעינת הדף: ${escapeHtml(e.message)}</div>`;
     }
 }
 

@@ -1,5 +1,5 @@
 // לוגיקת מתכונים - תרגום מדויק של _resolve_recipe_items / add_recipe / update_recipe / delete_recipe.
-import { dbGetAll, dbGet, dbPut, dbDelete, dbGetByIndex, dbDeleteWhere } from "../db.js";
+import { dbGetAll, dbGet, dbPut, dbDelete, dbGetByIndex, dbDeleteWhere, dbAtomic, txReplaceChildren } from "../db.js";
 import { ensureRecipeCategory } from "./recipeCategories.js";
 import { pricePerGram, itemCost as calcItemCost, recipeCostPerGram, effectivePrice, isCountItem } from "../formulas.js";
 import { ensureEggDefaults } from "./pantryRepo.js";
@@ -156,14 +156,17 @@ export async function saveRecipe(existingId, data) {
             if (!data.source_text && prev.source_text) recipeRow.source_text = prev.source_text;
         }
         recipeRow.id = existingId;
-        await dbPut("recipes", recipeRow);
-        await dbDeleteWhere("recipeItems", "recipe_id", existingId);
-    } else {
-        recipeId = await dbPut("recipes", recipeRow);
     }
-    for (const it of resolved) {
-        await dbPut("recipeItems", { ...it, recipe_id: recipeId });
-    }
+    // המתכון והרכיבים נשמרים בטרנזקציה אחת: קריסה באמצע לא משאירה מתכון בלי רכיבים
+    await dbAtomic(["recipes", "recipeItems"], (t) => {
+        if (existingId) {
+            t.objectStore("recipes").put(recipeRow);
+            txReplaceChildren(t, "recipeItems", "recipe_id", existingId, resolved.map((it) => ({ ...it, recipe_id: existingId })));
+        } else {
+            const req = t.objectStore("recipes").put(recipeRow);
+            req.onsuccess = () => { recipeId = req.result; for (const it of resolved) t.objectStore("recipeItems").put({ ...it, recipe_id: recipeId }); };
+        }
+    });
     return recipeId;
 }
 

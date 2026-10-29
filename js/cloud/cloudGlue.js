@@ -6,12 +6,14 @@ import { getSetting, setSetting } from "../repo/settingsRepo.js";
 import { APP_VERSION } from "../constants.js";
 import { GOOGLE_CLIENT_ID } from "./config.js";
 import { logError } from "../errorLog.js";
+import { isDeviceOnlySetting } from "../deviceSettings.js";
+import { downloadSafetyCopy } from "../export.js";
 
 const SCOPE = "https://www.googleapis.com/auth/drive.file"; // רק קבצים שהאפליקציה יצרה
 const GIS_URL = "https://accounts.google.com/gsi/client";
 const DEBOUNCE_MS = 20000;
-// הגדרות שלא עולות לענן ולא נדרסות בשחזור: מפתח Gemini, מצב הענן עצמו, מזהה הלקוח
-const LOCAL_ONLY = (k) => k === "gemini_api_key" || k === "google_client_id" || k.startsWith("cloud_");
+// הגדרות שלא עולות לענן ולא נדרסות בשחזור: מפתח Gemini, מצב הענן, מזהה הלקוח, קוד נעילת עובד ותפקיד
+const LOCAL_ONLY = isDeviceOnlySetting; // ראה deviceSettings.js
 
 let clientIdCache = null;
 export async function getClientId() {
@@ -161,6 +163,8 @@ export async function disconnectCloud() {
     setState("idle");
 }
 export async function restoreFromCloud() {
+    // לפני שהנתונים בטלפון מוחלפים: עותק ביטחון להורדה (עבודה שעוד לא גובתה לא הולכת לאיבוד)
+    if (await localHasData()) { try { await downloadSafetyCopy(); } catch (e) { logError("cloud-safety-copy", e); } }
     const res = await withInteractive(() => cloud.restore());
     await setSetting("cloud_dirty", false);
     await refreshStatus();

@@ -2,13 +2,15 @@
 import { STORES, dbGetAll, dbReplaceAll } from "./db.js";
 import { blobToDataUrl, dataUrlToBlob } from "./imageUtil.js";
 import { setSetting } from "./repo/settingsRepo.js";
+import { isDeviceOnlySetting } from "./deviceSettings.js";
+import { APP_VERSION } from "./constants.js";
 
-// הגדרות של חיבור הענן שייכות למכשיר ולא עוברות בגיבוי ידני (ולא נדרסות בייבוא)
-const DEVICE_ONLY = (k) => String(k).startsWith("cloud_") || k === "google_client_id";
+// הגדרות המכשיר (ענן, מפתח Gemini אישי, קוד נעילת עובד, תפקיד) לא עוברות בגיבוי ידני ולא נדרסות בייבוא
+const DEVICE_ONLY = isDeviceOnlySetting;
 
 // images=false: גיבוי קל בלי תמונות חשבוניות וקבצי מקור של מתכונים (כל שאר הנתונים נשמרים)
 export async function exportAllData({ images = true } = {}) {
-    const data = { exported_at: new Date().toISOString(), version: 1, images, stores: {} };
+    const data = { exported_at: new Date().toISOString(), version: 1, app_version: APP_VERSION, images, stores: {} };
     for (const name of Object.keys(STORES)) {
         const rows = await dbGetAll(name);
         // תמונות חשבוניות (Blob) נשמרות בגיבוי כ-data URL
@@ -63,7 +65,7 @@ export function inspectBackup(fileText) {
         throw new Error("קובץ לא תקין - זה לא קובץ גיבוי של KitchenCostPro");
     }
     const count = (n) => (Array.isArray(data.stores[n]) ? data.stores[n].length : 0);
-    return { data, pantry: count("pantryItems"), recipes: count("recipes"), dishes: count("dishes"), exportedAt: data.exported_at || "", noImages: data.images === false };
+    return { data, pantry: count("pantryItems"), recipes: count("recipes"), dishes: count("dishes"), exportedAt: data.exported_at || "", noImages: data.images === false, appVersion: data.app_version || "", unknownStores: Object.keys(data.stores).filter((n) => !STORES[n]) };
 }
 
 // מחליף את כל הנתונים הקיימים באלה שבקובץ הגיבוי. פעולה הרסנית - קוראים לה רק אחרי אישור מהמשתמש.

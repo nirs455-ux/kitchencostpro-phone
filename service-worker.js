@@ -1,4 +1,4 @@
-const CACHE_NAME = "kcp-v104";
+const CACHE_NAME = "kcp-v105";
 const ASSETS = [
     "./",
     "./index.html",
@@ -52,6 +52,8 @@ const ASSETS = [
     "./js/repo/ordersRepo.js",
     "./js/orderReminders.js",
     "./js/countAssist.js",
+    "./js/deviceSettings.js",
+    "./js/dates.js",
     "./js/pages/countAssistModals.js",
     "./js/labelImage.js",
     "./js/pages/stickerModal.js",
@@ -97,6 +99,7 @@ const ASSETS = [
     "./js/zip.js",
     "./js/receiptGroups.js",
     "./js/ciqual.js",
+    "./data/ciqual.json",
     "./js/salesCalc.js",
     "./js/pages/salesPage.js",
     "./js/repo/dishesRepo.js",
@@ -126,7 +129,7 @@ self.addEventListener("install", (event) => {
 
 self.addEventListener("activate", (event) => {
     event.waitUntil(
-        caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k))))
+        caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== CACHE_NAME && k !== "kcp-share").map((k) => caches.delete(k))))
             .then(() => self.clients.claim())
     );
 });

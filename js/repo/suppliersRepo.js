@@ -1,6 +1,7 @@
 // לוגיקת ספקים/חשבוניות - תרגום מדויק של add_supplier/delete_supplier/_parse_invoice_payload/add_invoice/update_invoice/delete_invoice.
 import { dbGetAll, dbGet, dbPut, dbDelete, dbGetByIndex, dbDeleteWhere } from "../db.js";
 import { expandToParents } from "./subRecipes.js";
+import { localDate } from "../dates.js";
 
 export async function listSuppliers() {
     const rows = await dbGetAll("suppliers");
@@ -26,7 +27,8 @@ export async function getSupplierDeleteInfo(id) {
     if (!supplier) throw new Error("ספק לא נמצא");
     const invoices = (await dbGetByIndex("invoices", "supplier_id", id)).filter((i) => !i.deleted_at);
     const total = invoices.reduce((n, i) => n + (i.total_amount || 0), 0);
-    return { id, name: supplier.name, invoice_count: invoices.length, invoices_total: Math.round(total * 100) / 100 };
+    const trashed = (await dbGetByIndex("invoices", "supplier_id", id)).filter((i) => i.deleted_at).length;
+    return { id, name: supplier.name, invoice_count: invoices.length, trashed_count: trashed, invoices_total: Math.round(total * 100) / 100 };
 }
 
 // מחיקת ספק בכל שלב - נמחק יחד עם החשבוניות שלו (האישור מציג כמה).
@@ -256,7 +258,7 @@ export async function priceChanges({ thresholdPct = 10, invoiceId = null, sinceD
     const series = await priceSeries();
     const pantry = Object.fromEntries((await dbGetAll("pantryItems")).map((p) => [p.id, p]));
     const out = [];
-    const cutoff = sinceDays ? new Date(Date.now() - sinceDays * 86400000).toISOString().slice(0, 10) : null;
+    const cutoff = sinceDays ? localDate(new Date(Date.now() - sinceDays * 86400000)) : null;
     for (const [pid, list] of series) {
         const p = pantry[pid];
         if (!p || list.length < 2) continue;

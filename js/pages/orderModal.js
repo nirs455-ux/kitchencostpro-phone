@@ -2,7 +2,7 @@
 import { openModal, closeModal, toast, escapeHtml, confirmDialog } from "../ui.js";
 import { listAllPantryItems } from "../repo/pantryRepo.js";
 import { getOrderBook, saveOrderList, setSupplierContact, recordOrder, deleteOrder, normalizeLine, lineQtyText, validEmail, suggestOrderLines, lineIdentity } from "../repo/ordersRepo.js";
-import { whatsappUrl, mailtoUrl, orderText, normalizePhoneIL } from "../shareText.js";
+import { whatsappUrl, mailtoUrl, orderText, normalizePhoneIL, MAIL_BODY_MAX } from "../shareText.js";
 
 const shortDate = (d) => { const [y, m, day] = String(d || "").split("-"); return day ? `${parseInt(day, 10)}.${parseInt(m, 10)}.${y.slice(2)}` : String(d || ""); };
 const VIA = { whatsapp: "💬 וואטסאפ", email: "✉️ מייל", copy: "📋 הועתק" };
@@ -139,6 +139,7 @@ export async function openOrderModal(supplier, onChanged, startTab = "order") {
         foot.querySelector("#oq-mail").onclick = async () => {
             const c = collect(); if (!check(c)) return;
             if (!validEmail(email)) { fail("חסרה כתובת מייל תקינה של הספק. אפשר להוסיף בלשונית פרטי ספק."); return; }
+            if (textOf(c).length > MAIL_BODY_MAX) { fail("הרשימה ארוכה מדי לשליחה במייל (המייל היה נחתך). שלח בוואטסאפ או העתק."); return; }
             const subject = `הזמנה ל-${new Date().toLocaleDateString("he-IL")} - ${supplier.name}`;
             window.location.href = mailtoUrl(email, subject, textOf(c));
             await finish(c, "email");

@@ -1,6 +1,7 @@
 // בניית מדבקת מוצר להדפסה (HTML). טהור (בלי DOM/DB) כדי שאפשר לבדוק ב-Node.
 // זו טיוטה לעזר: האחריות לתיוג ולתקנות היא של בעל העסק.
 import { NUTRITION_FIELDS, addDaysIso, fmtDateHe } from "./repo/producerRepo.js";
+import { localDate } from "./dates.js";
 
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
@@ -24,7 +25,7 @@ export function buildLabelHtml(data) {
     const count = Math.max(1, Math.min(500, Math.round(Number(data.count) || 1)));
     const sz = LABEL_SIZES.find((s) => s.key === size) || LABEL_SIZES[1];
     const ing = (label.ingredients || []).map((i) => i.name).join(", ");
-    const prodDate = /^\d{4}-\d{2}-\d{2}$/.test(String(productionDate || "")) ? productionDate : new Date().toISOString().slice(0, 10);
+    const prodDate = /^\d{4}-\d{2}-\d{2}$/.test(String(productionDate || "")) ? productionDate : localDate();
     const expiry = product.shelf_days > 0 ? addDaysIso(prodDate, product.shelf_days) : "";
     const hasNutrition = showNutrition && product.nutrition && NUTRITION_FIELDS.some((f) => product.nutrition[f.key] != null);
 

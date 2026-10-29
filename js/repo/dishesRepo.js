@@ -1,5 +1,5 @@
 // לוגיקת מנות - תרגום מדויק של _resolve_dish_items / _parse_dish_payload / add_dish / update_dish / delete_dish.
-import { dbGetAll, dbGet, dbPut, dbDelete, dbGetByIndex, dbDeleteWhere } from "../db.js";
+import { dbGetAll, dbGet, dbPut, dbDelete, dbGetByIndex, dbDeleteWhere, dbAtomic, txReplaceChildren } from "../db.js";
 import { pricePerGram, itemCost as calcItemCost, computeDishPricing, isCountItem } from "../formulas.js";
 
 export async function listDishesWithItems() {
@@ -79,16 +79,17 @@ export async function saveDish(existingId, data) {
         multiplier: clean.multiplier, selling_price: clean.selling_price, ...pricing,
     };
     let dishId = existingId;
-    if (existingId) {
-        dishRow.id = existingId;
-        await dbPut("dishes", dishRow);
-        await dbDeleteWhere("dishItems", "dish_id", existingId);
-    } else {
-        dishId = await dbPut("dishes", dishRow);
-    }
-    for (const it of resolved) {
-        await dbPut("dishItems", { ...it, dish_id: dishId });
-    }
+    if (existingId) dishRow.id = existingId;
+    // המנה והרכיבים נשמרים בטרנזקציה אחת: קריסה באמצע לא משאירה מנה בלי רכיבים
+    await dbAtomic(["dishes", "dishItems"], (t) => {
+        if (existingId) {
+            t.objectStore("dishes").put(dishRow);
+            txReplaceChildren(t, "dishItems", "dish_id", existingId, resolved.map((it) => ({ ...it, dish_id: existingId })));
+        } else {
+            const req = t.objectStore("dishes").put(dishRow);
+            req.onsuccess = () => { dishId = req.result; for (const it of resolved) t.objectStore("dishItems").put({ ...it, dish_id: dishId }); };
+        }
+    });
     return dishId;
 }
 

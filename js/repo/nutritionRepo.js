@@ -3,6 +3,7 @@
 import { getSetting, setSetting } from "./settingsRepo.js";
 import { parseUsdaFoods, parseOffProduct, cleanNutrition } from "../nutrition.js";
 import { geminiFetch } from "./gemini.js";
+import { localDate } from "../dates.js";
 
 const DB_KEY = "nutrition_db";
 const USDA_KEY = "usda_api_key";
@@ -17,7 +18,7 @@ export async function saveNutrition(pantryId, per100, { source = "manual", label
     const clean = cleanNutrition(per100);
     if (!Object.keys(clean).length) throw new Error("יש להזין לפחות ערך אחד");
     const db = await getNutritionDb();
-    db[pantryId] = { ...clean, _source: source, _label: label, _at: new Date().toISOString().slice(0, 10) };
+    db[pantryId] = { ...clean, _source: source, _label: label, _at: localDate() };
     await setSetting(DB_KEY, db);
     return db;
 }
@@ -37,7 +38,7 @@ export async function rememberChoice(cleanName, per100, label = "") {
     const clean = cleanNutrition(per100);
     if (!Object.keys(clean).length) return;
     const all = await getNutritionChoices();
-    all[key] = { ...clean, _label: label, _at: new Date().toISOString().slice(0, 10) };
+    all[key] = { ...clean, _label: label, _at: localDate() };
     await setSetting(CHOICES_KEY, all);
 }
 
@@ -51,7 +52,7 @@ export async function applyRememberedNutrition(rows, nameFn) {
         const c = choices[normName(nameFn(row))];
         if (!c) continue;
         const { _label, _at, ...vals } = c;
-        db[row.id] = { ...vals, _source: "remembered", _label, _at: new Date().toISOString().slice(0, 10) };
+        db[row.id] = { ...vals, _source: "remembered", _label, _at: localDate() };
         changed = true;
     }
     if (changed) await setSetting(DB_KEY, db);
@@ -73,7 +74,7 @@ export async function getLabelInfo() {
 }
 export async function saveLabelInfo(pantryId, { ingredients = "", mayContain = [], net_g = null } = {}) {
     const all = await getLabelInfo();
-    all[pantryId] = { ingredients: String(ingredients || "").trim(), may_contain: Array.isArray(mayContain) ? mayContain : [], net_g: Number(net_g) > 0 ? Number(net_g) : null, _at: new Date().toISOString().slice(0, 10) };
+    all[pantryId] = { ingredients: String(ingredients || "").trim(), may_contain: Array.isArray(mayContain) ? mayContain : [], net_g: Number(net_g) > 0 ? Number(net_g) : null, _at: localDate() };
     await setSetting(LABEL_KEY, all);
     return all[pantryId];
 }

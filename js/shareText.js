@@ -18,8 +18,10 @@ export function whatsappUrl(text, phone = "") {
 }
 
 // קישור למייל (נפתח באפליקציית המייל של הטלפון). אורך הגוף מוגבל כדי שהקישור לא יהיה ארוך מדי.
+export const MAIL_BODY_MAX = 1800;
 export function mailtoUrl(email, subject, body) {
-    return `mailto:${encodeURIComponent(String(email || "").trim())}?subject=${encodeURIComponent(subject || "")}&body=${encodeURIComponent(String(body || "").slice(0, 1800))}`;
+    const to = encodeURIComponent(String(email || "").trim()).replace(/%40/g, "@").replace(/%2C/gi, ",");
+    return `mailto:${to}?subject=${encodeURIComponent(subject || "")}&body=${encodeURIComponent(String(body || "").slice(0, MAIL_BODY_MAX))}`;
 }
 
 // כמות בגרמים -> טקסט לקריאה ("600 גרם" / '1.25 ק"ג')

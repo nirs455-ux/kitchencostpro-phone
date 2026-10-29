@@ -14,6 +14,7 @@ import { openOrderModal } from "./orderModal.js";
 import { ordersOverview } from "../repo/ordersRepo.js";
 import { listRow, groupsEl } from "./listKit.js";
 import { compressImage, showImageFullscreen } from "../imageUtil.js";
+import { localMonth } from "../dates.js";
 
 function todayLocal() {
     const d = new Date();
@@ -262,7 +263,7 @@ export async function renderSuppliersPage(container) {
         body.querySelector("#btn-add-supplier").onclick = () => openSupplierModal(container);
         const list = body.querySelector("#sup-list");
         if (!suppliers.length) { list.innerHTML = '<div class="empty-state">עדיין אין ספקים.<br>הם נוספים אוטומטית בסריקה, או ידנית כאן.</div>'; return; }
-        const thisMonth = new Date().toISOString().slice(0, 7);
+        const thisMonth = localMonth();
         for (const s of suppliers) {
             const mine = invoices.filter((i) => i.supplier_id === s.id);
             const monthTotal = mine.filter((i) => (i.invoice_date || "").startsWith(thisMonth)).reduce((n, i) => n + (i.document_type === "credit" ? -i.total_amount : i.total_amount), 0);
@@ -285,6 +286,7 @@ export async function renderSuppliersPage(container) {
                         const infoD = await getSupplierDeleteInfo(s.id);
                         let msg = `למחוק את הספק "${escapeHtml(infoD.name)}"?`;
                         if (infoD.invoice_count) msg += `<br><br>יימחקו גם ${infoD.invoice_count} חשבוניות שלו (סה"כ ${money(infoD.invoices_total)}).<br>הקניות שלהן ייגרעו מהסיכום החודשי ומחישוב המלאי.`;
+                        if (infoD.trashed_count) msg += `<br><br>יימחקו סופית גם ${infoD.trashed_count} חשבוניות שלו שנמצאות בפח.`;
                         if (!(await confirmDialog(msg))) return;
                         await deleteSupplier(s.id);
                         closeModal();

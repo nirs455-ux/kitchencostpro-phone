@@ -1,5 +1,5 @@
 // לוגיקת ספירת מלאי - תרגום מדויק של inventory_page / save_inventory_counts.
-import { dbGetAll, dbGet, dbPut, dbGetByIndex } from "../db.js";
+import { dbGetAll, dbGet, dbGetByIndex, dbAtomic } from "../db.js";
 import { loadSalesCtx } from "./salesRepo.js";
 import { consumptionEvents, consumedBetween, theoreticalStock } from "../salesCalc.js";
 
@@ -57,6 +57,8 @@ export async function buildInventoryView() {
 export async function saveInventoryCounts(countDate, counts) {
     if (!countDate) throw new Error("יש לבחור תאריך ספירה");
     if (!counts || counts.length === 0) throw new Error("יש להזין כמות שנספרה לפחות למוצר אחד");
+    // קודם מאמתים הכול, ורק אז כותבים בטרנזקציה אחת: ערך לא תקין באמצע לא משאיר ספירה חלקית (ושמירה חוזרת לא יוצרת כפילויות)
+    const rows = [];
     for (const c of counts) {
         const pantryItemId = parseInt(c.pantry_item_id, 10);
         const countedQuantity = parseFloat(c.counted_quantity);
@@ -64,6 +66,7 @@ export async function saveInventoryCounts(countDate, counts) {
         if (countedQuantity < 0) throw new Error("כמות שנספרה לא יכולה להיות שלילית");
         const item = await dbGet("pantryItems", pantryItemId);
         if (!item) throw new Error(`מוצר לא נמצא (מזהה ${pantryItemId})`);
-        await dbPut("inventoryCounts", { pantry_item_id: pantryItemId, count_date: countDate, counted_quantity: countedQuantity });
+        rows.push({ pantry_item_id: pantryItemId, count_date: countDate, counted_quantity: countedQuantity });
     }
+    await dbAtomic(["inventoryCounts"], (t) => { for (const r of rows) t.objectStore("inventoryCounts").put(r); });
 }

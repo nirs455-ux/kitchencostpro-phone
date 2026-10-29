@@ -66,6 +66,14 @@ export function createCloud(deps) {
             if (!force && remote.exists && lastRemote && remote.modifiedTime && remote.modifiedTime !== lastRemote) throw new CloudConflict(remote.modifiedTime);
             if (!force && remote.exists && !lastRemote) throw new CloudConflict(remote.modifiedTime);
 
+            // דריסה בכוח: קודם שומרים את הנתונים שבענן בתיקיית הגיבויים (לא נמחק אוטומטית), כדי שאפשר יהיה לשחזר אם זו הייתה טעות
+            if (force && remote.exists && remote.id) {
+                try {
+                    const old = await drive.downloadText(remote.id);
+                    await drive.upsertByName({ name: `before-overwrite-${now().toISOString().replace(/[:.]/g, "-")}.json`, parentId: ids.backups, blob: new Blob([old], { type: "application/json" }), mime: "application/json" });
+                } catch (e) { /* עותק הביטחון נכשל: לא חוסמים את הגיבוי שהמשתמש אישר */ }
+            }
+
             const stores = await getStores();
             const { json, blobs } = packForCloud(stores, { ...(deps.meta ? deps.meta() : {}), exported_at: now().toISOString() });
             const filesMap = (await settings.get("cloud_files")) || {};
