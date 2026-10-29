@@ -12,7 +12,7 @@ import { buildBasePrompt, parseBaseAnswer } from "../bakers.js";
 import { NON_FOOD_CATEGORIES } from "../constants.js";
 import { recipeScanPrompt, buildRecipeDraft } from "../recipeParse.js";
 import { getRecipeCategories } from "./recipeCategories.js";
-import { INVOICE_SCAN_PROMPT, mergeDiscountLines, computeStockFactor, toFloat } from "../invoiceParse.js";
+import { INVOICE_SCAN_PROMPT, mergeDiscountLines, computeStockFactor, toFloat, cleanVatTotals } from "../invoiceParse.js";
 import { LABEL_SCAN_PROMPT, parseLabelAnswer } from "../labelParse.js";
 import { COUNT_SCAN_PROMPT } from "../countAssist.js";
 
@@ -133,11 +133,11 @@ export async function scanInvoiceImage(apiKey, file, onRetry) {
         });
     }
 
-    return { skipped_lines: skippedLines, supplier_name: parsed.supplier_name || null, invoice_date: parsed.invoice_date || null, invoice_total: toFloat(parsed.invoice_total), items: enrichedItems, attachment: prepared.attachment, partial: !!prepared.partial };
+    return { skipped_lines: skippedLines, supplier_name: parsed.supplier_name || null, invoice_date: parsed.invoice_date || null, invoice_total: toFloat(parsed.invoice_total), vat: cleanVatTotals(parsed.totals), items: enrichedItems, attachment: prepared.attachment, partial: !!prepared.partial };
 }
 
 // מחיל את שורות הסריקה על חומרי הגלם (ואופציונלית שומר כחשבונית מקושרת לספק). מקביל ל-apply_scanned_invoice.
-export async function applyScannedInvoice({ items, supplierId, invoiceDate, image, pettyCash = false, purchaser = "" }) {
+export async function applyScannedInvoice({ items, supplierId, invoiceDate, image, pettyCash = false, purchaser = "", vat = null }) {
     // שלב 1: אימות מלא ובניית תוכנית - שום כתיבה עד שכל השורות תקינות (אין שמירה חלקית)
     const plan = [];
     for (let i = 0; i < items.length; i++) {
@@ -239,7 +239,7 @@ export async function applyScannedInvoice({ items, supplierId, invoiceDate, imag
         invoiceId = await saveInvoice(null, {
             supplier_id: supplierId, invoice_date: invoiceDate, document_type: "invoice", items: invoiceLineItems,
             image: image instanceof Blob ? image : undefined,
-            petty_cash: pettyCash, purchaser,
+            petty_cash: pettyCash, purchaser, vat,
         });
     }
     if (aliasPairs.length) {

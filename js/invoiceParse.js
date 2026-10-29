@@ -9,6 +9,7 @@ export const INVOICE_SCAN_PROMPT =
     '  "supplier_name": "שם הספק אם מופיע בבירור, אחרת null",\n' +
     '  "invoice_date": "תאריך בפורמט YYYY-MM-DD אם מופיע, אחרת null",\n' +
     '  "invoice_total": 123.45,\n' +
+    '  "totals": {"taxable": 75.75, "exempt": 77.6, "subtotal": 153.35, "vat": 13.64, "total": 166.99},\n' +
     '  "items": [\n' +
     '    {"name": "שם המוצר בעברית", "quantity": 1.0, "unit_price": 10.0, "line_total": 10.0, "is_discount": false, "category_guess": "ירקניה", "unit_guess": "weight"}\n' +
     "  ]\n" +
@@ -21,7 +22,8 @@ export const INVOICE_SCAN_PROMPT =
     "הנחות כלליות על כל החשבונית (מועדון, הנחה בסוף הקבלה) - אל תחזיר בכלל. בכל שאר השורות is_discount=false.\n" +
     "category_guess: הקטגוריה המתאימה ביותר למוצר, אחת מהבאות בלבד: מהים, קצביה, ירקניה, יבשים, מחלבה, בר, מחסן (ניקיון/חד-פעמי). " +
     "unit_guess: weight אם המוצר נמכר לפי משקל, liter אם נוזל לפי נפח, unit אם נמכר ביחידות/חבילות/גבעולים.\n" +
-    "invoice_total הוא הסכום הסופי לתשלום כפי שמודפס בתחתית הקבלה (מספר), או null אם לא מופיע בבירור.\n" +
+    "invoice_total הוא הסכום הסופי לתשלום כולל מע\"מ כפי שמודפס בתחתית הקבלה (מספר), או null אם לא מופיע בבירור.\n" +
+    "totals: סיכומי החשבונית כפי שמודפסים בתחתית, מספרים או null אם לא מופיעים: taxable=סה\"כ חייב במע\"מ, exempt=סה\"כ לא חייב במע\"מ, subtotal=סה\"כ ללא מע\"מ, vat=סכום המע\"מ, total=סה\"כ כולל מע\"מ. העתק בדיוק כפי שכתוב, אל תחשב בעצמך.\n" +
     "שים לב במיוחד לשנה בתאריך: העתק אותה בדיוק כפי שהיא כתובה בתמונה, ספרה ספרה - אל תנחש ואל תעגל אותה.";
 
 // כמו float() של פייתון: null/ריק/לא-מספר -> null
@@ -34,6 +36,35 @@ export function toFloat(v) {
 function truthy(v) {
     if (typeof v === "string") return ["true", "1", "yes"].includes(v.trim().toLowerCase());
     return Boolean(v);
+}
+
+// סיכומי מע"מ מהחשבונית כפי שמודפסים: { taxable, exempt, subtotal, vat, total } - מספרים או null. null אם אין אף אחד.
+export function cleanVatTotals(raw) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+    const out = {};
+    let any = false;
+    for (const k of ["taxable", "exempt", "subtotal", "vat", "total"]) {
+        const n = toFloat(raw[k]);
+        out[k] = n === null ? null : Math.round(n * 100) / 100;
+        if (out[k] !== null) any = true;
+    }
+    return any ? out : null;
+}
+
+// שורות הסיכום בסדר שבו הן מופיעות בחשבונית (רק מה שקיים): [[תווית, סכום]]
+export function vatLines(vat) {
+    if (!vat) return [];
+    return [['סה"כ חייב במע"מ', vat.taxable], ['סה"כ לא חייב במע"מ', vat.exempt], ['סה"כ ללא מע"מ', vat.subtotal], ['סכום המע"מ', vat.vat], ['סה"כ כולל מע"מ', vat.total]].filter(([, v]) => v !== null && v !== undefined);
+}
+
+// הסכום שאליו משווים את סכום השורות (שהוא לפני מע"מ): "סה"כ ללא מע"מ", או "כולל מע"מ פחות המע"מ"; רק בלי שניהם: הסכום הסופי.
+// מחזיר { ref, label } או null כשאין עם מה להשוות.
+export function totalsReference(vat, printedTotal) {
+    if (vat && vat.subtotal != null) return { ref: vat.subtotal, label: 'סה"כ ללא מע"מ' };
+    const total = vat && vat.total != null ? vat.total : printedTotal;
+    if (total != null && vat && vat.vat != null) return { ref: Math.round((total - vat.vat) * 100) / 100, label: 'סה"כ ללא מע"מ' };
+    if (total != null) return { ref: total, label: "סכום החשבונית" };
+    return null;
 }
 
 const round = (x, d) => Math.round(x * 10 ** d) / 10 ** d;

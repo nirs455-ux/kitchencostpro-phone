@@ -2,6 +2,7 @@
 import { dbGetAll, dbGet, dbPut, dbDelete, dbGetByIndex, dbDeleteWhere } from "../db.js";
 import { expandToParents } from "./subRecipes.js";
 import { localDate } from "../dates.js";
+import { cleanVatTotals } from "../invoiceParse.js";
 
 export async function listSuppliers() {
     const rows = await dbGetAll("suppliers");
@@ -87,6 +88,7 @@ function parseInvoicePayload(data) {
     return {
         supplier_id: supplierId, invoice_date: invoiceDate, document_type: documentType, items: resolved, total: Math.round(total * 100) / 100,
         petty_cash: !!data.petty_cash, purchaser: (data.purchaser || "").trim(), reimbursed: !!data.petty_cash && !!data.reimbursed,
+        vat: data.vat === undefined ? undefined : cleanVatTotals(data.vat),
     };
 }
 
@@ -120,10 +122,13 @@ export async function saveInvoice(existingId, data) {
     let invoiceId = existingId;
     // תמונה: Blob חדש = החלפה; null = הסרה; לא הועבר = נשארת התמונה הקיימת
     if (data.image instanceof Blob) invoiceRow.image = data.image;
+    if (clean.vat) invoiceRow.vat = clean.vat;
     if (existingId) {
-        if (data.image === undefined) {
+        // תמונה וסיכומי מע"מ שלא הועברו (עריכה ידנית) נשארים כמו שהיו
+        if (data.image === undefined || (data.vat === undefined && !invoiceRow.vat)) {
             const prev = await dbGet("invoices", existingId);
-            if (prev && prev.image) invoiceRow.image = prev.image;
+            if (prev && data.image === undefined && prev.image) invoiceRow.image = prev.image;
+            if (prev && data.vat === undefined && prev.vat) invoiceRow.vat = prev.vat;
         }
         invoiceRow.id = existingId;
         await dbPut("invoices", invoiceRow);

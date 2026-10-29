@@ -10,6 +10,7 @@ import { FILE_ACCEPT, DOC_ACCEPT } from "../filePrep.js";
 import { driveButtonHtml, pickFromDrive, warmDrivePicker, ONEDRIVE_LOGO } from "../cloud/drivePicker.js";
 import { logError } from "../errorLog.js";
 import { priceChanges } from "../repo/suppliersRepo.js";
+import { totalsReference, vatLines } from "../invoiceParse.js";
 import { showPriceChangesDialog } from "./priceAlerts.js";
 
 // שורה שנראית כמו מבצע/הנחה: שם עם "מבצע"/"הנחה"/"3 ב-50", או כמות/מחיר שליליים. רק לשורות כאלה מוצג כפתור "זו שורת מבצע".
@@ -52,14 +53,15 @@ export async function openScanModal({ supplierAware, onDone, initialFile = null 
                 <div class="hint-warn" id="scan-no-supplier" style="display:none;">לא נבחר ספק - החשבונית לא תישמר בדף הספקים, רק חומרי הגלם יתעדכן.</div>
             </div>
             <div class="field"><label>תאריך</label><input type="date" id="scan-date" value="${todayLocal()}"></div>
-            <button type="button" class="btn-link" id="scan-petty-show">＋ זו קופה קטנה (עובד קנה והוחזר לו במזומן)</button>
-            <div class="checkbox-field" id="scan-petty-wrap" style="display:none;"><input type="checkbox" id="scan-petty"><label for="scan-petty">קופה קטנה (עובד קנה וקיבל החזר במזומן)</label></div>
+            <button type="button" class="btn-link" id="scan-petty-show">＋ זו קופה קטנה</button>
+            <div class="checkbox-field" id="scan-petty-wrap" style="display:none;"><input type="checkbox" id="scan-petty"><label for="scan-petty">קופה קטנה</label></div>
             <div class="field" id="scan-purchaser-wrap" style="display:none;"><input type="text" id="scan-purchaser" placeholder="מי רכש (אופציונלי)"></div>
             ` : ""}
             <div id="scan-summary" style="margin-bottom:8px;"></div>
             <div id="scan-autosave" class="hint-warn" style="display:none;"></div>
             <div id="scan-items-box"></div>
             <div class="card-row" style="font-weight:700;margin:8px 0 2px;"><span>סה"כ השורות</span><span id="scan-sum">${cur()}0.00</span></div>
+            <div id="scan-vat"></div>
             <div class="hint-warn" id="scan-total-warn" style="display:none;"></div>
             <div class="card-row" style="font-weight:700;margin:8px 0;"><span>סה"כ החשבונית (לפי השורות שמעל)</span><span id="scan-total">${cur()}0.00</span></div>
             <div class="error-msg" id="scan-apply-error"></div>
@@ -85,6 +87,7 @@ export async function openScanModal({ supplierAware, onDone, initialFile = null 
     let scannedFile = null;
     let scannedAttachment = null; // הקובץ שיישמר עם החשבונית (תמונה מכווצת / PDF / המסמך המקורי)
     let printedTotal = null;
+    let scannedVat = null; // סיכומי המע"מ כפי שמודפסים בחשבונית
     const pettyShow = overlay.querySelector("#scan-petty-show");
     if (pettyShow) pettyShow.onclick = () => { pettyShow.style.display = "none"; overlay.querySelector("#scan-petty-wrap").style.display = "flex"; overlay.querySelector("#scan-petty").checked = true; overlay.querySelector("#scan-purchaser-wrap").style.display = "block"; };
     const pettyBox = overlay.querySelector("#scan-petty");
@@ -163,6 +166,7 @@ export async function openScanModal({ supplierAware, onDone, initialFile = null 
                 }
             }
             printedTotal = data.invoice_total;
+            scannedVat = data.vat || null;
             scannedAttachment = data.attachment || null;
             if (data.partial) toast("הקובץ ישן - הקריאה עשויה להיות חלקית, בדוק את השורות");
             if (supplierAware) {
@@ -262,6 +266,9 @@ export async function openScanModal({ supplierAware, onDone, initialFile = null 
             return;
         }
 
+        // סיכומי המע"מ כמו בחשבונית (רק מה שנקרא ממנה)
+        overlay.querySelector("#scan-vat").innerHTML = vatLines(scannedVat).map(([label, v]) => `<div class="card-row"><span>${escapeHtml(label)}</span><span>${cur()}${Number(v).toFixed(2)}</span></div>`).join("");
+
         const updateTotal = () => {
             let t = 0;
             const warn = overlay.querySelector("#scan-total-warn");
@@ -272,8 +279,10 @@ export async function openScanModal({ supplierAware, onDone, initialFile = null 
             });
             overlay.querySelector("#scan-total").textContent = `${cur()}${t.toFixed(2)}`;
             overlay.querySelector("#scan-sum").textContent = `${cur()}${t.toFixed(2)}`;
-            if (printedTotal != null && Math.abs(printedTotal - t) >= 1) {
-                warn.textContent = `שים לב: הסכום שמודפס בקבלה ${cur()}${Number(printedTotal).toFixed(2)} שונה מסה"כ השורות (הפרש ${cur()}${Math.abs(printedTotal - t).toFixed(2)}). בדוק שורות חסרות, כמויות ומבצעים.`;
+            // סכום השורות הוא לפני מע"מ, ולכן משווים אותו ל"סה"כ ללא מע"מ" ולא לסכום הסופי
+            const cmp = totalsReference(scannedVat, printedTotal);
+            if (cmp && Math.abs(cmp.ref - t) >= 1) {
+                warn.textContent = `שים לב: ${cmp.label} בחשבונית ${cur()}${Number(cmp.ref).toFixed(2)} שונה מסה"כ השורות (הפרש ${cur()}${Math.abs(cmp.ref - t).toFixed(2)}). בדוק שורות חסרות, כמויות ומבצעים.`;
                 warn.style.display = "block";
             } else {
                 warn.style.display = "none";
@@ -512,7 +521,7 @@ export async function openScanModal({ supplierAware, onDone, initialFile = null 
             const image = supplierId && (scannedAttachment || scannedFile) ? (scannedAttachment || (await compressImage(scannedFile))) : undefined;
             const pettyCash = supplierAware && overlay.querySelector("#scan-petty").checked;
             const purchaser = supplierAware ? overlay.querySelector("#scan-purchaser").value : "";
-            const result = await applyScannedInvoice({ items, supplierId, invoiceDate, image, pettyCash, purchaser });
+            const result = await applyScannedInvoice({ items, supplierId, invoiceDate, image, pettyCash, purchaser, vat: scannedVat });
             closeModal();
             toast(supplierId ? "נשמר גם כחשבונית בדף הספקים" : "נשמר בחומרי הגלם בלבד (לא נבחר ספק)");
             if (onDone) onDone();

@@ -3,7 +3,7 @@ import { listSuppliers, addSupplier, deleteSupplier, getSupplierDeleteInfo, list
 import { listTopLevelPantryItems } from "../repo/pantryRepo.js";
 import { createPantryItemFromInvoice } from "../repo/scanRepo.js";
 import { CATEGORY_GROUPS, UNIT_TYPES, UNIT_TYPE_LABELS } from "../constants.js";
-import { computeStockFactor } from "../invoiceParse.js";
+import { computeStockFactor, vatLines } from "../invoiceParse.js";
 import { showPriceChangesDialog, renderPriceChangeRows } from "./priceAlerts.js";
 import { openTrashModal } from "./trashModal.js";
 import { restoreInvoice } from "../repo/suppliersRepo.js";
@@ -183,7 +183,7 @@ export async function renderSuppliersPage(container) {
                 <thead><tr><th>מוצר</th><th>כמות</th><th>סה"כ</th></tr></thead>
                 <tbody>${inv.items.map((it) => `<tr><td>${escapeHtml(it.product_name)}</td><td>${+Number(it.quantity).toFixed(3)}</td><td>${money(it.line_total ?? it.quantity * it.unit_price)}</td></tr>`).join("")}</tbody>
             </table>
-            <div class="card-row" style="font-weight:700;margin:10px 0;"><span>סה"כ</span><span>${money(inv.total_amount)}</span></div>
+            ${vatLines(inv.vat).length ? `<div style="margin:10px 0;">${vatLines(inv.vat).map(([label, v]) => `<div class="card-row"><span>${escapeHtml(label)}</span><span>${money(v)}</span></div>`).join("")}</div>` : `<div class="card-row" style="font-weight:700;margin:10px 0;"><span>סה"כ</span><span>${money(inv.total_amount)}</span></div>`}
             <div class="modal-actions" style="flex-wrap:wrap;">
                 ${inv.has_image ? '<button type="button" class="btn btn-accent" id="d-image">🖼 תמונה</button>' : ""}
                 <button type="button" class="btn btn-secondary" id="d-edit">עריכה</button>
@@ -349,7 +349,7 @@ function openInvoiceModal(existing, suppliers, pantryItems, container) {
             </div>
         </div>
         <div class="card" style="background:var(--brand-soft);">
-            ${existing && existing.petty_cash ? "" : '<button type="button" class="btn-link" id="f-petty-show">＋ זו קופה קטנה (עובד קנה והוחזר לו במזומן)</button>'}
+            ${existing && existing.petty_cash ? "" : '<button type="button" class="btn-link" id="f-petty-show">＋ זו קופה קטנה</button>'}
             <div class="checkbox-field" id="f-petty-wrap" style="${existing && existing.petty_cash ? "" : "display:none;"}"><input type="checkbox" id="f-petty" ${existing && existing.petty_cash ? "checked" : ""}>
                 <label for="f-petty">קופה קטנה ${info("עובד קנה בדרך וקיבל החזר במזומן, והביא קבלה. אפשר לסמן מי רכש ואם הוחזר לו.")}</label></div>
             <div id="petty-fields" style="display:none;">
