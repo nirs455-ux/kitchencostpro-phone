@@ -2,7 +2,7 @@
 // תרגום מדויק של /api/scan-invoice ו-/api/scan-invoice/apply מ-main.py.
 import { dbGetAll, dbGet, dbPut } from "../db.js";
 import { geminiFetch } from "./gemini.js";
-import { getCloseMatches } from "../fuzzyMatch.js";
+import { matchPantryName } from "../scanMatch.js";
 import { CATEGORY_GROUPS, UNIT_TYPES } from "../constants.js";
 import { saveInvoice, validateInvoicePayload } from "./suppliersRepo.js";
 import { getSetting, setSetting } from "./settingsRepo.js";
@@ -82,13 +82,11 @@ export async function scanInvoiceImage(apiKey, file, onRetry) {
     }
 
     const pantryRows = (await dbGetAll("pantryItems")).filter((r) => !r.parent_id);
-    const byName = new Map(pantryRows.map((r) => [r.name.trim().toLowerCase(), r]));
     const items = mergeDiscountLines(parsed.items || []);
     const skippedLines = items.skipped || 0;
     const enrichedItems = [];
     // כינויים שנלמדו מסריקות קודמות: שם בקבלה -> מוצר חומרי גלם שהמשתמש בחר
     const aliases = (await getSetting("scan_aliases")) || {};
-    const byId = new Map(pantryRows.map((r) => [r.id, r]));
     // אריזה/ארגז אחרונים שנרשמו לכל מוצר - כדי שקנייה חוזרת לא תדרוש הזנה מחדש
     const lastFactor = new Map();
     {
@@ -108,13 +106,8 @@ export async function scanInvoiceImage(apiKey, file, onRetry) {
         const unitPrice = it.unit_price;
         // שורה בלי שם נשארת (המשתמש ימלא שם או יסיר אותה במסך הבדיקה)
 
-        let match = name ? byName.get(name.trim().toLowerCase()) : null;
-        if (!match && name && byId.has(aliases[name.trim().toLowerCase()])) match = byId.get(aliases[name.trim().toLowerCase()]);
-        let suggested = null;
-        if (!match && name) {
-            const close = getCloseMatches(name.trim().toLowerCase(), [...byName.keys()], 1, 0.75);
-            if (close.length) suggested = byName.get(close[0]);
-        }
+        // שם זהה (בלי הבדלי רווחים/סימנים נסתרים) או דומה מאוד = מותאם לבד; רק דמיון בינוני נשאל
+        const { match, suggested, auto } = matchPantryName(name, pantryRows, aliases);
 
         enrichedItems.push({
             name, orig_name: name, quantity, unit_price: unitPrice,
@@ -122,6 +115,7 @@ export async function scanInvoiceImage(apiKey, file, onRetry) {
             default_factor: match ? lastFactor.get(match.id) || null : null,
             discount_applied: it.discount_applied || 0, list_unit_price: it.list_unit_price ?? null,
             matched_pantry_item_id: match ? match.id : null,
+            auto_matched: auto ? match.name : null,
             matched_category: match ? match.category : null,
             matched_price: match ? match.price : null,
             matched_unit_type: match ? match.unit_type : null,

@@ -349,7 +349,7 @@ function openInvoiceModal(existing, suppliers, pantryItems, container) {
             </div>
         </div>
         <div class="card" style="background:var(--brand-soft);">
-            ${existing && existing.petty_cash ? "" : '<button type="button" class="btn-link" id="f-petty-show">＋ זו קופה קטנה</button>'}
+            ${existing && existing.petty_cash ? "" : '<button type="button" class="btn-link" id="f-petty-show">＋ קופה קטנה</button>'}
             <div class="checkbox-field" id="f-petty-wrap" style="${existing && existing.petty_cash ? "" : "display:none;"}"><input type="checkbox" id="f-petty" ${existing && existing.petty_cash ? "checked" : ""}>
                 <label for="f-petty">קופה קטנה ${info("עובד קנה בדרך וקיבל החזר במזומן, והביא קבלה. אפשר לסמן מי רכש ואם הוחזר לו.")}</label></div>
             <div id="petty-fields" style="display:none;">

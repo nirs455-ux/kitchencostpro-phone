@@ -54,7 +54,7 @@ export async function openScanModal({ supplierAware, onDone, initialFile = null 
                 <div class="hint-warn" id="scan-no-supplier" style="display:none;">לא נבחר ספק - החשבונית לא תישמר בדף הספקים, רק חומרי הגלם יתעדכן.</div>
             </div>
             <div class="field"><label>תאריך</label><input type="date" id="scan-date" value="${todayLocal()}"></div>
-            <button type="button" class="btn-link" id="scan-petty-show">＋ זו קופה קטנה</button>
+            <button type="button" class="btn-link" id="scan-petty-show">＋ קופה קטנה</button>
             <div class="checkbox-field" id="scan-petty-wrap" style="display:none;"><input type="checkbox" id="scan-petty"><label for="scan-petty">קופה קטנה</label></div>
             <div class="field" id="scan-purchaser-wrap" style="display:none;"><input type="text" id="scan-purchaser" placeholder="מי רכש (אופציונלי)"></div>
             ` : ""}
@@ -337,6 +337,7 @@ export async function openScanModal({ supplierAware, onDone, initialFile = null 
                     ${flags.map((f) => `<div class="hint-warn">⚠ ${escapeHtml(f)}</div>`).join("")}
                     ${nameEmpty ? '<div class="hint-warn">חסר שם מוצר - הזן שם, או לחץ "הסר שורה" אם זו לא שורת מוצר (למשל מבצע).</div>' : ""}
                     <div class="field"><label>שם מוצר</label><input type="text" id="scan-name-${idx}" value="${escapeHtml(it.name)}"></div>
+                    ${it.auto_matched ? `<div class="hint">זוהה כ-"${escapeHtml(it.auto_matched)}" שבחומרי הגלם</div>` : ""}
                     <div class="field"><label>כמות</label><input type="number" step="any" id="scan-qty-${idx}" value="${it.quantity}"></div>
                     ${it.suggested_pantry_item_id && !it.matched_pantry_item_id ? `
                     <div class="hint-warn">
@@ -473,6 +474,21 @@ export async function openScanModal({ supplierAware, onDone, initialFile = null 
         const sum = overlay.querySelector("#scan-summary");
         sum.innerHTML = `${okCount ? `<div class="card-row"><span>✓ ${okCount} שורות זוהו ותקינות</span><button type="button" class="btn btn-secondary btn-small" id="btn-show-ok">הצג</button></div>` : ""}
             ${attentionCount ? `<div class="hint-warn">⚠ ${attentionCount} שורות דורשות תשומת לב (מוצגות למטה)</div>` : '<div class="hint" style="color:#2e7d32;font-weight:700;">✓ הכול זוהה - אפשר לאשר ולשמור</div>'}`;
+        // כמה שורות מחכות ל"האם התכוונת": כפתור אחד לאשר את כולן
+        const pending = scannedItems.filter((x) => x.suggested_pantry_item_id && !x.matched_pantry_item_id);
+        if (pending.length >= 2) {
+            sum.insertAdjacentHTML("beforeend", `<button type="button" class="btn btn-primary btn-block" id="btn-accept-all" style="margin-top:6px;">✓ אשר את כל ההתאמות המוצעות (${pending.length})</button>`);
+            sum.querySelector("#btn-accept-all").onclick = () => {
+                captureInputs();
+                for (const x of pending) {
+                    x.matched_pantry_item_id = x.suggested_pantry_item_id;
+                    x.matched_category = x.suggested_category;
+                    x.matched_price = x.suggested_price;
+                    x.matched_unit_type = x.suggested_unit_type;
+                }
+                renderResults();
+            };
+        }
         const showOk = sum.querySelector("#btn-show-ok");
         if (showOk) showOk.onclick = () => {
             const hidden = box.querySelectorAll('[data-ok="1"]');
