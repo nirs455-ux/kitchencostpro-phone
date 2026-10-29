@@ -14,6 +14,7 @@ import { recipeScanPrompt, buildRecipeDraft } from "../recipeParse.js";
 import { getRecipeCategories } from "./recipeCategories.js";
 import { INVOICE_SCAN_PROMPT, mergeDiscountLines, computeStockFactor, toFloat } from "../invoiceParse.js";
 import { LABEL_SCAN_PROMPT, parseLabelAnswer } from "../labelParse.js";
+import { COUNT_SCAN_PROMPT } from "../countAssist.js";
 
 function fileToBase64(file) {
     return new Promise((resolve, reject) => {
@@ -317,6 +318,37 @@ export async function scanLabelImage(apiKey, file) {
     const draft = parseLabelAnswer(parsed);
     if (draft.empty) throw new Error("לא הצלחתי לקרוא נתונים מהתווית. צלם שוב: קרוב, ישר, באור טוב, כשהטבלה התזונתית ורשימת הרכיבים בפריים.");
     return draft;
+}
+
+// קריאת דף ספירה בכתב יד: מחזיר את ה-JSON הגולמי { rows: [{ n, name, counted, uncertain }] } להתאמה ב-countAssist.js. שום דבר לא נשמר.
+export async function scanCountSheet(apiKey, file) {
+    if (!apiKey) throw new Error("לא הוגדר מפתח API של Gemini. הזן אותו במסך ההגדרות.");
+    const prepared = await prepareParts(file, "דף ספירה");
+    let response;
+    try {
+        response = await geminiFetch(apiKey, { contents: [{ parts: [{ text: COUNT_SCAN_PROMPT }, ...prepared.parts] }] });
+    } catch (e) {
+        throw new Error("אין חיבור לאינטרנט או שהשרת לא זמין. נסה שוב בעוד רגע.");
+    }
+    if (!response.ok) {
+        if (await agentDown(response)) throw new Error(AGENT_DOWN_MSG);
+        if (response.status === 413) throw new Error("התמונה גדולה מדי. צלם שוב, דף אחד בכל צילום.");
+        if (response.status === 402) throw new Error("הגעת למגבלה היומית של עוזר AI. אפשר להמשיך מחר, או להזין מפתח Gemini אישי בהגדרות.");
+        if (response.status === 503 || response.status === 429) throw new Error("שרת הקריאה של Google עמוס כרגע. נסה שוב בעוד רגע.");
+        const text = await response.text();
+        throw new Error(`שגיאה מה-API (${response.status}): ${text.slice(0, 200)}`);
+    }
+    try {
+        const result = await response.json();
+        let text = result.candidates[0].content.parts[0].text.trim();
+        if (text.startsWith("```")) {
+            text = text.split("```")[1];
+            if (text.startsWith("json")) text = text.slice(4);
+        }
+        return JSON.parse(text.trim());
+    } catch (e) {
+        throw new Error(unreadableMessage(e));
+    }
 }
 
 

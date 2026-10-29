@@ -2,6 +2,7 @@ import { buildInventoryView, saveInventoryCounts } from "../repo/inventoryRepo.j
 import { h, toast, escapeHtml } from "../ui.js";
 import { orderCategories, matchesDeep, normalize } from "./listKit.js";
 import { assignAutoSubs, subOf } from "../autoGroups.js";
+import { openCountSheet, openCountPhoto, openCountVoice } from "./countAssistModals.js";
 
 function todayLocal() {
     const d = new Date();
@@ -17,6 +18,11 @@ export async function renderInventoryPage(container) {
 
     container.innerHTML = `
         <div class="field"><label>תאריך הספירה</label><input type="date" id="count-date" value="${todayLocal()}"></div>
+        <div class="btn-row" style="margin:4px 0 8px;">
+            <button type="button" class="btn btn-secondary" id="ca-sheet" style="flex:1;">🖨️ דף ספירה</button>
+            <button type="button" class="btn btn-secondary" id="ca-photo" style="flex:1;">📷 צילום דף</button>
+            <button type="button" class="btn btn-secondary" id="ca-voice" style="flex:1;">🎤 הקראה</button>
+        </div>
         <div class="px-top"><input type="search" id="inv-q" placeholder="חיפוש מוצר לספירה..." autocomplete="off"></div>
         <div id="inventory-list"></div>
         <div class="btn-row" style="position:sticky;bottom:60px;">
@@ -31,6 +37,7 @@ export async function renderInventoryPage(container) {
     }
     // המבנה נבנה פעם אחת ורק מציגים/מסתירים, כדי שכמויות שכבר הוזנו לא יימחקו
     const sections = []; // { head, body, rows: [{ el, it }], cat, count }
+    const countRows = []; // לדף הספירה, לצילום ולהקראה: { n, id, name, cat, unit, expected } לפי סדר המסך
     for (const cat of orderCategories(items.map((i) => i.category))) {
         const inCat = items.filter((i) => i.category === cat);
         const [ic, tint] = CAT_ICON[cat] || ["📦", "var(--surface-2)"];
@@ -54,6 +61,7 @@ export async function renderInventoryPage(container) {
                 </div>`);
                 body.appendChild(row);
                 rows.push({ el: row, it });
+                countRows.push({ n: countRows.length + 1, id: it.id, name: it.name, cat, unit: uw, expected: cv(it.theoretical_quantity) });
                 const input = row.querySelector(`#count-${it.id}`);
                 const varEl = row.querySelector(`#variance-${it.id}`);
                 input.addEventListener("input", () => {
@@ -89,6 +97,24 @@ export async function renderInventoryPage(container) {
     for (const g of sections) g.head.onclick = () => { if (invOpen.has(g.cat)) invOpen.delete(g.cat); else invOpen.add(g.cat); applyView(); };
     container.querySelector("#inv-q").oninput = (e) => { q = e.target.value; applyView(); };
     applyView();
+
+    // ממלא את שדות הספירה (לא שומר): המשתמש בודק ולוחץ "שמירת ספירה"
+    const applyCounts = (map) => {
+        let n = 0;
+        for (const [id, qty] of map) {
+            const input = container.querySelector(`#count-${id}`);
+            if (!input) continue;
+            input.value = String(+Number(qty).toFixed(3));
+            input.dispatchEvent(new Event("input", { bubbles: true }));
+            n++;
+        }
+        container.querySelector("#inv-q").value = ""; q = "";
+        applyView();
+        toast(`הועברו ${n} ספירות. בדוק ולחץ "שמירת ספירה"`);
+    };
+    container.querySelector("#ca-sheet").onclick = () => openCountSheet(countRows, container.querySelector("#count-date").value || todayLocal());
+    container.querySelector("#ca-photo").onclick = () => openCountPhoto(countRows, applyCounts);
+    container.querySelector("#ca-voice").onclick = () => openCountVoice(countRows, applyCounts);
 
     container.querySelector("#btn-save").onclick = async () => {
         const errEl = container.querySelector("#save-error");
