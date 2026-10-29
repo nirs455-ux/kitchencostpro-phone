@@ -43,6 +43,7 @@ export async function openScanModal({ supplierAware, onDone, initialFile = null 
         <div id="scan-loading" style="display:none;text-align:center;padding:24px;color:#666;">קורא את החשבונית...</div>
         <div id="scan-results" style="display:none;">
             <div class="hint-warn" id="scan-skipped" style="display:none;"></div>
+            <div class="hint-warn" id="scan-returns" style="display:none;"></div>
             ${supplierAware ? `
             <div class="field">
                 <label>ספק ${info("בחירת ספק תשמור זאת גם כחשבונית בדף הספקים, ותעדכן את הקניות בדף המלאי. בלי בחירה - רק המחיר בחומרי הגלם יתעדכן.")}</label>
@@ -84,6 +85,7 @@ export async function openScanModal({ supplierAware, onDone, initialFile = null 
 
     let scannedItems = [];
     let scannedSkipped = 0; // שורות שלא נקראו במלואן
+    let scannedReturns = []; // החזרות/זיכויים: מוצגים ונספרים בסכום, לא משנים מחיר
     let scannedFile = null;
     let scannedAttachment = null; // הקובץ שיישמר עם החשבונית (תמונה מכווצת / PDF / המסמך המקורי)
     let printedTotal = null;
@@ -158,6 +160,7 @@ export async function openScanModal({ supplierAware, onDone, initialFile = null 
             scannedItems = data.items || [];
             if (!scannedItems.length) throw new Error(data.skipped_lines ? "לא נקראו שורות תקינות מהחשבונית. נסה לצלם שוב (ישר, באור טוב, כל העמוד בתמונה) או הוסף ידנית." : "לא זוהו מוצרים בחשבונית. נסה לצלם שוב (ישר, באור טוב) או הוסף ידנית.");
             scannedSkipped = data.skipped_lines || 0;
+            scannedReturns = data.returns || [];
             // מוצר חדש: קטגוריה ויחידה מוצעות אוטומטית (אפשר לשנות)
             for (const it of scannedItems) {
                 if (!it.matched_pantry_item_id) {
@@ -257,6 +260,12 @@ export async function openScanModal({ supplierAware, onDone, initialFile = null 
         overlay.querySelector("#scan-results").style.display = "block";
         overlay.__dirty = true; // יש תוצאות סריקה שטרם נשמרו
         { const sk = overlay.querySelector("#scan-skipped"); if (sk) { sk.style.display = scannedSkipped ? "block" : "none"; sk.textContent = scannedSkipped ? `${scannedSkipped} שורות בחשבונית לא נקראו במלואן (חסרה כמות או מחיר) ולכן לא מופיעות. בדוק מול החשבונית והוסף ידנית אם צריך.` : ""; } }
+        {
+            const rt = overlay.querySelector("#scan-returns");
+            rt.style.display = scannedReturns.length ? "block" : "none";
+            rt.innerHTML = scannedReturns.length ? `החזרות / זיכויים (לא משנים מחיר, נספרים בסכום):<br>${scannedReturns.map((r) => `${escapeHtml(r.name)}: ${cur()}${Number(r.amount).toFixed(2)}`).join("<br>")}` : "";
+        }
+        const returnsSum = scannedReturns.reduce((n, r) => n + (Number(r.amount) || 0), 0);
         const box = overlay.querySelector("#scan-items-box");
         box.innerHTML = "";
 
@@ -270,7 +279,7 @@ export async function openScanModal({ supplierAware, onDone, initialFile = null 
         overlay.querySelector("#scan-vat").innerHTML = vatLines(scannedVat).map(([label, v]) => `<div class="card-row"><span>${escapeHtml(label)}</span><span>${cur()}${Number(v).toFixed(2)}</span></div>`).join("");
 
         const updateTotal = () => {
-            let t = 0;
+            let t = returnsSum;
             const warn = overlay.querySelector("#scan-total-warn");
             scannedItems.forEach((_, i) => {
                 const q = parseFloat(overlay.querySelector(`#scan-qty-${i}`)?.value) || 0;
@@ -523,7 +532,9 @@ export async function openScanModal({ supplierAware, onDone, initialFile = null 
             const purchaser = supplierAware ? overlay.querySelector("#scan-purchaser").value : "";
             const result = await applyScannedInvoice({ items, supplierId, invoiceDate, image, pettyCash, purchaser, vat: scannedVat });
             closeModal();
-            toast(supplierId ? "נשמר גם כחשבונית בדף הספקים" : "נשמר בחומרי הגלם בלבד (לא נבחר ספק)");
+            const kept = result.kept_price || [];
+            const keptNote = kept.length ? ` · חשבונית ישנה - יש חשבונית חדשה יותר, המחיר הנוכחי נשאר עבור: ${kept.join(", ")}` : "";
+            toast((supplierId ? "נשמר גם כחשבונית בדף הספקים" : "נשמר בחומרי הגלם בלבד (לא נבחר ספק)") + keptNote);
             if (onDone) onDone();
             if (result.invoice_id) {
                 const changes = await priceChanges({ thresholdPct: 10, invoiceId: result.invoice_id });

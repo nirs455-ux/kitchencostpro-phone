@@ -20,6 +20,7 @@ export const INVOICE_SCAN_PROMPT =
     "החזר אותה כשורה נפרדת עם is_discount=true ו-line_total=סכום ההנחה כפי שמודפס (שלילי). " +
     "אל תפחית את ההנחה בעצמך ממחיר המוצר, ואל תשנה את quantity/unit_price של המוצר עצמו. " +
     "הנחות כלליות על כל החשבונית (מועדון, הנחה בסוף הקבלה) - אל תחזיר בכלל. בכל שאר השורות is_discount=false.\n" +
+    "החזרה או זיכוי של מוצר (מוצר שהוחזר, פיקדון שהוחזר): שורה עם שם המוצר, is_discount=false ו-line_total שלילי כפי שמודפס.\n" +
     "category_guess: הקטגוריה המתאימה ביותר למוצר, אחת מהבאות בלבד: מהים, קצביה, ירקניה, יבשים, מחלבה, בר, מחסן (ניקיון/חד-פעמי). " +
     "unit_guess: weight אם המוצר נמכר לפי משקל, liter אם נוזל לפי נפח, unit אם נמכר ביחידות/חבילות/גבעולים.\n" +
     "invoice_total הוא הסכום הסופי לתשלום כולל מע\"מ כפי שמודפס בתחתית הקבלה (מספר), או null אם לא מופיע בבירור.\n" +
@@ -29,7 +30,14 @@ export const INVOICE_SCAN_PROMPT =
 // כמו float() של פייתון: null/ריק/לא-מספר -> null
 export function toFloat(v) {
     if (v === null || v === undefined || v === "") return null;
-    const n = Number(v);
+    let s = v;
+    // טקסט עם פסיק: "12,50" = עשרוני, "1,250" או "1,250.50" = אלפים (Number("12,50") היה NaN והשורה נזרקה)
+    if (typeof v === "string" && v.includes(",")) {
+        const t = v.trim().replace(/\s/g, "");
+        if (/^-?\d+,\d{1,2}$/.test(t)) s = t.replace(",", ".");
+        else if (/^-?\d{1,3}(,\d{3})+(\.\d+)?$/.test(t)) s = t.replace(/,/g, "");
+    }
+    const n = Number(s);
     return Number.isFinite(n) ? n : null;
 }
 
@@ -69,9 +77,14 @@ export function totalsReference(vat, printedTotal) {
 
 const round = (x, d) => Math.round(x * 10 ** d) / 10 ** d;
 
+// שורה שלילית היא הנחה רק אם סומנה כהנחה, בלי שם, או ששמה אומר הנחה/מבצע. אחרת זו החזרה/זיכוי של מוצר.
+const DISCOUNT_NAME = /הנחה|הנחת|מבצע|discount/i;
+
 // מאחד שורות מבצע/הנחה לתוך המוצר שמעליהן (שלא יהפכו למוצרים נפרדים). שורת הנחה בלי מוצר לפניה נזרקת.
+// החזרה/זיכוי (שורה שלילית עם שם מוצר) לא נבלעת כהנחה ולא משנה מחיר: נאספת ב-merged.returns = [{ name, amount }] (amount שלילי)
 export function mergeDiscountLines(items) {
     const merged = [];
+    const returns = [];
     let skipped = 0; // שורות בלי כמות או מחיר (לא נקראו במלואן)
     for (const it of items || []) {
         if (!it || typeof it !== "object" || Array.isArray(it)) continue;
@@ -80,7 +93,13 @@ export function mergeDiscountLines(items) {
         const price = toFloat(it.unit_price);
         const lineTotal = toFloat(it.line_total);
         const amount = lineTotal !== null ? lineTotal : (qty !== null && price !== null ? qty * price : null);
-        const isDiscount = truthy(it.is_discount) || (amount !== null && amount < 0) || (price !== null && price < 0);
+        const negative = (amount !== null && amount < 0) || (price !== null && price < 0);
+        if (negative && !truthy(it.is_discount) && name && !DISCOUNT_NAME.test(name)) {
+            const back = amount !== null ? amount : price;
+            returns.push({ name, amount: round(-Math.abs(back), 2) });
+            continue;
+        }
+        const isDiscount = truthy(it.is_discount) || negative;
         if (isDiscount) {
             const discount = amount !== null ? Math.abs(amount) : (price !== null ? Math.abs(price) : 0);
             if (merged.length && discount) {
@@ -105,6 +124,7 @@ export function mergeDiscountLines(items) {
         }
     }
     merged.skipped = skipped;
+    merged.returns = returns;
     return merged;
 }
 

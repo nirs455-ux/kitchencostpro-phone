@@ -28,19 +28,26 @@ export const RECIPE_SCAN_PROMPT = recipeScanPrompt();
 
 const round2 = (x) => Math.round(x * 100) / 100;
 
+// כמו parseFloat, אבל מבין פסיק עשרוני ("1,5" -> 1.5); פסיק ואחריו בדיוק 3 ספרות הוא אלפים ("1,250" -> 1250)
+export function parseNum(v) {
+    if (typeof v !== "string") return parseFloat(v);
+    const s = v.trim();
+    return parseFloat(/^\d{1,3}(,\d{3})+$/.test(s) ? s.replace(/,/g, "") : s.replace(",", "."));
+}
+
 export function buildRecipeDraft(parsed, pantryItems, categories = RECIPE_CATEGORIES) {
     const byName = new Map(pantryItems.map((r) => [r.name.trim().toLowerCase(), r]));
 
     const name = String(parsed.name || "").trim();
     const category = categories.includes(parsed.category) ? parsed.category : "כללי";
-    let finalWeight = parseFloat(parsed.final_weight_g);
+    let finalWeight = parseNum(parsed.final_weight_g);
     finalWeight = Number.isFinite(finalWeight) && finalWeight > 0 ? finalWeight : null;
 
     const ingredients = [];
     for (const ing of parsed.ingredients || []) {
         let ingName = String((ing && ing.name) || "").trim();
         if (!ingName) continue;
-        let qty = parseFloat(ing.quantity);
+        let qty = parseNum(ing.quantity);
         qty = Number.isFinite(qty) ? qty : null;
         let unit = ing.unit || null;
         // כמות שנכתבה בתוך השם ("עגבניות 200"): השם הוא "עגבניות", והכמות 200

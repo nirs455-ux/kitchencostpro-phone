@@ -16,6 +16,9 @@ import { computeStatus, openWizardAt } from "../statusIcons.js";
 import { resolveCloudIssue } from "../cloud/cloudUi.js";
 import { loadDemoData } from "../demoData.js";
 import { orderAttnItems } from "../orderReminders.js";
+import { listDishesWithItems } from "../repo/dishesRepo.js";
+import { underpricedDishes } from "../dishPricing.js";
+import { showUnderpricedDialog } from "./dishesPage.js";
 
 const go = (page) => { location.hash = page; };
 
@@ -63,6 +66,7 @@ export async function renderHomePage(container) {
 
     const scan = () => openScanModal({ supplierAware: true, onDone: rerender });
     const wasteLogs = await dbGetAll("wasteLogs");
+    const underpriced = underpricedDishes(await listDishesWithItems());
     if (stale()) return;
 
     container.innerHTML = `
@@ -88,6 +92,7 @@ export async function renderHomePage(container) {
     const items = [];
     if (queue.length) items.push({ cls: "warn", icon: "⏳", text: `${queue.length} חשבוניות מחכות לעיבוד`, btn: "עבד", fn: () => processQueue(queue, rerender) });
     if (alerts.length) items.push({ cls: "danger", icon: "⚠", text: `${alerts.length} שינויי מחיר ב-30 הימים האחרונים`, btn: "הצג", fn: () => showPriceChangesDialog(alerts, "שינויי מחיר (30 יום אחרונים)") });
+    if (underpriced.length) items.push({ cls: "warn", icon: "🍽️", text: underpriced.length === 1 ? `המחיר של "${underpriced[0].dish.name}" נמוך מהמומלץ` : `${underpriced.length} מנות שהמחיר שלהן נמוך מהמומלץ`, btn: "הצג", fn: () => showUnderpricedDialog(underpriced, rerender) });
     const cloudNow = getCloudStatus();
     const cloudFresh = cloudNow.enabled && cloudNow.lastBackup && daysSince(cloudNow.lastBackup) < 3; // גיבוי טרי בענן מחליף תזכורת לגיבוי ידני
     if (pantry.length + invoices.length > 0 && !cloudFresh && daysSince(lastExport) >= 7) items.push({ cls: "warn", icon: "💾", text: lastExport ? `לא יוצא גיבוי ${daysSince(lastExport)} ימים` : "עדיין לא יוצא גיבוי", btn: "ייצא", fn: async () => { await downloadExport(); rerender(); } });

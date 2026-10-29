@@ -8,7 +8,8 @@ import { bindPickerButton, refreshPickerButton, resetPickerMemory } from "./ingr
 import { listRow, matchesDeep } from "./listKit.js";
 import { renderSalesTab, renderGapTab } from "./salesPage.js";
 import { assignAutoSubs, subOf } from "../autoGroups.js";
-import { h, openModal, closeModal, confirmDialog, toast, escapeHtml, money, info, busy, attemptClose, cur, curLabel } from "../ui.js";
+import { h, openModal, closeModal, confirmDialog, toast, escapeHtml, money, info, busy, attemptClose, markDirty, cur, curLabel } from "../ui.js";
+import { suggestedPrice } from "../dishPricing.js";
 
 async function allSources() {
     const pantry = (await listAllPantryItems()).filter((it) => !NON_FOOD_CATEGORIES.has(it.category));
@@ -76,6 +77,49 @@ export async function renderDishesPage(container) {
     container.querySelector("#btn-add").onclick = () => openDishModal(null, container);
 }
 
+// חלון מדף הבית: מנות שהמחיר שלהן נמוך מהמומלץ לפי המכפיל/היעד. עדכון רק בלחיצה - לכל מנה או לכולן.
+export function showUnderpricedDialog(list, onDone) {
+    const overlay = openModal(`
+        <h2>מנות מתחת למחיר המומלץ ${info("העלות עלתה מאז שנקבע המחיר. המחיר המומלץ מחושב מהמכפיל או מיעד עלות המזון של המנה. שום מחיר לא משתנה בלי אישור.")}</h2>
+        <div id="up-list">${list.map((x, i) => `
+            <div class="card-row" data-i="${i}"><span><b>${escapeHtml(x.dish.name)}</b><br><small class="muted">${money(x.current)} ← ${money(x.suggested)}</small></span>
+                <button type="button" class="btn btn-secondary" data-up="${i}">עדכן</button></div>`).join("")}</div>
+        <div class="modal-actions">
+            <button type="button" class="btn btn-primary" id="up-all">עדכן הכל</button>
+            <button type="button" class="btn btn-secondary" id="up-close">סגור</button>
+        </div>
+    `);
+    const update = async (x) => {
+        const d = x.dish;
+        await saveDish(d.id, {
+            name: d.name,
+            items: d.items.map((it) => ({ source_type: it.source_type, source_id: it.source_id, quantity_g: it.quantity_g })),
+            selling_price: x.suggested * (1 + (Number(d.vat_pct) || 0) / 100),
+            vat_pct: d.vat_pct, multiplier: d.multiplier, target_profit_pct: d.target_profit_pct,
+        });
+    };
+    const done = () => { closeModal(); if (onDone) onDone(); };
+    overlay.querySelectorAll("[data-up]").forEach((btn) => {
+        btn.onclick = busy(async () => {
+            const x = list[Number(btn.dataset.up)];
+            try { await update(x); } catch (e) { toast(`${x.dish.name}: ${e.message}`); return; }
+            overlay.querySelector(`[data-i="${btn.dataset.up}"]`).remove();
+            toast("המחיר עודכן");
+            if (!overlay.querySelector("[data-up]")) done();
+        });
+    });
+    overlay.querySelector("#up-all").onclick = busy(async () => {
+        let ok = 0;
+        for (const btn of overlay.querySelectorAll("[data-up]")) {
+            const x = list[Number(btn.dataset.up)];
+            try { await update(x); ok++; } catch (e) { toast(`${x.dish.name}: ${e.message}`); }
+        }
+        toast(`עודכנו ${ok} מנות`);
+        done();
+    });
+    overlay.querySelector("#up-close").onclick = done;
+}
+
 async function openDishModal(existing, container) {
     resetPickerMemory();
     const sources = await allSources();
@@ -93,11 +137,12 @@ async function openDishModal(existing, container) {
             <div class="pg-sec">מחיר ורווחיות</div>
             <div class="card-pg">
                 <div class="field"><label>מחיר מכירה (${curLabel()}, לפני מע"מ)</label><input type="number" step="any" id="f-price" value="${existing ? existing.price_before_vat : ""}"></div>
+                <div id="price-suggest"></div>
                 <div id="pricing-preview"></div>
                 <details class="pg-more"><summary>מכפיל, יעד עלות מזון ומע"מ</summary>
                     <div class="form-row">
                         <div class="field"><label>מכפיל עלות</label><input type="number" step="any" id="f-multiplier" placeholder="לדוגמה: 3.5" value="${existing && existing.multiplier ? existing.multiplier : ""}"></div>
-                        <div class="field"><label>יעד עלות מזון % ${info("יעד 25% = מכפיל ×4. המחיר למעלה מתמלא אוטומטית ברגע שמזינים מכפיל או יעד, ועדיין אפשר לערוך אותו ידנית.")}</label><input type="number" step="any" id="f-target" placeholder="לדוגמה: 25" value="${existing && existing.target_profit_pct ? existing.target_profit_pct : ""}"></div>
+                        <div class="field"><label>יעד עלות מזון % ${info("יעד 25% = מכפיל ×4. המחיר למעלה מתמלא כשמזינים מכפיל או יעד. הקלדת מחיר ידנית מנקה אותם. כשהעלות משתנה המחיר לא משתנה מעצמו - מוצע מחיר חדש לאישור.")}</label><input type="number" step="any" id="f-target" placeholder="לדוגמה: 25" value="${existing && existing.target_profit_pct ? existing.target_profit_pct : ""}"></div>
                     </div>
                     <div class="field"><label>מע"מ (%)</label><input type="number" step="any" id="f-vat" value="${existing ? existing.vat_pct : 18}"></div>
                 </details>
@@ -158,7 +203,8 @@ async function openDishModal(existing, container) {
         row.querySelector("[data-remove]").onclick = () => { row.remove(); recalc(); };
     }
 
-    function recalc() {
+    // source === "pricing": המשתמש שינה מכפיל/יעד - רק אז המחיר מתמלא. בפתיחה או בשינוי מרכיבים המחיר השמור נשאר ומוצע מחיר חדש.
+    function recalc(source) {
         let total = 0;
         box.querySelectorAll(".item-row-inputs").forEach((row) => {
             const id = row.id.replace("dish-row-", "");
@@ -183,13 +229,16 @@ async function openDishModal(existing, container) {
         });
         overlay.querySelector("#cost-display").textContent = money(total);
 
-        const multiplier = parseFloat(overlay.querySelector("#f-multiplier").value) || 0;
-        const target = parseFloat(overlay.querySelector("#f-target").value) || 0;
-        // מחיר לפני מע"מ מתמלא אוטומטית מהמכפיל או מהיעד (עדיפות למכפיל), ועדיין ניתן לעריכה ידנית
-        if (multiplier > 0 && total > 0) {
-            overlay.querySelector("#f-price").value = (total * multiplier).toFixed(2);
-        } else if (target > 0 && target < 100 && total > 0) {
-            overlay.querySelector("#f-price").value = (total / (target / 100)).toFixed(2);
+        // מחיר לפני מע"מ מהמכפיל או מהיעד (עדיפות למכפיל)
+        const sug = suggestedPrice(total, overlay.querySelector("#f-multiplier").value, overlay.querySelector("#f-target").value);
+        if (source === "pricing" && sug !== null) overlay.querySelector("#f-price").value = sug.toFixed(2);
+        const sugEl = overlay.querySelector("#price-suggest");
+        const typed = parseFloat(overlay.querySelector("#f-price").value) || 0;
+        if (sug !== null && Math.abs(sug - typed) >= 0.01) {
+            sugEl.innerHTML = `<div class="tint-row ${sug > typed ? "warn" : "ok"}"><span class="tr-text">לפי המכפיל/היעד המחיר המומלץ: ${money(sug)}</span><button type="button" class="tr-btn" id="btn-apply-suggest">עדכן</button></div>`;
+            sugEl.querySelector("#btn-apply-suggest").onclick = () => { overlay.querySelector("#f-price").value = sug.toFixed(2); markDirty(overlay); recalc(); };
+        } else {
+            sugEl.innerHTML = "";
         }
 
         const priceBeforeVat = parseFloat(overlay.querySelector("#f-price").value) || 0;
@@ -227,10 +276,15 @@ async function openDishModal(existing, container) {
     }
     recalc();
     overlay.querySelector("#btn-add-row").onclick = () => addRow();
-    overlay.querySelector("#f-price").addEventListener("input", recalc);
-    overlay.querySelector("#f-vat").addEventListener("input", recalc);
-    overlay.querySelector("#f-multiplier").addEventListener("input", recalc);
-    overlay.querySelector("#f-target").addEventListener("input", recalc);
+    // הקלדת מחיר ידנית: המכפיל והיעד כבר לא מתארים אותו - מתרוקנים (מה ששונה אחרון קובע)
+    overlay.querySelector("#f-price").addEventListener("input", () => {
+        overlay.querySelector("#f-multiplier").value = "";
+        overlay.querySelector("#f-target").value = "";
+        recalc();
+    });
+    overlay.querySelector("#f-vat").addEventListener("input", () => recalc());
+    overlay.querySelector("#f-multiplier").addEventListener("input", () => recalc("pricing"));
+    overlay.querySelector("#f-target").addEventListener("input", () => recalc("pricing"));
 
     overlay.querySelector("#btn-cancel").onclick = () => attemptClose(overlay);
     overlay.querySelector("#btn-save").onclick = busy(async () => {

@@ -62,6 +62,7 @@ let appRole = "manager"; // manager | cook | producer (נטען בהפעלה)
 const STAFF_PAGES = new Set(["home", "recipes", "inventory", "waste"]); // מצב טבח: בית, מתכונים (בלי כסף), מלאי ופחת
 
 const view = document.getElementById("view");
+let selfHash = null; // מעבר ש-navigate עצמו כתב לכתובת (ה-hashchange שלו לא מצייר שוב)
 const pageTitle = document.getElementById("page-title");
 const navButtons = document.querySelectorAll("#bottom-nav button");
 
@@ -77,7 +78,8 @@ async function navigate(pageKey) {
     }
     if (isStaffMode() && !STAFF_PAGES.has(pageKey)) pageKey = "home"; // מצב עובד: רק בית וספירת מלאי
     if (pageKey === "files" && location.hash !== "#files") openFilesFolder(null);
-    location.hash = pageKey;
+    // שינוי הכתובת מפעיל hashchange - מסמנים שאותו מעבר כבר מצויר כאן, כדי שהמסך לא ייטען פעמיים
+    if (location.hash !== "#" + pageKey) { selfHash = pageKey; location.hash = pageKey; }
     try { localStorage.setItem("kcp_last_page", pageKey); } catch (e) { /* לא קריטי */ } // כדי לחזור לאותו דף אם הטלפון סגר את האפליקציה ברקע
     // ספירת מלאי ועיבוד הם לשוניות של חומרי הגלם (הכתובות #inventory ו-#processing ממשיכות לעבוד)
     const inPantry = pageKey === "inventory" || pageKey === "processing" || pageKey === "waste";
@@ -108,6 +110,8 @@ window.addEventListener("hashchange", () => {
     dropLayers(); // מעבר מסך (תפריט/קישור) סוגר חלון או בורר שנשארו פתוחים
     const key = location.hash.replace("#", "");
     if (key === "share") return;
+    if (key === selfHash) { selfHash = null; return; } // navigate() כבר מצייר את המסך הזה
+    selfHash = null;
     if (PAGES[key]) navigate(key);
 });
 

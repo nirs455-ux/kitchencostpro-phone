@@ -119,8 +119,10 @@ async function refreshStatus() {
 
 // ---- גיבוי אוטומטי ----
 let timer = null;
+let rerun = false; // נוספו שינויים (או התבקש גיבוי) בזמן שגיבוי רץ: אסור לנקות את cloud_dirty בסופו
 async function markDirty() {
     if (!status.enabled) return;
+    if (status.state === "backing") rerun = true;
     await setSetting("cloud_dirty", true);
     clearTimeout(timer);
     timer = setTimeout(() => runBackup({ auto: true }), DEBOUNCE_MS);
@@ -128,15 +130,16 @@ async function markDirty() {
 export async function runBackup({ auto = false, force = false, interactive = false } = {}) {
     await refreshStatus();
     if (!status.enabled) return { skipped: true };
-    if (status.state === "backing") return { skipped: true };
+    if (status.state === "backing") { rerun = true; return { skipped: true }; }
+    rerun = false;
     setState("backing");
     try {
         const res = await (interactive ? withInteractive(() => cloud.backup({ force })) : cloud.backup({ force }));
         if (res && res.skipped) { setState("idle"); return res; }
-        await setSetting("cloud_dirty", false);
+        if (!rerun) await setSetting("cloud_dirty", false);
         await refreshStatus();
         setState("idle");
-        if (cloud.needsAgain()) markDirty();
+        if (rerun || cloud.needsAgain()) { rerun = false; markDirty(); }
         return res;
     } catch (e) {
         if (e instanceof CloudConflict) { setState("conflict", e.message); return { conflict: true }; }

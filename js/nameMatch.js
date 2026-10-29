@@ -55,7 +55,10 @@ export function smartMatch(name, items) {
         let score = mp / p.tokens.length;
         if (q.pct != null && p.pct != null) score += q.pct === p.pct ? 0.5 : -0.3;
         else if (q.pct == null && p.pct == null) score += 0.05;
-        if (!best || score > best.score) best = { item: it, score, exact: p.tokens.length === q.tokens.length && (q.pct ?? null) === (p.pct ?? null) };
+        // מילים זהות לגמרי עדיפות על תחילית ("חלב" -> "חלב 3%" ולא "חלבה"); התאמה מדויקת רק כשכל המילים זהות
+        const identical = q.tokens.every((t) => p.tokens.includes(t));
+        if (identical) score += 0.1;
+        if (!best || score > best.score) best = { item: it, score, exact: identical && p.tokens.length === q.tokens.length && (q.pct ?? null) === (p.pct ?? null) };
     }
     return best;
 }

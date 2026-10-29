@@ -133,7 +133,7 @@ export async function scanInvoiceImage(apiKey, file, onRetry) {
         });
     }
 
-    return { skipped_lines: skippedLines, supplier_name: parsed.supplier_name || null, invoice_date: parsed.invoice_date || null, invoice_total: toFloat(parsed.invoice_total), vat: cleanVatTotals(parsed.totals), items: enrichedItems, attachment: prepared.attachment, partial: !!prepared.partial };
+    return { skipped_lines: skippedLines, returns: items.returns || [], supplier_name: parsed.supplier_name || null, invoice_date: parsed.invoice_date || null, invoice_total: toFloat(parsed.invoice_total), vat: cleanVatTotals(parsed.totals), items: enrichedItems, attachment: prepared.attachment, partial: !!prepared.partial };
 }
 
 // מחיל את שורות הסריקה על חומרי הגלם (ואופציונלית שומר כחשבונית מקושרת לספק). מקביל ל-apply_scanned_invoice.
@@ -209,12 +209,25 @@ export async function applyScannedInvoice({ items, supplierId, invoiceDate, imag
     const resolvedPantryIds = [];
     const invoiceLineItems = [];
     const aliasPairs = [];
+    // חשבונית ישנה (תאריך לפני חשבונית קיימת של אותו מוצר): נשמרת, אבל לא מחזירה את המחיר העדכני אחורה
+    const latestDate = new Map();
+    if (invoiceDate) {
+        const invDates = Object.fromEntries((await dbGetAll("invoices")).filter((i) => !i.deleted_at).map((i) => [i.id, i.invoice_date || ""]));
+        for (const li of await dbGetAll("invoiceItems")) {
+            const d = invDates[li.invoice_id];
+            if (li.pantry_item_id && d && d > (latestDate.get(li.pantry_item_id) || "")) latestDate.set(li.pantry_item_id, d);
+        }
+    }
+    const keptPrice = [];
     for (const p of plan) {
         const isFrozen = p.it.is_frozen ? 1 : 0;
         let pantryItemId;
         if (p.existing) {
-            if (!p.existing.parent_id) Object.assign(p.existing, { price: p.pantryPrice, category: p.category, is_frozen: isFrozen });
-            else Object.assign(p.existing, { price: p.pantryPrice, is_frozen: isFrozen });
+            const newer = invoiceDate && (latestDate.get(p.existing.id) || "") > invoiceDate;
+            if (newer) keptPrice.push(p.existing.name);
+            const price = newer ? p.existing.price : p.pantryPrice;
+            if (!p.existing.parent_id) Object.assign(p.existing, { price, category: p.category, is_frozen: isFrozen });
+            else Object.assign(p.existing, { price, is_frozen: isFrozen });
             await dbPut("pantryItems", p.existing);
             pantryItemId = p.existing.id;
         } else if (createdByName.has(p.name.toLowerCase())) {
@@ -247,7 +260,7 @@ export async function applyScannedInvoice({ items, supplierId, invoiceDate, imag
         for (const [a, id] of aliasPairs) aliases[a] = id;
         await setSetting("scan_aliases", aliases);
     }
-    return { pantry_item_ids: resolvedPantryIds, invoice_id: invoiceId };
+    return { pantry_item_ids: resolvedPantryIds, invoice_id: invoiceId, kept_price: keptPrice };
 }
 
 

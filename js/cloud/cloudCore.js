@@ -78,9 +78,19 @@ export function createCloud(deps) {
             const { json, blobs } = packForCloud(stores, { ...(deps.meta ? deps.meta() : {}), exported_at: now().toISOString() });
             const filesMap = (await settings.get("cloud_files")) || {};
             let uploaded = 0;
+            // אחרי שחזור מפת הקבצים ריקה: בלי בדיקה בענן כל תמונה הייתה עולה שוב ככפילות. לכן מחפשים אותה לפי שם בתיקייה (פעם אחת לכל תיקייה)
+            const folderFiles = {};
+            const findRemote = async (folder, fileName) => {
+                if (!folderFiles[folder]) folderFiles[folder] = Object.fromEntries((await drive.list(ids[folder])).map((x) => [x.name, x]));
+                return folderFiles[folder][fileName] || null;
+            };
             for (const [key, info] of blobs) {
-                const known = filesMap[key];
-                if (known && known.size === info.blob.size && known.fileName === info.fileName) continue;
+                let known = filesMap[key];
+                if (!known || known.fileName !== info.fileName) {
+                    const remoteFile = await findRemote(info.folder, info.fileName);
+                    if (remoteFile) known = { id: remoteFile.id, size: Number(remoteFile.size), fileName: info.fileName, folder: info.folder };
+                }
+                if (known && known.size === info.blob.size && known.fileName === info.fileName) { filesMap[key] = known; continue; }
                 const res = await drive.putFile({ name: info.fileName, parentId: ids[info.folder], blob: info.blob, mime: info.blob.type || "application/octet-stream", existingId: known ? known.id : null });
                 filesMap[key] = { id: res.id, size: info.blob.size, fileName: info.fileName, folder: info.folder };
                 uploaded += 1;
