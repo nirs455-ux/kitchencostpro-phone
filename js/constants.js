@@ -9,7 +9,7 @@ export const CATEGORY_GROUPS = {
     "מחסן": [], // לא-מזון: ניקיון, חד-פעמי וכו' - לא מוצע במתכונים/מנות
 };
 // גרסת האפליקציה - מוצגת בהגדרות כדי לוודא שהטלפון עדכן (תואם ל-CACHE_NAME ב-service-worker.js)
-export const APP_VERSION = "2026-10-30 (v112)";
+export const APP_VERSION = "2026-10-30 (v113)";
 
 // ערכות עיצוב זמינות (data-theme על <html>; ההגדרות ב-css/style.css)
 export const THEMES = [

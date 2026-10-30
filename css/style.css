@@ -458,3 +458,22 @@ body[data-cook="1"] .cost-only, body[data-cook="1"] .mgr-only { display: none !i
 /* גלילה למעלה בטלפון לא מרעננת את הדף (איבוד מה שהוקלד); גם בתוך חלונות וגלילה פנימית */
 html, body { overscroll-behavior-y: none; }
 .modal, .pg-body, .modal-overlay { overscroll-behavior: contain; }
+
+/* חלון בחירה (picker.js) */
+.pk-btn { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; padding: 10px 12px; font-size: 15px; font-family: inherit; text-align: start; border: 1px solid var(--input-border); border-radius: var(--radius-btn); background: var(--surface); color: var(--text); cursor: pointer; }
+.pk-btn i { font-style: normal; color: var(--muted); }
+.pk-overlay { position: fixed; inset: 0; z-index: 1000; background: rgba(0, 0, 0, 0.45); display: flex; align-items: flex-end; justify-content: center; }
+.pk-sheet { width: 100%; max-width: 560px; max-height: 78vh; display: flex; flex-direction: column; background: var(--surface); color: var(--text); border-radius: var(--radius-lg) var(--radius-lg) 0 0; padding: 12px 12px calc(12px + env(safe-area-inset-bottom, 0px)); }
+.pk-head { display: flex; align-items: center; justify-content: space-between; padding: 2px 4px 10px; font-size: 16px; }
+.pk-x { border: 0; background: transparent; color: var(--muted); font-size: 18px; padding: 4px 8px; cursor: pointer; }
+.pk-search { width: 100%; padding: 10px 12px; font-size: 15px; border-radius: 10px; border: 1px solid var(--input-border); background: var(--surface); color: var(--text); font-family: inherit; margin-bottom: 8px; }
+.pk-list { overflow-y: auto; display: flex; flex-direction: column; }
+.pk-group { padding: 10px 6px 4px; font-size: 12px; font-weight: 600; letter-spacing: .04em; color: var(--muted); }
+.pk-opt { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px 8px; font-size: 15px; font-family: inherit; text-align: start; border: 0; border-bottom: 1px solid var(--border); background: transparent; color: var(--text); cursor: pointer; }
+.pk-opt.sel { color: var(--brand); font-weight: 600; }
+.pk-opt i { font-style: normal; }
+.pk-empty { padding: 16px; color: var(--muted); text-align: center; }
+
+/* בחירת כמה מוצרים למחיקה */
+.px-row.sel { background: var(--brand-soft); outline: 2px solid var(--brand); outline-offset: -2px; }
+.px-bulk { position: sticky; bottom: calc(70px + env(safe-area-inset-bottom, 0px)); z-index: 20; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px; padding: 10px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-lg); }

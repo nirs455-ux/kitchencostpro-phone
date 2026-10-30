@@ -1,6 +1,7 @@
-// מיז אן פלאס ומשימות: תפריט (מנות או מתכונים) x כמות ממוצעת לסועד x מספר סועדים
+// מיז אן פלאס ומשימות: תפריט (מנות מהמערכת + פריטים ידניים) x כמה מנות לסועד x מספר סועדים
 // -> רשימת משימות הכנה ורשימת הזמנות לפי ספק, עם סימון "בוצע". התוכניות נשמרות (prepPlansRepo.js). החישוב ב-prepPlan.js (טהור).
 import { toast, escapeHtml, info, confirmDialog, openModal, closeModal } from "../ui.js";
+import { enhanceSelect } from "../picker.js";
 import { dbGetAll } from "../db.js";
 import { loadSalesCtx } from "../repo/salesRepo.js";
 import { planPrep, groupBySupplier, entryQuantity, DEFAULT_MARGIN_PCT } from "../prepPlan.js";
@@ -18,8 +19,7 @@ export async function renderPrepTab(container) {
     let plans = await listPlans();
     const supplierOptions = (sel) => [...suppliers].sort((a, b) => a.name.localeCompare(b.name, "he")).map((s) => `<option value="${s.id}"${s.id === sel ? " selected" : ""}>${escapeHtml(s.name)}</option>`).join("");
     const dishes = [...ctx.dishes.values()].sort((a, b) => a.name.localeCompare(b.name, "he"));
-    const recipes = [...ctx.recipes.values()].filter((r) => r.status !== "draft").sort((a, b) => a.name.localeCompare(b.name, "he"));
-    if (!dishes.length && !recipes.length) { container.innerHTML = '<div class="empty-state">כדי לתכנן צריך קודם להוסיף מנות בלשונית "מנות".</div>'; return; }
+    if (!dishes.length) { container.innerHTML = '<div class="empty-state">כדי לתכנן צריך קודם להוסיף מנות בלשונית "מנות".</div>'; return; }
 
     let plan = plans.find((p) => p.id === currentId) || plans[0] || normalizePlan({ margin: String(DEFAULT_MARGIN_PCT) });
     currentId = plan.id;
@@ -32,7 +32,7 @@ export async function renderPrepTab(container) {
     };
 
     container.innerHTML = `
-        <div class="hint" style="margin-bottom:8px;">בוחרים מנות מהתפריט, כמה מכל מנה בממוצע לסועד, וכמה סועדים. האפליקציה אומרת מה להכין ומה להזמין מכל ספק (כולל ניצולת ומרווח ביטחון), ואפשר לסמן ✓ כל משימה שבוצעה. הכול נשמר.</div>
+        <div class="hint" style="margin-bottom:8px;">בונים תפריט ממנות המערכת, קובעים כמה מנות מקבל כל סועד, ומזינים כמה סועדים. גודל המנה נלקח מהתמחור. האפליקציה אומרת מה להכין ומה להזמין מכל ספק, כולל ניצולת ומרווח ביטחון. אפשר לסמן ✓ כל משימה שבוצעה. הכול נשמר.</div>
         <div class="card">
             <div class="form-row">
                 <div class="field"><label>תוכנית</label><select id="pp-plan"></select></div>
@@ -48,24 +48,19 @@ export async function renderPrepTab(container) {
             </div>
         </div>
         <div class="card">
-            <div class="field"><label>פריט מהתפריט</label><select id="pp-item"><option value="">בחר מנה...</option>
-                ${dishes.length ? `<optgroup label="מנות">${dishes.map((d) => `<option value="dish:${d.id}">${escapeHtml(d.name)}</option>`).join("")}</optgroup>` : ""}
-                ${recipes.length ? `<optgroup label="מתכון (בגרם)">${recipes.map((r) => `<option value="recipe:${r.id}">${escapeHtml(r.name)}</option>`).join("")}</optgroup>` : ""}</select></div>
-            <div class="form-row">
-                <div class="field"><label id="pp-per-label">מנות לסועד</label><input type="text" inputmode="decimal" id="pp-per" value="1"></div>
-                <div class="field"><label>% מהסועדים שבוחרים</label><input type="text" inputmode="decimal" id="pp-share" value="100"></div>
-            </div>
+            <div class="field"><label>מנה</label><select id="pp-item"><option value="">בחר מנה...</option>${dishes.map((d) => `<option value="dish:${d.id}">${escapeHtml(d.name)}</option>`).join("")}</select></div>
+            <div class="field"><label>כמה מנות לכל סועד ${info("ברירת המחדל היא מנה אחת, לפי גודל המנה בתמחור. אפשר לכתוב חצי מנה או מנה וחצי.")}</label><input type="text" inputmode="decimal" id="pp-per" value="1"></div>
             <button type="button" class="btn btn-secondary btn-block" id="pp-add">＋ הוסף לתפריט</button>
             <div class="error-msg" id="pp-err"></div>
         </div>
         <div class="card">
-            <div class="card-title" style="margin:0 0 6px;">פריט ידני (מחוץ לתפריט) ${info("מנה שאין במערכת, או משימה לאותו אירוע. הכמות היא טקסט חופשי. הפריט מופיע בצ'ק ליסט, בהדפסה ובוואטסאפ.")}</div>
+            <div class="card-title" style="margin:0 0 6px;">פריט ידני ${info("מנה שאין במערכת, או משימה לאותו אירוע. הכמות היא טקסט חופשי. הפריט מופיע בצ'ק ליסט, בהדפסה ובוואטסאפ.")}</div>
             <div class="form-row">
                 <div class="field"><label>שם</label><input type="text" id="pc-label" placeholder="למשל: סלט קינואה"></div>
-                <div class="field"><label>כמות (חופשי)</label><input type="text" id="pc-qty" placeholder="למשל: 3 מגשים"></div>
+                <div class="field"><label>כמות</label><input type="text" id="pc-qty" placeholder="למשל: 3 מגשים"></div>
             </div>
             <div class="field"><label>סוג</label><select id="pc-kind"><option value="prep">להכין</option><option value="order">להזמין</option></select></div>
-            <div class="field" id="pc-sup-wrap" style="display:none;"><label>ספק (להזמנה)</label><select id="pc-sup"><option value="">ללא ספק קבוע</option>${supplierOptions()}</select></div>
+            <div class="field" id="pc-sup-wrap" style="display:none;"><label>ספק</label><select id="pc-sup"><option value="">ללא ספק קבוע</option>${supplierOptions()}</select></div>
             <button type="button" class="btn btn-secondary btn-block" id="pc-add">＋ הוסף פריט ידני</button>
             <div class="error-msg" id="pc-err"></div>
         </div>
@@ -74,12 +69,14 @@ export async function renderPrepTab(container) {
 
     const q = (s) => container.querySelector(s);
     const itemEl = q("#pp-item");
+    for (const id of ["#pp-plan", "#pp-item", "#pc-kind", "#pc-sup"]) enhanceSelect(q(id));
 
     function loadFields() {
         q("#pp-name").value = plan.name; q("#pp-date").value = plan.date; q("#pp-guests").value = plan.guests; q("#pp-margin").value = plan.margin;
         const sel = q("#pp-plan");
         const list = plans.some((p) => p.id === plan.id) ? plans : [plan, ...plans];
         sel.innerHTML = list.map((p) => `<option value="${escapeHtml(p.id)}"${p.id === plan.id ? " selected" : ""}>${escapeHtml(plans.some((x) => x.id === p.id) ? planLabel(p) : "תוכנית חדשה")}</option>`).join("");
+        if (sel.refreshPicker) sel.refreshPicker();
     }
     const bind = (sel, key) => { q(sel).oninput = async (e) => { plan[key] = e.target.value; draw(); await persist(); }; };
     bind("#pp-name", "name"); bind("#pp-date", "date"); bind("#pp-guests", "guests"); bind("#pp-margin", "margin");
@@ -94,15 +91,14 @@ export async function renderPrepTab(container) {
         plan = plans[0] || normalizePlan({ margin: plan.margin });
         currentId = plan.id; loadFields(); draw();
     };
-    itemEl.onchange = () => { const isR = itemEl.value.startsWith("recipe:"); q("#pp-per-label").textContent = isR ? "גרם לסועד" : "מנות לסועד"; q("#pp-per").value = isR ? "100" : "1"; };
     q("#pp-add").onclick = async () => {
         const err = q("#pp-err"); err.style.display = "none";
         const [type, idStr] = String(itemEl.value).split(":");
         const src = type === "dish" ? ctx.dishes.get(Number(idStr)) : ctx.recipes.get(Number(idStr));
         if (!src) { err.textContent = "בחר פריט מהתפריט."; err.style.display = "block"; return; }
-        if (!(entryQuantity(1, q("#pp-per").value, q("#pp-share").value) > 0)) { err.textContent = "הזן כמות לסועד ואחוז גדולים מ-0."; err.style.display = "block"; return; }
-        plan.rows.push({ source_type: type, source_id: Number(idStr), name: src.name, per: q("#pp-per").value, share: q("#pp-share").value });
-        itemEl.value = ""; itemEl.onchange();
+        if (!(entryQuantity(1, q("#pp-per").value, "100") > 0)) { err.textContent = "הזן כמה מנות לכל סועד, יותר מאפס."; err.style.display = "block"; return; }
+        plan.rows.push({ source_type: type, source_id: Number(idStr), name: src.name, per: q("#pp-per").value, share: "100" });
+        itemEl.value = ""; q("#pp-per").value = "1"; itemEl.refreshPicker();
         draw(); await persist(); loadFields();
     };
 
@@ -126,7 +122,7 @@ export async function renderPrepTab(container) {
         const supName = (id) => (suppliers.find((s) => s.id === id) || {}).name || "";
         menuEl.innerHTML = (plan.rows.length ? `<div class="card-title" style="margin:10px 4px 4px;">התפריט</div>` + plan.rows.map((r, i) => {
             const qty = entryQuantity(plan.guests, r.per, r.share);
-            return `<div class="card-row" style="padding:6px 4px;border-bottom:1px solid var(--border,#0001);"><span><b>${escapeHtml(r.name)}</b><br><span class="muted">${escapeHtml(String(r.per))} ${r.source_type === "recipe" ? "גרם" : "מנות"} לסועד · ${escapeHtml(String(r.share))}% · ${qty ? `סה"כ ${r.source_type === "recipe" ? qtyText(qty) : fmt(qty) + " מנות"}` : "הזן סועדים"}</span></span><button type="button" class="btn btn-secondary btn-small" data-rm="${i}">✕</button></div>`;
+            return `<div class="card-row" style="padding:6px 4px;border-bottom:1px solid var(--border,#0001);"><span><b>${escapeHtml(r.name)}</b><br><span class="muted">${escapeHtml(String(r.per))} ${r.source_type === "recipe" ? "גרם" : "מנות"} לסועד${String(r.share) !== "100" ? ` · ${escapeHtml(String(r.share))}%` : ""} · ${qty ? `סה"כ ${r.source_type === "recipe" ? qtyText(qty) : fmt(qty) + " מנות"}` : "הזן סועדים"}</span></span><button type="button" class="btn btn-secondary btn-small" data-rm="${i}">✕</button></div>`;
         }).join("") : "") + (plan.custom.length ? `<div class="card-title" style="margin:10px 4px 4px;">פריטים ידניים</div>` + plan.custom.map((c, i) => `<div class="card-row" style="padding:6px 4px;border-bottom:1px solid var(--border,#0001);"><span><b>${escapeHtml(c.label)}</b><br><span class="muted">${c.kind === "order" ? "להזמין" + (c.supplier_id && supName(c.supplier_id) ? " · " + escapeHtml(supName(c.supplier_id)) : "") : "להכין"}${c.qty ? " · " + escapeHtml(c.qty) : ""}</span></span><span><button type="button" class="btn btn-secondary btn-small" data-cedit="${i}">✎</button> <button type="button" class="btn btn-secondary btn-small" data-crm="${i}">✕</button></span></div>`).join("") : "");
         menuEl.querySelectorAll("[data-rm]").forEach((b) => { b.onclick = async () => { plan.rows.splice(Number(b.dataset.rm), 1); draw(); await persist(); }; });
         menuEl.querySelectorAll("[data-crm]").forEach((b) => { b.onclick = async () => { const [gone] = plan.custom.splice(Number(b.dataset.crm), 1); if (gone) { delete plan.done["c" + gone.id]; } draw(); await persist(); }; });
@@ -137,7 +133,6 @@ export async function renderPrepTab(container) {
         if (!entries.length && !plan.custom.length) { resEl.innerHTML = plan.rows.length ? '<div class="empty-state">הזן מספר סועדים כדי לראות מה להכין ולהזמין.</div>' : ""; return; }
         const result = entries.length ? planPrep(entries, ctx, plan.margin) : { dishes: [], recipes: {}, pantry: {}, foodGrams: 0 };
         const prepRecipes = Object.entries(result.recipes).map(([id, g]) => ({ id, name: (ctx.recipes.get(Number(id)) || {}).name || "?", g })).sort((a, b) => a.name.localeCompare(b.name, "he"));
-        const perGuest = Number(plan.guests) > 0 ? Math.round(result.foodGrams / Number(plan.guests)) : 0;
 
         // הזמנות: חישוב לפי ספק + פריטים ידניים שנבחר להם ספק (מצטרפים להזמנה של אותו ספק); בלי ספק -> כרטיס "הוספות ידניות"
         const groups = groupBySupplier(result.pantry, ctx.pantry, suppliers).map((g) => ({ ...g, extras: [] }));
@@ -154,7 +149,7 @@ export async function renderPrepTab(container) {
         const prepKeys = [...result.dishes.map((d) => `d${d.id}`), ...prepRecipes.map((r) => `r${r.id}`), ...customPrep.map((c) => `c${c.id}`)];
         const orderKeys = [...groups.flatMap((g) => [...g.lines.map((l) => `o${l.id}`), ...g.extras.map((c) => `c${c.id}`)]), ...loose.map((c) => `c${c.id}`)];
         const pp = progress(prepKeys, plan.done), po = progress(orderKeys, plan.done);
-        const cell = (key, html) => (plan.overrides[key] ? `${escapeHtml(plan.overrides[key])} <span class="muted">(שונה)</span>` : html);
+        const cell = (key, html) => (plan.overrides[key] ? `${escapeHtml(plan.overrides[key])} <span class="muted">· שונתה</span>` : html);
         const customRow = (c) => check(`c${c.id}`, `✏️ ${escapeHtml(c.label)}`, escapeHtml(c.qty), { cidx: plan.custom.indexOf(c) });
 
         resEl.innerHTML = `
@@ -164,7 +159,6 @@ export async function renderPrepTab(container) {
                 ${prepRecipes.map((r) => check(`r${r.id}`, `📖 ${escapeHtml(r.name)}`, cell(`r${r.id}`, qtyText(r.g)), { name: r.name, cur: qtyText(r.g) })).join("")}
                 ${customPrep.map(customRow).join("")}
                 <div class="btn-row" style="margin-top:8px;"><button type="button" class="btn btn-secondary btn-small" id="pp-print">🖨️ הדפס צ'ק ליסט</button><button type="button" class="btn btn-secondary btn-small" id="pp-wa">📤 שלח בוואטסאפ</button></div>
-                ${entries.length ? `<div class="muted" style="margin-top:6px;">כמות מזון מוגשת (בלי מרווח): ${qtyText(result.foodGrams)}${perGuest ? ` · כ-${perGuest} גרם לסועד` : ""}</div>` : ""}
             </div>` : ""}
             ${orderKeys.length ? `<div class="card-title" style="margin:14px 4px 4px;">מה להזמין <span class="muted">· הוזמנו ${po.finished} מתוך ${po.total}</span> ${info("מחולק לפי רשימת ההזמנה הקבועה של כל ספק, ופריטים ידניים שנבחר להם ספק מצטרפים אליו. כמויות מעוגלות כלפי מעלה, ואריזות שלמות כשהספק מוכר בארגז. ✎ משנה כמות.")}</div>` : ""}
             ${groups.map((g, gi) => `<div class="card">
@@ -210,17 +204,18 @@ export async function renderPrepTab(container) {
         ovl.querySelector("#eq-save").onclick = () => { const v = ovl.querySelector("#eq-val").value.trim(); if (!v || v === cur) delete plan.overrides[key]; else plan.overrides[key] = v; done(); };
     }
 
-    // עריכת פריט ידני: שם, כמות, סוג, וספק (להזמנה)
+    // עריכת פריט ידני: שם, כמות, סוג וספק
     function editCustom(i) {
         const c = plan.custom[i];
         if (!c) return;
         const ovl = openModal(`<h2>עריכת פריט ידני</h2>
             <div class="field"><label>שם</label><input type="text" id="ec-label" value="${escapeHtml(c.label)}"></div>
-            <div class="field"><label>כמות (חופשי)</label><input type="text" id="ec-qty" value="${escapeHtml(c.qty)}"></div>
+            <div class="field"><label>כמות</label><input type="text" id="ec-qty" value="${escapeHtml(c.qty)}"></div>
             <div class="field"><label>סוג</label><select id="ec-kind"><option value="prep"${c.kind === "prep" ? " selected" : ""}>להכין</option><option value="order"${c.kind === "order" ? " selected" : ""}>להזמין</option></select></div>
-            <div class="field" id="ec-sup-wrap"><label>ספק (להזמנה)</label><select id="ec-sup"><option value="">ללא ספק קבוע</option>${supplierOptions(c.supplier_id)}</select></div>
+            <div class="field" id="ec-sup-wrap"><label>ספק</label><select id="ec-sup"><option value="">ללא ספק קבוע</option>${supplierOptions(c.supplier_id)}</select></div>
             <div class="error-msg" id="ec-err"></div>
             <div class="modal-actions"><button type="button" class="btn btn-secondary" id="ec-cancel">ביטול</button><button type="button" class="btn btn-danger" id="ec-del">מחיקה</button><button type="button" class="btn btn-primary" id="ec-save">שמירה</button></div>`);
+        enhanceSelect(ovl.querySelector("#ec-kind")); enhanceSelect(ovl.querySelector("#ec-sup"));
         const sync = () => { ovl.querySelector("#ec-sup-wrap").style.display = ovl.querySelector("#ec-kind").value === "order" ? "" : "none"; };
         ovl.querySelector("#ec-kind").onchange = sync; sync();
         const done = async () => { closeModal(); draw(); await persist(); };

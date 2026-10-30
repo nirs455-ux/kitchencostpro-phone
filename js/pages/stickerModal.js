@@ -22,7 +22,7 @@ export async function openStickerModal({ recipeId, name, allergens }) {
         <div class="checkbox-field"><input type="checkbox" id="st-rot" ${rotate ? "checked" : ""}><label for="st-rot">סובב את התמונה 90°</label></div>
         <div class="field"><label>תאריך ייצור</label><input type="date" id="st-date" value="${toInput(new Date())}"></div>
         <div class="field"><label>חיי מדף בימים (ריק = בלי תאריך תוקף)</label><input type="text" inputmode="numeric" id="st-shelf" value="${escapeHtml(String(shelf))}"></div>
-        <div class="field"><label>כמות או משקל (לא חובה)</label><input type="text" id="st-weight" placeholder='למשל: 1.2 ק"ג'></div>
+        <div class="field"><label>כמות או משקל</label><input type="text" id="st-weight" placeholder='למשל: 1.2 ק"ג'></div>
         <div class="field"><label>אלרגנים (אפשר לערוך)</label><input type="text" id="st-all" value="${escapeHtml(allergens || "")}"></div>
         <div style="text-align:center;margin:8px 0;"><img id="st-prev" alt="תצוגה מקדימה" style="max-width:100%;border:1px solid var(--border,#999);background:#fff;"></div>
         <div class="hint">התמונה נשמרת או נשלחת, ומייבאים אותה באפליקציית המדפסת (הוספת תמונה) באותו גודל מדבקה.</div>

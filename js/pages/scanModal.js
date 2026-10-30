@@ -56,7 +56,7 @@ export async function openScanModal({ supplierAware, onDone, initialFile = null 
             <div class="field"><label>תאריך</label><input type="date" id="scan-date" value="${todayLocal()}"></div>
             <button type="button" class="btn-link" id="scan-petty-show">＋ קופה קטנה</button>
             <div class="checkbox-field" id="scan-petty-wrap" style="display:none;"><input type="checkbox" id="scan-petty"><label for="scan-petty">קופה קטנה</label></div>
-            <div class="field" id="scan-purchaser-wrap" style="display:none;"><input type="text" id="scan-purchaser" placeholder="מי רכש (אופציונלי)"></div>
+            <div class="field" id="scan-purchaser-wrap" style="display:none;"><input type="text" id="scan-purchaser" placeholder="מי רכש"></div>
             ` : ""}
             <div id="scan-summary" style="margin-bottom:8px;"></div>
             <div id="scan-autosave" class="hint-warn" style="display:none;"></div>
@@ -374,12 +374,12 @@ export async function openScanModal({ supplierAware, onDone, initialFile = null 
                     </div>`}
                     ${ut === "weight" || ut === "liter" ? `
                     <div class="form-row">
-                        <div class="field"><label>${ut === "liter" ? "נפח האריזה (אופציונלי)" : "משקל האריזה (אופציונלי)"}</label>
+                        <div class="field"><label>${ut === "liter" ? "נפח האריזה" : "משקל האריזה"}</label>
                             <input type="number" step="any" id="scan-pack-${idx}" placeholder="${ut === "liter" ? "לדוגמה: 370" : "לדוגמה: 180"}" value="${it._pack ?? ""}"></div>
                         <div class="field"><label>יחידה</label>
                             <select id="scan-pack-unit-${idx}">${packUnits.map(([v, l]) => `<option value="${v}" ${(it._packUnit || packUnits[0][0]) === v ? "selected" : ""}>${l}</option>`).join("")}</select></div>
                     </div>` : ""}
-                    <div class="field"><label>יחידות בארגז (אופציונלי)</label><input type="number" step="any" id="scan-case-${idx}" placeholder="לדוגמה: 8" value="${it._case ?? ""}"></div>
+                    <div class="field"><label>יחידות בארגז</label><input type="number" step="any" id="scan-case-${idx}" placeholder="לדוגמה: 8" value="${it._case ?? ""}"></div>
                     <span class="hint" id="scan-pantry-price-${idx}"></span>
                     <div class="checkbox-field" style="margin-top:6px;">
                         <input type="checkbox" id="scan-frozen-${idx}" ${it._frozen ? "checked" : ""}>

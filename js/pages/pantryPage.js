@@ -84,14 +84,38 @@ export async function renderPantryProducts(container) {
     container.innerHTML = `
         <div class="px-top"><input type="search" id="px-q" placeholder="חיפוש מוצר..." autocomplete="off">
             <div class="seg px-view"><button type="button" data-v="cats" class="${view === "cats" ? "active" : ""}">קטגוריות</button><button type="button" data-v="list" class="${view === "list" ? "active" : ""}">רשימה</button></div></div>
+        <div class="btn-row" style="margin:6px 0;"><button type="button" class="btn btn-secondary btn-small" id="px-sel">☑ בחירה</button><button type="button" class="btn btn-secondary btn-small" id="px-all" style="display:none;">בחר את כל המוצגים</button></div>
         <div id="px-chips"></div>
         <div id="pantry-list"></div>
+        <div class="px-bulk" id="px-bulk" style="display:none;"><b id="px-bulk-n"></b><button type="button" class="btn btn-danger btn-small" id="px-bulk-del">מחק</button><button type="button" class="btn btn-secondary btn-small" id="px-bulk-cancel">ביטול</button></div>
         <button class="fab-add" id="btn-add">+</button>`;
     const list = container.querySelector("#pantry-list");
     const chipsEl = container.querySelector("#px-chips");
 
     const openItem = (id) => openProductSheet(items.find((i) => i.id === id), kids.get(id) || [], container, root);
-    const wireRows = () => list.querySelectorAll(".px-row").forEach((r) => { r.onclick = () => openItem(Number(r.dataset.id)); });
+    // מצב בחירה: סימון כמה מוצרים ומחיקה שלהם יחד
+    let selMode = false;
+    const sel = new Set();
+    const bulkEl = container.querySelector("#px-bulk");
+    const syncBulk = () => {
+        container.querySelector("#px-sel").style.display = selMode ? "none" : "";
+        container.querySelector("#px-all").style.display = selMode ? "" : "none";
+        bulkEl.style.display = selMode ? "flex" : "none";
+        container.querySelector("#px-bulk-n").textContent = sel.size ? `נבחרו ${sel.size}` : "בחר מוצרים";
+        container.querySelector("#px-bulk-del").disabled = !sel.size;
+        list.querySelectorAll(".px-row").forEach((r) => r.classList.toggle("sel", selMode && sel.has(Number(r.dataset.id))));
+    };
+    const wireRows = () => {
+        list.querySelectorAll(".px-row").forEach((r) => {
+            r.onclick = () => {
+                const id = Number(r.dataset.id);
+                if (!selMode) return openItem(id);
+                if (sel.has(id)) sel.delete(id); else sel.add(id);
+                syncBulk();
+            };
+        });
+        syncBulk();
+    };
 
     function draw() {
         list.innerHTML = "";
@@ -142,6 +166,20 @@ export async function renderPantryProducts(container) {
     qEl.oninput = () => { q = qEl.value; draw(); };
     container.querySelectorAll(".px-view [data-v]").forEach((b) => { b.onclick = async () => { view = b.dataset.v; await setSetting("pantry_view", view); renderPantryProducts(container); }; });
     container.querySelector("#btn-add").onclick = () => openPantryModal(null, container);
+    container.querySelector("#px-sel").onclick = () => { selMode = true; sel.clear(); syncBulk(); };
+    container.querySelector("#px-bulk-cancel").onclick = () => { selMode = false; sel.clear(); syncBulk(); };
+    container.querySelector("#px-all").onclick = () => { list.querySelectorAll(".px-row").forEach((r) => sel.add(Number(r.dataset.id))); syncBulk(); };
+    container.querySelector("#px-bulk-del").onclick = async () => {
+        if (!sel.size) return;
+        const names = items.filter((i) => sel.has(i.id)).map((i) => i.name);
+        const shown = names.slice(0, 8).map((n) => escapeHtml(n)).join(", ") + (names.length > 8 ? ` ועוד ${names.length - 8}` : "");
+        if (!(await confirmDialog(`למחוק ${names.length} מוצרים לגמרי, כולל התוצרים המפורקים שלהם?<br><br>${shown}<br><br>מוצר שמשמש במתכונים או במנות יוסר מהם בפעם הבאה שתערוך אותם. אי אפשר לבטל.`))) return;
+        try {
+            for (const id of [...sel]) await deletePantryItem(id);
+            toast(`נמחקו ${sel.size} מוצרים`);
+        } catch (e) { toast(e.message); }
+        renderPantryProducts(container);
+    };
     draw();
 }
 
@@ -231,7 +269,7 @@ function openPantryModal(existing, container) {
             <input type="text" inputmode="numeric" id="f-pack" value="">
         </div>
         <div class="field" id="f-bulk-wrap" style="display:none;">
-            <label>גודל האריזה (לא חובה) ${info('אם האריזה היא לא קילו או ליטר: בקבוק שמן 370 מ"ל, שקית קמח 800 גרם, ארגז 10 ק"ג. כותבים את הגודל ובשדה המחיר את מחיר האריזה, והמערכת מחשבת לבד מחיר לק"ג או לליטר. אם המחיר שלך כבר לק"ג או לליטר, משאירים ריק. כשמוגדר גודל אריזה, בספירת מלאי סופרים אריזות (בקבוקים, שקיות) והמערכת ממירה לבד לליטר או ק"ג.')}</label>
+            <label>גודל האריזה ${info('אם האריזה היא לא קילו או ליטר: בקבוק שמן 370 מ"ל, שקית קמח 800 גרם, ארגז 10 ק"ג. כותבים את הגודל ובשדה המחיר את מחיר האריזה, והמערכת מחשבת לבד מחיר לק"ג או לליטר. אם המחיר שלך כבר לק"ג או לליטר, משאירים ריק. כשמוגדר גודל אריזה, בספירת מלאי סופרים אריזות (בקבוקים, שקיות) והמערכת ממירה לבד לליטר או ק"ג.')}</label>
             <div class="cv-row"><input type="text" inputmode="decimal" id="f-buy-qty" value="" placeholder="למשל 370"><select id="f-buy-unit"></select></div>
             <input type="hidden" id="f-bulk" value="">
         </div>
@@ -312,7 +350,7 @@ function openPantryModal(existing, container) {
     }
     catSelect.onchange = syncSubcategory;
     packInput.addEventListener("input", () => { packInput.dataset.touched = "1"; });
-    // גודל אריזה (לא חובה) למשקל/נפח: 370 מ"ל, 800 גרם. נשמר מחיר לק"ג/ליטר מחושב מתוך מחיר האריזה
+    // גודל אריזה למשקל/נפח: 370 מ"ל, 800 גרם. נשמר מחיר לק"ג/ליטר מחושב מתוך מחיר האריזה
     const buyQty = overlay.querySelector("#f-buy-qty");
     const buyUnit = overlay.querySelector("#f-buy-unit");
     const PKG_MULT = { g: 0.001, kg: 1, ml: 0.001, l: 1 };

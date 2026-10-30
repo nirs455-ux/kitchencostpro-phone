@@ -788,7 +788,7 @@ async function openRecipeModal(existing, container, draft = null) {
                     </div>
                     <div class="form-row">
                         <div class="field"><label id="qa-price-label-${id}">מחיר לק"ג (${curLabel()})</label><input type="number" step="any" id="qa-price-${id}"></div>
-                        <div class="field" id="qa-ua-wrap-${id}" style="display:none;"><label>משקל ליחידה (גרם)</label><input type="number" step="any" id="qa-ua-${id}"></div>
+                        <div class="field" id="qa-ua-wrap-${id}" style="display:none;"><label>משקל ליחידה בגרם</label><input type="number" step="any" id="qa-ua-${id}"></div>
                     </div>
                     <button type="button" class="btn btn-primary btn-small" id="qa-add-${id}">הוסף לחומרי הגלם</button>
                     <div class="error-msg" id="qa-err-${id}"></div>

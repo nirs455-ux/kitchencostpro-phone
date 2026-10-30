@@ -46,12 +46,11 @@ export async function renderSettingsPage(container) {
             <div class="set-body" ${setOpen.has("backup") ? "" : "hidden"}>
                 ${addonOn("cloud") ? '<div class="card" id="cloud-card"></div>' : ""}
                 <div class="card">
-            <div class="card-title">גיבוי (ייצוא/ייבוא) ${info("אין שרת ואין סנכרון אוטומטי - זה הגיבוי היחיד לנתונים שבטלפון. מומלץ לייצא אחרי כל עדכון משמעותי.")}</div>
+            <div class="card-title">גיבוי ושחזור ${info("אין שרת ואין סנכרון אוטומטי - זה הגיבוי היחיד לנתונים שבטלפון. הגיבוי כולל את כל הנתונים ואת תמונות החשבוניות והקבלות. מומלץ לגבות אחרי כל עדכון משמעותי.")}</div>
             <div class="hint" style="margin-bottom:6px;"><b>גיבוי אחרון:</b> ${lastExport ? new Date(lastExport).toLocaleString("he-IL") : "עדיין לא יוצא"}
                 <br><b>אחסון קבוע:</b> ${persisted === true ? "פעיל - הדפדפן לא ימחק נתונים אוטומטית" : persisted === false ? "לא אושר ע\"י הדפדפן - מומלץ לגבות לעיתים קרובות" : "לא נתמך בדפדפן הזה"}</div>
             <div class="btn-row">
-                <button class="btn btn-primary btn-small" id="btn-export">📤 גיבוי מלא (עם תמונות)</button>
-                <button class="btn btn-secondary btn-small" id="btn-export-lite">📄 גיבוי קל (בלי תמונות)</button>
+                <button class="btn btn-primary btn-small" id="btn-export">📤 גיבוי</button>
                 <button class="btn btn-secondary btn-small" id="btn-import">📥 שחזור מקובץ</button>
             </div>
             <input type="file" id="import-file" accept=".json" style="display:none;">
@@ -63,13 +62,13 @@ export async function renderSettingsPage(container) {
             <div class="px-sh"><span class="px-ic" style="background:var(--brand-soft);">🤖</span><b>סריקה ובינה מלאכותית</b><span class="px-chev">${setOpen.has("scan") ? "▾" : "◂"}</span></div>
             <div class="set-body" ${setOpen.has("scan") ? "" : "hidden"}>
                 <div class="card">
-            <div class="card-title">${agentConfigured() ? "מפתח Gemini אישי (לא חובה)" : "מפתח Gemini API"} ${info(agentConfigured() ? "בלי מפתח האפליקציה משתמשת בעוזר AI משותף עם מגבלה יומית. אם תזין מפתח אישי, הסריקה תעבור ישירות לחשבון שלך בגוגל, בלי המגבלה. נשמר רק בתוך הטלפון הזה, ולא נשלח לשום מקום חוץ מ-Google." : "נדרש לסריקת חשבוניות. נשמר רק בתוך הטלפון הזה, ולא נשלח לשום מקום חוץ מ-Google.")}</div>
+            <div class="card-title">${agentConfigured() ? "מפתח Gemini אישי" : "מפתח Gemini API"} ${info(agentConfigured() ? "בלי מפתח האפליקציה משתמשת בעוזר AI משותף עם מגבלה יומית. אם תזין מפתח אישי, הסריקה תעבור ישירות לחשבון שלך בגוגל, בלי המגבלה. נשמר רק בתוך הטלפון הזה, ולא נשלח לשום מקום חוץ מ-Google." : "נדרש לסריקת חשבוניות. נשמר רק בתוך הטלפון הזה, ולא נשלח לשום מקום חוץ מ-Google.")}</div>
             <div class="field" style="margin-top:8px;"><input type="text" id="f-apikey" value="${apiKey}" placeholder="הדבק כאן את המפתח"></div>
             <button class="btn btn-primary btn-small" id="btn-save-key">שמירה</button>
         </div>
         <div class="card">
-            <div class="card-title">מפתח USDA (ערכים תזונתיים) ${info("לחיפוש ערכים תזונתיים של חומרי גלם במאגר USDA. המפתח חינמי: נרשמים בכתובת fdc.nal.usda.gov/api-key-signup.html והוא מגיע במייל. בלי מפתח החיפוש עובד אבל מוגבל מאוד. נשמר רק בתוך הטלפון הזה.")}</div>
-            <div class="field" style="margin-top:8px;"><input type="text" id="f-usdakey" value="${usdaKey}" placeholder="הדבק כאן את המפתח (לא חובה)"></div>
+            <div class="card-title">מפתח USDA לערכים תזונתיים ${info("לחיפוש ערכים תזונתיים של חומרי גלם במאגר USDA. המפתח חינמי: נרשמים בכתובת fdc.nal.usda.gov/api-key-signup.html והוא מגיע במייל. בלי מפתח החיפוש עובד אבל מוגבל מאוד. נשמר רק בתוך הטלפון הזה.")}</div>
+            <div class="field" style="margin-top:8px;"><input type="text" id="f-usdakey" value="${usdaKey}" placeholder="הדבק כאן את המפתח"></div>
             <button class="btn btn-primary btn-small" id="btn-save-usda">שמירה</button>
         </div>
                 <div class="card">
@@ -104,11 +103,11 @@ export async function renderSettingsPage(container) {
             </div>
         </div>
         <div class="px-sec set-sec" data-sec="tools">
-            <div class="px-sh"><span class="px-ic" style="background:var(--surface-2);">🧰</span><b>כלים (קבצים, ארכיון, דוח תקלה)</b><span class="px-chev">${setOpen.has("tools") ? "▾" : "◂"}</span></div>
+            <div class="px-sh"><span class="px-ic" style="background:var(--surface-2);">🧰</span><b>כלים</b><span class="px-chev">${setOpen.has("tools") ? "▾" : "◂"}</span></div>
             <div class="set-body" ${setOpen.has("tools") ? "" : "hidden"}>
                 <div class="card"><button class="btn btn-secondary btn-block" id="btn-producer">🏭 יצרן: מוצרים ומדבקות</button></div>
-                <div class="card"><button class="btn btn-secondary btn-block" id="btn-demo">🧪 טען נתוני דוגמה (להדגמה)</button></div>
-                <div class="card"><button class="btn btn-secondary btn-block" id="btn-files">📁 קבצים (קבלות, מתכונים, התקבלו)</button></div>
+                <div class="card"><button class="btn btn-secondary btn-block" id="btn-demo">🧪 טען נתוני דוגמה</button></div>
+                <div class="card"><button class="btn btn-secondary btn-block" id="btn-files">📁 קבצים</button></div>
                 <div class="card">
             <div class="card-title">ארכיון מחוקים</div>
             <button class="btn btn-secondary btn-small" id="btn-trash-open">🗑 פתח ארכיון (${trashCount})</button>
@@ -196,7 +195,7 @@ export async function renderSettingsPage(container) {
             <h2>דיווח על תקלה</h2>
             <div class="hint" style="margin-bottom:6px;">הדוח לא נשלח אוטומטית. כאן אתה רואה בדיוק מה בו, כותב כמה מילים, מזין לאן לשלוח (פעם אחת, והיעד נשמר), ולוחץ שלח. הוא לא כולל חשבוניות או מחירים.</div>
             <div class="field"><label>מה קרה? (לא חובה, אבל עוזר מאוד)</label><textarea id="rp-note" rows="3" style="width:100%;" placeholder="באיזה מסך היית, מה לחצת, ומה ציפית שיקרה"></textarea></div>
-            <div class="field"><label>לאן לשלוח (טלפון לוואטסאפ, או מייל)</label><input type="text" id="rp-to" inputmode="email" placeholder="מספר טלפון או כתובת מייל" style="width:100%;"></div>
+            <div class="field"><label>לאן לשלוח</label><input type="text" id="rp-to" inputmode="email" placeholder="מספר טלפון או כתובת מייל" style="width:100%;"></div>
             <div class="card-title" style="margin:8px 0 4px;">הדוח</div>
             <pre id="rp-text" class="card" style="white-space:pre-wrap;font-size:12px;max-height:200px;overflow:auto;direction:ltr;text-align:left;margin:0 0 8px;"></pre>
             <div class="modal-actions" style="flex-wrap:wrap;">
@@ -240,10 +239,6 @@ export async function renderSettingsPage(container) {
     container.querySelector("#btn-export").onclick = async () => {
         await downloadExport({ images: true });
         toast("קובץ גיבוי הורד");
-    };
-    container.querySelector("#btn-export-lite").onclick = async () => {
-        await downloadExport({ images: false });
-        toast("גיבוי קל הורד (בלי תמונות חשבוניות)");
     };
 
     const fileInput = container.querySelector("#import-file");

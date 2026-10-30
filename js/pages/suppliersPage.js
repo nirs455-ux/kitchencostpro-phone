@@ -356,7 +356,7 @@ function openInvoiceModal(existing, suppliers, pantryItems, container) {
             <div class="checkbox-field" id="f-petty-wrap" style="${existing && existing.petty_cash ? "" : "display:none;"}"><input type="checkbox" id="f-petty" ${existing && existing.petty_cash ? "checked" : ""}>
                 <label for="f-petty">קופה קטנה ${info("עובד קנה בדרך וקיבל החזר במזומן, והביא קבלה. אפשר לסמן מי רכש ואם הוחזר לו.")}</label></div>
             <div id="petty-fields" style="display:none;">
-                <div class="field"><label>מי רכש (אופציונלי)</label><input type="text" id="f-purchaser" value="${existing ? escapeHtml(existing.purchaser || "") : ""}" placeholder="שם העובד"></div>
+                <div class="field"><label>מי רכש</label><input type="text" id="f-purchaser" value="${existing ? escapeHtml(existing.purchaser || "") : ""}" placeholder="שם העובד"></div>
                 <div class="checkbox-field"><input type="checkbox" id="f-reimb" ${existing && existing.reimbursed ? "checked" : ""}>
                     <label for="f-reimb">הוחזר לעובד</label></div>
             </div>
@@ -371,7 +371,7 @@ function openInvoiceModal(existing, suppliers, pantryItems, container) {
         <button type="button" class="btn btn-secondary btn-small" id="btn-add-row">+ הוסף שורה</button>
         <div class="card-row" style="font-weight:700;margin-top:10px;"><span>סה"כ:</span><span id="total-display">${cur()}0.00</span></div>
         <div class="field" style="margin-top:10px;">
-            <label>תמונת החשבונית (אופציונלי)</label>
+            <label>תמונת החשבונית</label>
             <div class="btn-row">
                 <button type="button" class="btn btn-accent btn-small" id="btn-img-pick">🖼 הוסף תמונה</button>
                 <button type="button" class="btn btn-secondary btn-small" id="btn-img-view" style="display:none;">🖼 הצג</button>
@@ -429,12 +429,12 @@ function openInvoiceModal(existing, suppliers, pantryItems, container) {
                             <input type="number" step="any" inputmode="decimal" id="inv-ua-${id}"></div>
                         <div id="inv-pk-${id}" style="display:none;">
                             <div class="form-row" id="inv-pack-wrap-${id}">
-                                <div class="field"><label id="inv-pack-label-${id}">גודל אריזה (אופציונלי)</label>
+                                <div class="field"><label id="inv-pack-label-${id}">גודל אריזה</label>
                                     <input type="number" step="any" inputmode="decimal" id="inv-pack-${id}" placeholder="לדוגמה: 0.1"></div>
                                 <div class="field"><label>יחידה</label><select id="inv-pack-unit-${id}"></select></div>
                             </div>
                             <div class="hint" id="inv-pack-echo-${id}"></div>
-                            <div class="field"><label id="inv-case-label-${id}">יחידות באריזה / בארגז (אופציונלי)</label>
+                            <div class="field"><label id="inv-case-label-${id}">יחידות באריזה / בארגז</label>
                                 <input type="number" step="any" inputmode="decimal" id="inv-case-${id}" placeholder="לדוגמה: 9"></div>
                             <div class="checkbox-field">
                                 <input type="checkbox" id="inv-upd-${id}" ${existing ? "" : "checked"}>
@@ -499,7 +499,7 @@ function openInvoiceModal(existing, suppliers, pantryItems, container) {
             if (opts.some(([v]) => v === cur)) packSel.value = cur;
             row.querySelector(`#inv-pack-label-${id}`).textContent = ut === "liter" ? "גודל אריזה בליטרים (0.37 = 370 מ\"ל)" : 'גודל אריזה בק"ג (0.1 = 100 גרם)';
             row.querySelector(`#inv-case-label-${id}`).textContent = ut === "unit"
-                ? "כמה יחידות בכל אריזה? (למשל גומייה עם 9 גבעולים)" : "יחידות באריזה / בארגז (אופציונלי)";
+                ? "כמה יחידות בכל אריזה? (למשל גומייה עם 9 גבעולים)" : "יחידות באריזה / בארגז";
             updatePreview();
         };
         const updatePreview = () => {

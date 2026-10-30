@@ -61,7 +61,7 @@ function openBusinessModal(biz, onSaved) {
         <div class="field"><label>שם העסק</label><input type="text" id="b-name" value="${escapeHtml(biz.name)}"></div>
         <div class="field"><label>כתובת</label><input type="text" id="b-addr" value="${escapeHtml(biz.address)}"></div>
         <div class="field"><label>טלפון</label><input type="text" inputmode="tel" id="b-phone" value="${escapeHtml(biz.phone)}"></div>
-        <div class="field"><label>ח.פ. / מספר רישיון (לא חובה)</label><input type="text" id="b-reg" value="${escapeHtml(biz.reg)}"></div>
+        <div class="field"><label>ח.פ. / מספר רישיון</label><input type="text" id="b-reg" value="${escapeHtml(biz.reg)}"></div>
         <div class="modal-actions"><button type="button" class="btn btn-secondary" id="b-cancel">ביטול</button><button type="button" class="btn btn-primary" id="b-save">שמירה</button></div>`);
     ov.querySelector("#b-cancel").onclick = () => attemptClose(ov);
     ov.querySelector("#b-save").onclick = busy(async () => {
@@ -82,16 +82,16 @@ function openProductModal(existing, recipes, onSaved, presetRecipeId = null, pan
         <div class="field"><label>מתכון</label><select id="p-recipe"><option value="">בחר מתכון...</option>${recipes.map((r) => `<option value="${r.id}" ${(existing && existing.recipe_id === r.id) || (preset && preset.id === r.id) ? "selected" : ""}>${escapeHtml(r.name)}</option>`).join("")}</select></div>
         <div class="form-row">
             <div class="field"><label>${isGramMode() ? "משקל נטו (גרם)" : 'משקל נטו (ק"ג)'}</label><input type="text" inputmode="decimal" id="p-net" placeholder="${isGramMode() ? "למשל 350" : "למשל 0.350"}" value="${existing && existing.net_g ? gramsToKgText(existing.net_g) : ""}"></div>
-            <div class="field"><label>חיי מדף (ימים)</label><input type="text" inputmode="numeric" id="p-shelf" value="${existing && existing.shelf_days ? existing.shelf_days : ""}"></div>
+            <div class="field"><label>חיי מדף בימים</label><input type="text" inputmode="numeric" id="p-shelf" value="${existing && existing.shelf_days ? existing.shelf_days : ""}"></div>
         </div>
         <div class="field"><label>תנאי אחסון</label><input type="text" id="p-storage" value="${escapeHtml(existing ? existing.storage : DEFAULT_STORAGE)}"></div>
-        <div class="field"><label>ברקוד (לא חובה)</label><input type="text" inputmode="numeric" id="p-barcode" value="${escapeHtml(existing ? existing.barcode : "")}"></div>
+        <div class="field"><label>ברקוד</label><input type="text" inputmode="numeric" id="p-barcode" value="${escapeHtml(existing ? existing.barcode : "")}"></div>
         <div class="card-title" style="margin:10px 0 4px;">אריזה ${info("מוסיפים את האריזה של היחידה הנמכרת: צנצנת, מכסה, קופסה, מדבקה, שקית. האריזה יכולה להגיע לשליש מעלות המוצר, ולכן היא נכללת בעלות הכוללת ובמחיר. מוצר ביחידות: כמה יחידות למוצר אחד. מוצר במשקל או בנפח: כמה ק\"ג או ליטר, למשל 0.01 הוא 10 גרם.")}</div>
         <div id="p-pack"></div>
         <button type="button" class="btn btn-secondary btn-small" id="p-pack-add" style="margin-bottom:10px;">＋ הוסף אריזה</button>
         <div class="hint" style="margin:-4px 0 10px;">האריזות מנוהלות ברשימה נפרדת (בדף היצרן, "אריזות").</div>
         <div class="field"><label>מחיר מכירה ליחידה (${curLabel()}, לפני מע"מ)</label><input type="text" inputmode="decimal" id="p-sell" value="${existing && existing.sell_price ? existing.sell_price : ""}"></div>
-        <details class="pg-more"><summary>ערכים תזונתיים ל-100 גרם (לא חובה)</summary>
+        <details class="pg-more"><summary>ערכים תזונתיים ל-100 גרם</summary>
             <div class="hint">אם משאירים ריק, הערכים יחושבו אוטומטית מהמתכון (לשונית "תזונה" במתכון). מזינים כאן רק אם יש בדיקה מעבדה או תווית מוכנה.</div>
             <div class="form-row" style="flex-wrap:wrap;">${NUTRITION_FIELDS.map((f) => `<div class="field" style="min-width:45%;"><label>${escapeHtml(f.label)}</label><input type="text" inputmode="decimal" data-nu="${f.key}" value="${nut[f.key] != null ? nut[f.key] : ""}"></div>`).join("")}</div>
         </details>

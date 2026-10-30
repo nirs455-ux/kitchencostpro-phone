@@ -81,7 +81,7 @@ async function openWasteModal(onSaved) {
             <div class="field"><label>יחידה</label><select id="wm-unit"></select></div>
         </div>
         <div class="field"><label>סיבה</label><div class="chips" id="wm-reasons">${WASTE_REASONS.map((r) => `<button type="button" class="chip" data-r="${r.key}">${r.label}</button>`).join("")}</div></div>
-        <div class="field"><label>הערה (אופציונלי)</label><input type="text" id="wm-note"></div>
+        <div class="field"><label>הערה</label><input type="text" id="wm-note"></div>
         <div class="form-row">
             <div class="field"><label>נרשם על ידי</label><input type="text" id="wm-by" value="${escapeHtml(lastBy)}" placeholder="שם"></div>
             <div class="field"><label>תאריך</label><input type="date" id="wm-date" value="${todayIso()}"></div>

@@ -62,7 +62,7 @@ export async function openOrderModal(supplier, onChanged, startTab = "order") {
     function drawDetails(body) {
         body.innerHTML = `
             <div class="hint">הפרטים האלה משמשים לשליחת ההזמנה ולתזכורות.</div>
-            <div class="field"><label>טלפון (וואטסאפ)</label><input type="tel" id="oq-phone" value="${escapeHtml(phone)}" placeholder="050-1234567"></div>
+            <div class="field"><label>טלפון לוואטסאפ</label><input type="tel" id="oq-phone" value="${escapeHtml(phone)}" placeholder="050-1234567"></div>
             <div class="field"><label>מייל</label><input type="email" id="oq-email" dir="ltr" value="${escapeHtml(email)}" placeholder="orders@supplier.com"></div>
             <div class="field"><label>ימי חלוקה של הספק</label>
                 <div id="oq-days" class="fchips" style="flex-wrap:wrap;">${DAY_NAMES.map((n, i) => `<label class="chip ${days.includes(i) ? "active" : ""}" style="cursor:pointer;"><input type="checkbox" value="${i}" ${days.includes(i) ? "checked" : ""} style="display:none;">${n}</label>`).join("")}</div></div>

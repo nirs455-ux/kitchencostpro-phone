@@ -42,13 +42,13 @@ function review(item, draft, onDone) {
         ${draft.name ? `<div class="hint">על התווית: <b>${escapeHtml(draft.name)}</b> (נשמר תחת "${escapeHtml(item.name)}")</div>` : ""}
         ${draft.warnings.map((w) => `<div class="hint-warn">${escapeHtml(w)}</div>`).join("")}
         ${draft.notes ? `<div class="hint">הערה מהקריאה: ${escapeHtml(draft.notes)}</div>` : ""}
-        <div class="card-title" style="margin:10px 0 4px;">מכיל (אלרגנים)</div>
+        <div class="card-title" style="margin:10px 0 4px;">מכיל אלרגנים</div>
         <div class="chips" id="lb-al"></div>
         <div class="card-title" style="margin:10px 0 4px;">עלול להכיל עקבות</div>
         <div class="chips" id="lb-may"></div>
         <div class="card-title" style="margin:10px 0 4px;">ערכים תזונתיים ל-100 גרם${draft.fromServing ? " (חושב ממנה)" : ""}</div>
         <div class="form-row" style="flex-wrap:wrap;">${NUTRIENTS.map((n) => `<div class="field" style="min-width:45%;"><label>${escapeHtml(n.label)}</label><input type="text" inputmode="decimal" data-lb="${n.key}" value="${draft.per100[n.key] != null ? draft.per100[n.key] : ""}"></div>`).join("")}</div>
-        <div class="card-title" style="margin:10px 0 4px;">רכיבים (כפי שמודפס)</div>
+        <div class="card-title" style="margin:10px 0 4px;">רכיבים כפי שמודפס</div>
         <textarea id="lb-ing" rows="4" style="width:100%;">${escapeHtml(draft.ingredients)}</textarea>
         <div class="error-msg"></div>
         <div class="modal-actions"><button class="btn btn-secondary" id="lb-cancel">ביטול</button><button class="btn btn-primary" id="lb-save">שמירה</button></div>`);

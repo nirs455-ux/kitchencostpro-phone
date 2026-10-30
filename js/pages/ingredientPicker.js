@@ -61,7 +61,7 @@ async function pushRecent(key) {
 let memory = null;
 export function resetPickerMemory() { memory = null; }
 
-// onCreate (לא חובה): מאפשר להוסיף מוצר חדש תוך כדי עבודה. מקבל { name, category, unit_type, price } ומחזיר את הפריט החדש (או זורק שגיאה)
+// onCreate: מאפשר להוסיף מוצר חדש תוך כדי עבודה. מקבל { name, category, unit_type, price } ומחזיר את הפריט החדש (או זורק שגיאה)
 export async function openIngredientPicker({ title = "בחר מרכיב", items, tabs = null, onPick, onCreate = null }) {
     const layer = document.createElement("div");
     layer.className = "picker";
@@ -100,7 +100,7 @@ export async function openIngredientPicker({ title = "בחר מרכיב", items,
         });
     }
 
-    // טופס קצר למוצר חדש: שם, קטגוריה, יחידת מדידה ומחיר (לא חובה)
+    // טופס קצר למוצר חדש: שם, קטגוריה, יחידת מדידה ומחיר
     function drawCreate(name) {
         layer.innerHTML = `
             <div class="pk-top"><button type="button" class="pk-close" id="pk-back" aria-label="חזרה">→</button><div class="pk-title">מוצר חדש בחומרי הגלם</div></div>
@@ -108,7 +108,7 @@ export async function openIngredientPicker({ title = "בחר מרכיב", items,
                 <div class="field"><label>שם המוצר</label><input type="text" id="pk-n-name" value="${escapeHtml(name)}"></div>
                 <div class="field"><label>קטגוריה</label><select id="pk-n-cat"><option value="">בחר...</option>${Object.keys(CATEGORY_GROUPS).map((c) => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join("")}</select></div>
                 <div class="field"><label>נמדד ב-</label><select id="pk-n-unit">${UNIT_TYPES.map((u) => `<option value="${u}">${escapeHtml(UNIT_TYPE_LABELS[u])}</option>`).join("")}</select></div>
-                <div class="field"><label>מחיר (לא חובה)</label><input type="text" inputmode="decimal" id="pk-n-price" placeholder="אפשר להשלים אחר כך"><div class="hint">בלי מחיר, העלות של המרכיב הזה תהיה אפס עד שתשלים אותו בחומרי הגלם.</div></div>
+                <div class="field"><label>מחיר</label><input type="text" inputmode="decimal" id="pk-n-price" placeholder="אפשר להשלים אחר כך"><div class="hint">בלי מחיר, העלות של המרכיב הזה תהיה אפס עד שתשלים אותו בחומרי הגלם.</div></div>
                 <div class="error-msg" id="pk-n-err"></div>
                 <button type="button" class="btn btn-primary" id="pk-n-save">הוסף ובחר</button>
             </div>`;

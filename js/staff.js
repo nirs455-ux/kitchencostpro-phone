@@ -103,7 +103,7 @@ export function openUnlockDialog() {
 export function openSetPinDialog(onDone) {
     const overlay = openModal(`
         <h2>הגדרת מצב עובד</h2>
-        <div class="field"><label>קוד חדש (4 עד 8 ספרות)</label><input type="password" inputmode="numeric" autocomplete="off" id="pin1" maxlength="8"></div>
+        <div class="field"><label>קוד חדש, 4 עד 8 ספרות</label><input type="password" inputmode="numeric" autocomplete="off" id="pin1" maxlength="8"></div>
         <div class="field"><label>הקלד שוב</label><input type="password" inputmode="numeric" autocomplete="off" id="pin2" maxlength="8"></div>
         <div class="error-msg" id="pin-err"></div>
         <div class="modal-actions"><button type="button" class="btn btn-secondary" id="pin-cancel">ביטול</button>

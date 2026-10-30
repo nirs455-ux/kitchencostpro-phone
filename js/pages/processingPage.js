@@ -152,8 +152,8 @@ function openYieldModal(it, container) {
             </select>
         </div>` : ""}
         <div class="form-row">
-            <div class="field"><label>משקל לפני (גרם, אופציונלי)</label><input type="number" step="any" id="f-wb" value="${it.weight_before ?? ""}"></div>
-            <div class="field"><label>משקל אחרי (גרם, אופציונלי)</label><input type="number" step="any" id="f-wa" value="${it.weight_after ?? ""}"></div>
+            <div class="field"><label>משקל לפני בגרם</label><input type="number" step="any" id="f-wb" value="${it.weight_before ?? ""}"></div>
+            <div class="field"><label>משקל אחרי בגרם</label><input type="number" step="any" id="f-wa" value="${it.weight_after ?? ""}"></div>
         </div>
         <div class="field"><label>או: ניצולת ידנית (%) ${info("אם ממלאים משקל לפני ואחרי, הניצולת מחושבת אוטומטית מהם ומתעלמת מהשדה הידני.")}</label><input type="number" step="any" id="f-yield" value="${it.yield_pct}"></div>
         <div class="checkbox-field field" style="margin-top:10px;">
@@ -195,8 +195,8 @@ function openBreakdownModal(parent, container) {
         <h2>תוצר חדש מתוך ${escapeHtml(parent.name)}</h2>
         <div class="field"><label>שם התוצר ${info("התוצר יורש קטגוריה, יחידה ומחיר מחומר הגלם. כאן קובעים רק שם וניצולת משלו.")}</label><input type="text" id="f-name" placeholder="לדוגמה: פילה"></div>
         <div class="form-row">
-            <div class="field"><label>משקל לפני (גרם)</label><input type="number" step="any" id="f-wb"></div>
-            <div class="field"><label>משקל אחרי (גרם)</label><input type="number" step="any" id="f-wa"></div>
+            <div class="field"><label>משקל לפני בגרם</label><input type="number" step="any" id="f-wb"></div>
+            <div class="field"><label>משקל אחרי בגרם</label><input type="number" step="any" id="f-wa"></div>
         </div>
         <div class="field"><label>או: ניצולת ידנית (%)</label><input type="number" step="any" id="f-yield" value="100"></div>
         <div class="checkbox-field field">
