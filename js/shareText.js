@@ -55,7 +55,7 @@ export function categoryShareText(category, recipes) {
 // הזמנה לספק. lines: [{ name, qty }] (רק שורות עם כמות)
 export function orderText(supplierName, dateText, lines, note = "") {
     const out = [`שלום ${supplierName || ""}, הזמנה ל-${dateText}:`.replace("  ", " "), ""];
-    for (const l of lines) out.push(`• ${l.name} - ${l.qty}`);
+    for (const l of lines) out.push(l.qty ? `• ${l.name} - ${l.qty}` : `• ${l.name}`);
     if (note && note.trim()) out.push("", note.trim());
     out.push("", "תודה!");
     return out.join("\n");

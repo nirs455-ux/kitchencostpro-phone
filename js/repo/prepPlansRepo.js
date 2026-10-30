@@ -8,6 +8,22 @@ const txt = (v) => String(v == null ? "" : v).trim();
 const pad = (n) => String(n).padStart(2, "0");
 export const todayIso = () => { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
 
+// פריטים ידניים (מנות שאין במערכת, משימות לאותו אירוע): טקסט חופשי. kind: prep = להכין, order = להזמין
+export function normalizeCustom(list) {
+    if (!Array.isArray(list)) return [];
+    return list.filter((c) => c && txt(c.label)).map((c, i) => {
+        const sid = c.supplier_id === "" || c.supplier_id == null ? NaN : Number(c.supplier_id);
+        return { id: txt(c.id) || `c${Date.now().toString(36)}${i}`, kind: c.kind === "order" ? "order" : "prep", label: txt(c.label), qty: txt(c.qty), supplier_id: Number.isFinite(sid) ? sid : null };
+    });
+}
+
+// שינוי ידני של כמות מחושבת: מפתח משימה -> טקסט חופשי. מחיקת השינוי מחזירה את החישוב
+export function normalizeOverrides(o) {
+    const out = {};
+    for (const [k, v] of Object.entries(o && typeof o === "object" ? o : {})) if (txt(v)) out[k] = txt(v);
+    return out;
+}
+
 // תוכנית תקינה מכל קלט (גם מגיבוי ישן/פגום)
 export function normalizePlan(p) {
     const rows = Array.isArray(p && p.rows) ? p.rows.filter((r) => r && (r.source_type === "dish" || r.source_type === "recipe") && Number.isFinite(Number(r.source_id))) : [];
@@ -20,6 +36,8 @@ export function normalizePlan(p) {
         guests: txt(p && p.guests),
         margin: p && p.margin != null && txt(p.margin) !== "" ? txt(p.margin) : "10",
         rows: rows.map((r) => ({ source_type: r.source_type, source_id: Number(r.source_id), name: txt(r.name), per: txt(r.per), share: txt(r.share) })),
+        custom: normalizeCustom(p && p.custom),
+        overrides: normalizeOverrides(p && p.overrides),
         done,
         updated: Number(p && p.updated) || Date.now(),
     };

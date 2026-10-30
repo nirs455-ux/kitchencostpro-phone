@@ -35,9 +35,9 @@ export async function renderSettingsPage(container) {
 
     container.innerHTML = `
         <div class="px-sec set-sec" data-sec="addons">
-            <div class="px-sh"><span class="px-ic" style="background:var(--brand-soft);">🧩</span><b>תוספות: מה אתה רוצה במערכת</b><span class="px-chev">${setOpen.has("addons") ? "▾" : "◂"}</span></div>
+            <div class="px-sh"><span class="px-ic" style="background:var(--brand-soft);">🧩</span><b>Add-ons</b><span class="px-chev">${setOpen.has("addons") ? "▾" : "◂"}</span></div>
             <div class="set-body" ${setOpen.has("addons") ? "" : "hidden"}>
-                <div class="hint" style="margin-bottom:6px;">הבסיס תמיד פעיל: חומרי גלם, מתכונים, מנות, פחת, ספקים והזמנות. את השאר מפעילים רק אם צריך, וכך המסכים נשארים נקיים. כיבוי לא מוחק נתונים, והפעלה מחדש מחזירה הכול.</div>
+                <div class="hint" style="margin-bottom:6px;">בוחרים אילו Add-ons פועלים אצלך. הבסיס תמיד פעיל: חומרי גלם, מתכונים, מנות, פחת, ספקים והזמנות. Add-on כבוי נעלם מהמסכים ולא מוחק נתונים, והפעלה מחדש מחזירה הכול.</div>
                 ${ADDONS.map((a) => `<div class="card"><div class="checkbox-field"><input type="checkbox" id="ad-${a.key}" data-addon="${a.key}" ${addonOn(a.key) ? "checked" : ""}><label for="ad-${a.key}"><b>${a.icon} ${a.label}</b><br><span class="muted">${a.desc}</span></label></div></div>`).join("")}
             </div>
         </div>
@@ -157,7 +157,7 @@ export async function renderSettingsPage(container) {
     if (cloudCard) renderCloudCard(cloudCard);
     // תוספות: מתג לכל יכולת. הפעלה/כיבוי מעדכנים את התפריט והמסכים
     container.querySelectorAll("input[data-addon]").forEach((c) => {
-        c.onchange = async () => { await setAddon(c.dataset.addon, c.checked); toast(c.checked ? "התוספת הופעלה" : "התוספת כובתה"); renderSettingsPage(container); };
+        c.onchange = async () => { await setAddon(c.dataset.addon, c.checked); toast(c.checked ? "Add-on הופעל" : "Add-on כובה"); renderSettingsPage(container); };
     });
     // המתג הישן של מודול יצרן וכפתור הקיצור: נשארים רק כשהתוספת פעילה (המתג עצמו עבר לתוספות)
     container.querySelector("#f-producer-mode").closest(".card").hidden = true;

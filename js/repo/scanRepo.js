@@ -47,6 +47,7 @@ export async function scanInvoiceImage(apiKey, file, onRetry) {
     let response;
     try {
         response = await geminiFetch(apiKey, { contents: [{ parts: [{ text: INVOICE_SCAN_PROMPT }, ...prepared.parts] }] }, {
+            fast: true,
             onRetry: (i) => { if (onRetry) onRetry(i.attempt, 3, i.model); },
         });
     } catch (e) {
@@ -267,7 +268,7 @@ export async function scanRecipeImage(apiKey, file) {
 
     let response;
     try {
-        response = await geminiFetch(apiKey, { contents: [{ parts: [{ text: recipeScanPrompt(categories) }, ...filePart] }] });
+        response = await geminiFetch(apiKey, { contents: [{ parts: [{ text: recipeScanPrompt(categories) }, ...filePart] }] }, { fast: true });
     } catch (e) {
         throw new Error("אין חיבור לאינטרנט או שהשרת לא זמין. נסה שוב בעוד רגע.");
     }
@@ -303,7 +304,7 @@ export async function scanLabelImage(apiKey, file) {
     const prepared = await prepareParts(file, "טקסט התווית");
     let response;
     try {
-        response = await geminiFetch(apiKey, { contents: [{ parts: [{ text: LABEL_SCAN_PROMPT }, ...prepared.parts] }] });
+        response = await geminiFetch(apiKey, { contents: [{ parts: [{ text: LABEL_SCAN_PROMPT }, ...prepared.parts] }] }, { fast: true });
     } catch (e) {
         throw new Error("אין חיבור לאינטרנט או שהשרת לא זמין. נסה שוב בעוד רגע.");
     }
@@ -338,7 +339,7 @@ export async function scanCountSheet(apiKey, file) {
     const prepared = await prepareParts(file, "דף ספירה");
     let response;
     try {
-        response = await geminiFetch(apiKey, { contents: [{ parts: [{ text: COUNT_SCAN_PROMPT }, ...prepared.parts] }] });
+        response = await geminiFetch(apiKey, { contents: [{ parts: [{ text: COUNT_SCAN_PROMPT }, ...prepared.parts] }] }, { fast: true });
     } catch (e) {
         throw new Error("אין חיבור לאינטרנט או שהשרת לא זמין. נסה שוב בעוד רגע.");
     }
