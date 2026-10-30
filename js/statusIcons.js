@@ -1,7 +1,6 @@
 // אייקוני מצב בסרגל העליון: 🤖 עוזר AI (מפתח Gemini) ו-☁️ ענן (גיבוי ל-Drive). אדום = לא מחובר, כתום = דורש טיפול, ירוק = תקין.
 // לחיצה מסבירה מה זה אומר ומציעה לחבר. מוסתרים במצב טבח.
-import { getSetting } from "./repo/settingsRepo.js";
-import { getAgentKey, agentConfigured } from "./agent.js";
+import { getAgentKey } from "./agent.js";
 import { addonOn } from "./addons.js";
 import { getCloudStatus, isCloudAvailable, runBackup } from "./cloud/cloudGlue.js";
 import { resolveCloudIssue, fmtWhen } from "./cloud/cloudUi.js";
@@ -52,11 +51,9 @@ function popup(title, text, buttons) {
 }
 
 async function openAgentPopup(st) {
-    const hasOwnKey = !!(await getSetting("gemini_api_key"));
     if (st.agent === "ok") {
-        popup("🤖 עוזר AI מחובר ✓", agentConfigured() && !hasOwnKey ? "עוזר AI משותף פעיל (עם מגבלה יומית), ואפשר לסרוק חשבוניות ומתכונים מתמונה. מי שרוצה בלי מגבלה יכול להזין מפתח Gemini אישי בהגדרות." : "מפתח Gemini שמור, ואפשר לסרוק חשבוניות ומתכונים מתמונה.", [
-            { label: agentConfigured() ? "מפתח אישי בהגדרות" : "בדוק או החלף מפתח", cls: "btn-primary", run: () => { if (agentConfigured()) location.hash = "settings"; else openWizardAt(1); } },
-            { label: "סגור", run: () => {} },
+        popup("🤖 עוזר AI מחובר ✓", "עוזר AI פעיל, עם מגבלה יומית. אפשר לסרוק חשבוניות ומתכונים מתמונה.", [
+            { label: "סגור", cls: "btn-primary", run: () => {} },
         ]);
     } else {
         popup("🤖 אין עוזר AI מחובר", "בלי עוזר AI (מפתח Gemini) אי אפשר לסרוק חשבוניות ומתכונים מתמונה. אפשר להמשיך לעבוד ידנית, אבל הסריקה לא תעבוד.", [

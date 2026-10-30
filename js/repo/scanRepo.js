@@ -39,7 +39,7 @@ function unreadableMessage(e) {
 }
 
 export async function scanInvoiceImage(apiKey, file, onRetry) {
-    if (!apiKey) throw new Error("לא הוגדר מפתח API של Gemini. הזן אותו במסך ההגדרות.");
+    if (!apiKey) throw new Error("עוזר AI לא זמין כרגע.");
     // הכנת הקובץ: תמונה (מכווצת) / PDF נשלחים כמו שהם; Word / Excel / טקסט וכו' - חילוץ טקסט
     const prepared = await prepareParts(file, "תוכן החשבונית");
 
@@ -63,7 +63,7 @@ export async function scanInvoiceImage(apiKey, file, onRetry) {
             err.queueable = true;
             throw err;
         }
-        if (code === 402) throw new Error("הגעת למגבלה היומית של עוזר AI. אפשר להמשיך מחר, או להזין מפתח Gemini אישי בהגדרות.");
+        if (code === 402) throw new Error("הגעת למגבלה היומית של עוזר AI. אפשר להמשיך מחר.");
         if (code === 413) throw new Error("הקובץ גדול מדי לסריקה. צלם שוב בגודל קטן יותר, או שלח רק חלק מהעמודים.");
         if (code === 400 || code === 403) throw new Error("מפתח ה-API לא תקין או חסרות הרשאות. בדוק את המפתח בהגדרות.");
         const text = await response.text();
@@ -261,7 +261,7 @@ export async function applyScannedInvoice({ items, supplierId, invoiceDate, imag
 
 // סריקת מתכון מתמונה: מחזיר טיוטה (name, category, final_weight, ingredients) - שום דבר לא נשמר.
 export async function scanRecipeImage(apiKey, file) {
-    if (!apiKey) throw new Error("לא הוגדר מפתח API של Gemini. הזן אותו במסך ההגדרות.");
+    if (!apiKey) throw new Error("עוזר AI לא זמין כרגע.");
     const prepared = await prepareParts(file, "טקסט המתכון");
     const filePart = prepared.parts;
     const categories = await getRecipeCategories();
@@ -275,7 +275,7 @@ export async function scanRecipeImage(apiKey, file) {
     if (!response.ok) {
         if (await agentDown(response)) throw new Error(AGENT_DOWN_MSG);
         if (response.status === 413) throw new Error("הקובץ גדול מדי לסריקה. צלם שוב בגודל קטן יותר, או שלח רק חלק מהעמודים.");
-        if (response.status === 402) throw new Error("הגעת למגבלה היומית של עוזר AI. אפשר להמשיך מחר, או להזין מפתח Gemini אישי בהגדרות.");
+        if (response.status === 402) throw new Error("הגעת למגבלה היומית של עוזר AI. אפשר להמשיך מחר.");
         const text = await response.text();
         throw new Error(`שגיאה מה-API (${response.status}): ${text.slice(0, 300)}`);
     }
@@ -300,7 +300,7 @@ export async function scanRecipeImage(apiKey, file) {
 
 // סריקת תווית יצרן: מחזיר טיוטה (שם, רכיבים, אלרגנים, ערכים תזונתיים ל-100 גרם). שום דבר לא נשמר.
 export async function scanLabelImage(apiKey, file) {
-    if (!apiKey) throw new Error("לא הוגדר מפתח API של Gemini. הזן אותו במסך ההגדרות.");
+    if (!apiKey) throw new Error("עוזר AI לא זמין כרגע.");
     const prepared = await prepareParts(file, "טקסט התווית");
     let response;
     try {
@@ -311,7 +311,7 @@ export async function scanLabelImage(apiKey, file) {
     if (!response.ok) {
         if (await agentDown(response)) throw new Error(AGENT_DOWN_MSG);
         if (response.status === 413) throw new Error("התמונה גדולה מדי. צלם שוב קרוב יותר לתווית.");
-        if (response.status === 402) throw new Error("הגעת למגבלה היומית של עוזר AI. אפשר להמשיך מחר, או להזין מפתח Gemini אישי בהגדרות.");
+        if (response.status === 402) throw new Error("הגעת למגבלה היומית של עוזר AI. אפשר להמשיך מחר.");
         if (response.status === 503 || response.status === 429) throw new Error("שרת הקריאה של Google עמוס כרגע. נסה שוב בעוד רגע.");
         const text = await response.text();
         throw new Error(`שגיאה מה-API (${response.status}): ${text.slice(0, 200)}`);
@@ -335,7 +335,7 @@ export async function scanLabelImage(apiKey, file) {
 
 // קריאת דף ספירה בכתב יד: מחזיר את ה-JSON הגולמי { rows: [{ n, name, counted, uncertain }] } להתאמה ב-countAssist.js. שום דבר לא נשמר.
 export async function scanCountSheet(apiKey, file) {
-    if (!apiKey) throw new Error("לא הוגדר מפתח API של Gemini. הזן אותו במסך ההגדרות.");
+    if (!apiKey) throw new Error("עוזר AI לא זמין כרגע.");
     const prepared = await prepareParts(file, "דף ספירה");
     let response;
     try {
@@ -346,7 +346,7 @@ export async function scanCountSheet(apiKey, file) {
     if (!response.ok) {
         if (await agentDown(response)) throw new Error(AGENT_DOWN_MSG);
         if (response.status === 413) throw new Error("התמונה גדולה מדי. צלם שוב, דף אחד בכל צילום.");
-        if (response.status === 402) throw new Error("הגעת למגבלה היומית של עוזר AI. אפשר להמשיך מחר, או להזין מפתח Gemini אישי בהגדרות.");
+        if (response.status === 402) throw new Error("הגעת למגבלה היומית של עוזר AI. אפשר להמשיך מחר.");
         if (response.status === 503 || response.status === 429) throw new Error("שרת הקריאה של Google עמוס כרגע. נסה שוב בעוד רגע.");
         const text = await response.text();
         throw new Error(`שגיאה מה-API (${response.status}): ${text.slice(0, 200)}`);

@@ -1,6 +1,6 @@
 // "עוזר AI": שרת קטן שמחזיק את מפתח Gemini של הבעלים ומגביל שימוש (ראה agent-worker/). כשהכתובת מוגדרת כאן, המשתמשים לא צריכים מפתח.
-// מי שמזין מפתח אישי בהגדרות ממשיך לעבוד ישירות מול Google (המפתח האישי גובר).
-import { getSetting } from "./repo/settingsRepo.js";
+// אין מפתח אישי באפליקציה: כל הסריקות עוברות דרך העוזר, והמפתח נשמר רק בשרת.
+import { getSetting, setSetting } from "./repo/settingsRepo.js";
 
 // הכתובת של ה-Worker אחרי ההקמה, למשל "https://kcp-agent.<החשבון>.workers.dev". ריק = אין עוזר AI (כמו קודם: מפתח אישי בלבד).
 export const AGENT_URL = "https://kcp-agent.nirs455.workers.dev";
@@ -17,13 +17,12 @@ export function deviceId() {
     } catch (e) { return "nodevice"; }
 }
 
-// מפתח "אפקטיבי" לשאר האפליקציה: מפתח אישי אם הוזן; אחרת סימן מיוחד שמפנה לעוזר AI; אחרת ריק (אין עוזר AI).
+// סימן מיוחד שמפנה לעוזר AI (ריק = אין עוזר). מפתח אישי שנשמר בגרסאות קודמות נמחק מהמכשיר.
 export async function getAgentKey() {
-    const own = await getSetting("gemini_api_key");
-    if (own) return own;
+    if (await getSetting("gemini_api_key")) await setSetting("gemini_api_key", "");
     return AGENT_URL ? AGENT_SENTINEL : "";
 }
-export async function usingAgent() { return !(await getSetting("gemini_api_key")) && !!AGENT_URL; }
+export async function usingAgent() { return !!AGENT_URL; }
 
 // קריאה לעוזר AI: אותו גוף כמו ל-Gemini, ותשובה באותו פורמט (או 402 כשחרגת מהמגבלה היומית).
 export function agentFetch(body, fetchImpl = fetch) {

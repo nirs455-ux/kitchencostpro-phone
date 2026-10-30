@@ -16,13 +16,11 @@ import { t, LANGS, getLang } from "../i18n.js";
 import { renderCloudCard } from "../cloud/cloudUi.js";
 import { getUsdaKey, setUsdaKey } from "../repo/nutritionRepo.js";
 import { loadDemoData } from "../demoData.js";
-import { agentConfigured } from "../agent.js";
 import { ADDONS, addonOn, setAddon } from "../addons.js";
 
 const setOpen = new Set(["addons"]); // אזורים פתוחים (כברירת מחדל הכול סגור, חוץ מהתוספות)
 
 export async function renderSettingsPage(container) {
-    const apiKey = (await getSetting("gemini_api_key")) || "";
     const usdaKey = await getUsdaKey();
     const producerOn = !!((await getSetting("producer_mode")) || (await getSetting("role")) === "producer");
     const lastExport = await getSetting("last_export");
@@ -61,11 +59,6 @@ export async function renderSettingsPage(container) {
         <div class="px-sec set-sec" data-sec="scan">
             <div class="px-sh"><span class="px-ic" style="background:var(--brand-soft);">🤖</span><b>סריקה ובינה מלאכותית</b><span class="px-chev">${setOpen.has("scan") ? "▾" : "◂"}</span></div>
             <div class="set-body" ${setOpen.has("scan") ? "" : "hidden"}>
-                <div class="card">
-            <div class="card-title">${agentConfigured() ? "מפתח Gemini אישי" : "מפתח Gemini API"} ${info(agentConfigured() ? "בלי מפתח האפליקציה משתמשת בעוזר AI משותף עם מגבלה יומית. אם תזין מפתח אישי, הסריקה תעבור ישירות לחשבון שלך בגוגל, בלי המגבלה. נשמר רק בתוך הטלפון הזה, ולא נשלח לשום מקום חוץ מ-Google." : "נדרש לסריקת חשבוניות. נשמר רק בתוך הטלפון הזה, ולא נשלח לשום מקום חוץ מ-Google.")}</div>
-            <div class="field" style="margin-top:8px;"><input type="text" id="f-apikey" value="${apiKey}" placeholder="הדבק כאן את המפתח"></div>
-            <button class="btn btn-primary btn-small" id="btn-save-key">שמירה</button>
-        </div>
         <div class="card">
             <div class="card-title">מפתח USDA לערכים תזונתיים ${info("לחיפוש ערכים תזונתיים של חומרי גלם במאגר USDA. המפתח חינמי: נרשמים בכתובת fdc.nal.usda.gov/api-key-signup.html והוא מגיע במייל. בלי מפתח החיפוש עובד אבל מוגבל מאוד. נשמר רק בתוך הטלפון הזה.")}</div>
             <div class="field" style="margin-top:8px;"><input type="text" id="f-usdakey" value="${usdaKey}" placeholder="הדבק כאן את המפתח"></div>
@@ -166,11 +159,6 @@ export async function renderSettingsPage(container) {
     container.querySelector("#set-qty").onchange = async (e) => { await saveQtyMode(e.target.value); toast("נשמר"); };
     container.querySelector("#btn-wizard").onclick = () => openSetupWizard({ onDone: () => location.reload() });
 
-    container.querySelector("#btn-save-key").onclick = async () => {
-        await setSetting("gemini_api_key", container.querySelector("#f-apikey").value.trim());
-        window.dispatchEvent(new CustomEvent("kcp-status-refresh"));
-        toast("נשמר");
-    };
 
     container.querySelector("#btn-save-usda").onclick = async () => { await setUsdaKey(container.querySelector("#f-usdakey").value); toast("נשמר"); };
     container.querySelectorAll("[data-lang-key]").forEach((b) => {
