@@ -2,6 +2,7 @@ import { renderPantryPage, setPantryTab } from "./pages/pantryPage.js";
 import { renderProcessingPage } from "./pages/processingPage.js";
 import { renderRecipesPage, collapseRecipes } from "./pages/recipesPage.js";
 import { renderDishesPage } from "./pages/dishesPage.js";
+import { renderPrepTab } from "./pages/prepPage.js";
 import { renderSuppliersPage } from "./pages/suppliersPage.js";
 import { renderInventoryPage } from "./pages/inventoryPage.js";
 import { renderSettingsPage } from "./pages/settingsPage.js";
@@ -39,6 +40,8 @@ const PAGES = {
         info: "מתכוני בסיס (רטבים, מרקים וכו') שמשמשים כמרכיבים במנות." },
     dishes: { title: "מנות ורווחיות", render: renderDishesPage,
         info: "מנות תפריט: מחיר מכירה, עלות, ואחוז רווח ופוד-קוסט בפועל." },
+    prep: { title: "מיז אן פלאס ומשימות", render: renderPrepTab,
+        info: "תפריט x כמות לסועד x מספר סועדים: מה להכין ומה להזמין מכל ספק, עם צ'ק ליסט להדפסה ולשליחה לטבחים." },
     suppliers: { title: "ספקים וחשבוניות", render: renderSuppliersPage,
         info: "מעקב הזמנות וחשבוניות לפי ספק. בחשבונית שמשויכת למוצר בחומרי הגלם, המחיר והמלאי מתעדכנים." },
     waste: { title: "פחת", render: renderPantryPage, info: "" },

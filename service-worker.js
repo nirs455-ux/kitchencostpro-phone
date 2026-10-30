@@ -1,4 +1,4 @@
-const CACHE_NAME = "kcp-v109";
+const CACHE_NAME = "kcp-v110";
 const NET_TIMEOUT_MS = 4000;
 const ASSETS = [
     "./",
@@ -16,6 +16,8 @@ const ASSETS = [
     "./js/invoiceParse.js",
     "./js/dishPricing.js",
     "./js/scanMatch.js",
+    "./js/prepPlan.js",
+    "./js/prepChecklist.js",
     "./js/imageUtil.js",
     "./js/theme.js",
     "./js/pages/priceAlerts.js",
@@ -105,10 +107,12 @@ const ASSETS = [
     "./data/ciqual.json",
     "./js/salesCalc.js",
     "./js/pages/salesPage.js",
+    "./js/pages/prepPage.js",
     "./js/repo/dishesRepo.js",
     "./js/repo/suppliersRepo.js",
     "./js/repo/inventoryRepo.js",
     "./js/repo/settingsRepo.js",
+    "./js/repo/prepPlansRepo.js",
     "./js/repo/scanRepo.js",
     "./js/pages/pantryPage.js",
     "./js/pages/processingPage.js",
