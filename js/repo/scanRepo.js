@@ -2,7 +2,7 @@
 // תרגום מדויק של /api/scan-invoice ו-/api/scan-invoice/apply מ-main.py.
 import { dbGetAll, dbGet, dbPut } from "../db.js";
 import { geminiFetch } from "./gemini.js";
-import { matchPantryName } from "../scanMatch.js";
+import { matchPantryName, sameWords } from "../scanMatch.js";
 import { CATEGORY_GROUPS, UNIT_TYPES } from "../constants.js";
 import { saveInvoice, validateInvoicePayload } from "./suppliersRepo.js";
 import { getSetting, setSetting } from "./settingsRepo.js";
@@ -12,7 +12,7 @@ import { buildBasePrompt, parseBaseAnswer } from "../bakers.js";
 import { NON_FOOD_CATEGORIES } from "../constants.js";
 import { recipeScanPrompt, buildRecipeDraft } from "../recipeParse.js";
 import { getRecipeCategories } from "./recipeCategories.js";
-import { INVOICE_SCAN_PROMPT, mergeDiscountLines, computeStockFactor, toFloat, cleanVatTotals } from "../invoiceParse.js";
+import { invoicePromptWithPantry, mergeDiscountLines, computeStockFactor, toFloat, cleanVatTotals } from "../invoiceParse.js";
 import { LABEL_SCAN_PROMPT, parseLabelAnswer } from "../labelParse.js";
 import { COUNT_SCAN_PROMPT } from "../countAssist.js";
 
@@ -46,7 +46,8 @@ export async function scanInvoiceImage(apiKey, file, onRetry) {
     // Gemini לפעמים עמוס (503/429): ניסיון חוזר קצר, ואז מודל גיבוי (js/repo/gemini.js). בלי לבקש מהמשתמש לצלם מחדש.
     let response;
     try {
-        response = await geminiFetch(apiKey, { contents: [{ parts: [{ text: INVOICE_SCAN_PROMPT }, ...prepared.parts] }] }, {
+        const pantryAll = (await dbGetAll("pantryItems")).filter((r) => !r.parent_id);
+        response = await geminiFetch(apiKey, { contents: [{ parts: [{ text: invoicePromptWithPantry(pantryAll.map((r) => r.name)) }, ...prepared.parts] }] }, {
             fast: true,
             onRetry: (i) => { if (onRetry) onRetry(i.attempt, 3, i.model); },
         });
@@ -108,7 +109,7 @@ export async function scanInvoiceImage(apiKey, file, onRetry) {
         // שורה בלי שם נשארת (המשתמש ימלא שם או יסיר אותה במסך הבדיקה)
 
         // שם זהה (בלי הבדלי רווחים/סימנים נסתרים) או דומה מאוד = מותאם לבד; רק דמיון בינוני נשאל
-        const { match, suggested, auto } = matchPantryName(name, pantryRows, aliases);
+        const { match, suggested, auto } = matchPantryName(name, pantryRows, aliases, it.pantry_match);
 
         enrichedItems.push({
             name, orig_name: name, quantity, unit_price: unitPrice,
@@ -154,7 +155,7 @@ export async function applyScannedInvoice({ items, supplierId, invoiceDate, imag
         let linkedId = it.pantry_item_id;
         if (!linkedId) {
             // שם שהמשתמש תיקן לשם של מוצר שכבר קיים = אותו מוצר (לא יוצרים כפילות)
-            const same = (await dbGetAll("pantryItems")).find((r) => !r.parent_id && r.name.trim().toLowerCase() === name.toLowerCase());
+            const same = (await dbGetAll("pantryItems")).find((r) => !r.parent_id && (r.name.trim().toLowerCase() === name.toLowerCase() || sameWords(r.name, name)));
             if (same) linkedId = same.id;
         }
         if (linkedId) {

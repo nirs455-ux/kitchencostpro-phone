@@ -27,6 +27,16 @@ export const INVOICE_SCAN_PROMPT =
     "totals: סיכומי החשבונית כפי שמודפסים בתחתית, מספרים או null אם לא מופיעים: taxable=סה\"כ חייב במע\"מ, exempt=סה\"כ לא חייב במע\"מ, subtotal=סה\"כ ללא מע\"מ, vat=סכום המע\"מ, total=סה\"כ כולל מע\"מ. העתק בדיוק כפי שכתוב, אל תחשב בעצמך.\n" +
     "שים לב במיוחד לשנה בתאריך: העתק אותה בדיוק כפי שהיא כתובה בתמונה, ספרה ספרה - אל תנחש ואל תעגל אותה.";
 
+// הפרומפט הרגיל, ובנוסף רשימת המוצרים שבמזווה: ה-AI בוחר לכל שורה את המוצר הקיים לפי משמעותו (לא לפי דמיון אותיות)
+export function invoicePromptWithPantry(names) {
+    const list = [...new Set((names || []).map((n) => String(n).trim()).filter(Boolean))].slice(0, 700);
+    if (!list.length) return INVOICE_SCAN_PROMPT;
+    return INVOICE_SCAN_PROMPT + "\n" +
+        "בנוסף, בכל פריט הוסף שדה pantry_match: השם המדויק, תו אחר תו, של המוצר מהרשימה שלמטה שהשורה מתייחסת אליו, או null אם אין ברשימה מוצר כזה. " +
+        "התאם לפי משמעות המוצר ולא לפי דמיון אותיות: תפוז ותפוח הם מוצרים שונים. ריבוי או יחיד, מותג, מקור וגודל אריזה לא משנים את המוצר. אם יש ספק, החזר null.\n" +
+        "רשימת המוצרים במזווה:\n" + list.join("\n");
+}
+
 // כמו float() של פייתון: null/ריק/לא-מספר -> null
 export function toFloat(v) {
     if (v === null || v === undefined || v === "") return null;
@@ -115,6 +125,7 @@ export function mergeDiscountLines(items) {
             name, quantity: qty, unit_price: price, discount_applied: 0,
             category_guess: cat in CATEGORY_GROUPS ? cat : null,
             unit_guess: UNIT_TYPES.includes(unit) ? unit : null,
+            ...(typeof it.pantry_match === "string" && it.pantry_match.trim() ? { pantry_match: it.pantry_match.trim() } : {}),
         });
     }
     for (const m of merged) {
