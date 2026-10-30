@@ -173,7 +173,7 @@ export async function renderPantryProducts(container) {
         if (!sel.size) return;
         const names = items.filter((i) => sel.has(i.id)).map((i) => i.name);
         const shown = names.slice(0, 8).map((n) => escapeHtml(n)).join(", ") + (names.length > 8 ? ` ועוד ${names.length - 8}` : "");
-        if (!(await confirmDialog(`למחוק ${names.length} מוצרים לגמרי, כולל התוצרים המפורקים שלהם?<br><br>${shown}<br><br>מוצר שמשמש במתכונים או במנות יוסר מהם בפעם הבאה שתערוך אותם. אי אפשר לבטל.`))) return;
+        if (!(await confirmDialog(`למחוק ${names.length} מוצרים?<br><br>${shown}`))) return;
         try {
             for (const id of [...sel]) await deletePantryItem(id);
             toast(`נמחקו ${sel.size} מוצרים`);

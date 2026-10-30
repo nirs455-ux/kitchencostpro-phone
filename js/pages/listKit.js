@@ -5,8 +5,8 @@ import { matchesDeep, normalize, orderCategories } from "./ingredientPicker.js";
 export { matchesDeep, normalize };
 
 // שורת פריט: אייקון בעיגול, שם, שורת פירוט, וצד שמאל (מחיר / תג). onClick בלחיצה
-export function listRow({ ic = "•", tint = "var(--surface-2)", name, meta = "", end = "", onClick }) {
-    const row = h(`<div class="px-row"><span class="px-ic" style="background:${tint};">${ic}</span>
+export function listRow({ ic = "•", tint = "var(--surface-2)", name, meta = "", end = "", onClick, id = null }) {
+    const row = h(`<div class="px-row"${id != null ? ` data-bid="${escapeHtml(String(id))}"` : ""}><span class="px-ic" style="background:${tint};">${ic}</span>
         <div class="px-main"><div class="px-name">${escapeHtml(name)}</div><div class="px-meta">${meta}</div></div>
         <div class="px-price">${end}</div></div>`);
     if (onClick) row.onclick = onClick;

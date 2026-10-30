@@ -4,6 +4,7 @@ import { addWaste, listWaste, deleteWaste, restoreWaste, purchasesSince, todayIs
 import { WASTE_REASONS, REASON_LABEL, WASTE_UNITS, pantryWasteCost, recipeWasteCost, periodStart, summarizeWaste } from "../waste.js";
 import { h, openModal, closeModal, toast, toastAction, escapeHtml, money, busy, attemptClose, info, takeFlag } from "../ui.js";
 import { isStaffMode } from "../staff.js";
+import { attachBulk } from "../bulkSelect.js";
 import { listRow } from "./listKit.js";
 
 let period = "week";
@@ -47,10 +48,11 @@ export async function renderWastePage(container) {
 
     const list = container.querySelector("#w-list");
     if (!logs.length) { list.innerHTML = `<div class="empty-state">${staff ? "עוד לא נרשם היום כלום." : "אין רישומי פחת בתקופה הזאת."}</div>`; return; }
+    if (!staff) attachBulk({ host: list, listEl: list, rowSel: ".px-row", idOf: (r) => r.dataset.bid ?? null, nameOf: (r) => (r.querySelector(".px-name") || {}).textContent, noun: "רישומים", remove: async (ids) => { for (const id of ids) await deleteWaste(Number(id)); }, refresh: rerender });
     for (const l of logs) {
         const reasonTxt = escapeHtml(REASON_LABEL[l.reason] || l.reason);
         const meta = `${qtyText(l)} · ${reasonTxt} · ${fmtDate(l.date)}${l.by ? " · " + escapeHtml(l.by) : ""}${l.note ? " · " + escapeHtml(l.note) : ""}`;
-        const row = listRow({ ic: "🗑", tint: "var(--danger-soft)", name: l.name, meta, end: staff ? "" : `${money(l.cost)} <button type="button" class="remove-row-btn" data-del="${l.id}" aria-label="מחק רישום">✕</button>` });
+        const row = listRow({ id: l.id, ic: "🗑", tint: "var(--danger-soft)", name: l.name, meta, end: staff ? "" : `${money(l.cost)} <button type="button" class="remove-row-btn" data-del="${l.id}" aria-label="מחק רישום">✕</button>` });
         row.style.cursor = "default";
         const del = row.querySelector("[data-del]");
         if (del) del.onclick = async () => {

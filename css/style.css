@@ -477,3 +477,7 @@ html, body { overscroll-behavior-y: none; }
 /* בחירת כמה מוצרים למחיקה */
 .px-row.sel { background: var(--brand-soft); outline: 2px solid var(--brand); outline-offset: -2px; }
 .px-bulk { position: sticky; bottom: calc(70px + env(safe-area-inset-bottom, 0px)); z-index: 20; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px; padding: 10px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-lg); }
+
+/* בלי בחירת טקסט בלחיצה על רשימות וכפתורים: מונע את כרטיס המילון/חיפוש של אנדרואיד. שדות הקלדה וטקסט להעתקה נשארים נבחרים */
+body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+input, textarea, select, pre, code, .selectable, [contenteditable] { -webkit-user-select: text; user-select: text; }

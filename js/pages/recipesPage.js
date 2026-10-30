@@ -20,6 +20,7 @@ import { RECIPE_UNIT_GRAMS } from "../recipeParse.js";
 import { textToGrams, gramsToKgText, describeQty, qtyWarning, textToCount, countToText, describeCount, countWarning, isGramMode } from "../qty.js";
 import { bindPickerButton, refreshPickerButton, resetPickerMemory } from "./ingredientPicker.js";
 import { isStaffMode } from "../staff.js";
+import { attachBulk } from "../bulkSelect.js";
 import { listRow, groupsEl, orderCategories, matchesDeep, normalize } from "./listKit.js";
 import { requestNewProductFor } from "./producerPage.js";
 import { openNutritionLookup } from "./nutritionModal.js";
@@ -85,6 +86,7 @@ export async function renderRecipesPage(container) {
         <div id="recipes-list"></div><button class="fab-add mgr-only" id="btn-add">+</button>`;
     container.querySelectorAll("[data-rf]").forEach((b) => { b.onclick = () => { recipeFilter = b.dataset.rf; renderRecipesPage(container); }; });
     const list = container.querySelector("#recipes-list");
+    if (recipes.length) attachBulk({ host: list, listEl: list, rowSel: ".px-row", idOf: (r) => r.dataset.bid ?? null, nameOf: (r) => (r.querySelector(".px-name") || {}).textContent, noun: "מתכונים", remove: async (ids) => { for (const id of ids) await deleteRecipe(Number(id)); }, refresh: () => renderRecipesPage(container) });
 
 
     const draw = () => {
@@ -173,7 +175,7 @@ function renderRecipeRow(r, container) {
     const isDraft = r.status === "draft";
     const meta = `${r.direct_items.length} מרכיבים${missing ? ` · <span class="tag tag-warn">טיוטה, חסרים ${missing}</span>` : ""}${r.source_file ? " · 📎" : ""}${r.final_weight > 0 ? " · " + r.final_weight.toFixed(0) + " גרם" : ""}`;
     const end = `<span class="cost-only">${isDraft ? "חלקי " + money(r.total_cost) : money(r.cost_per_gram * 1000)}${isDraft ? "" : "<small>/ ק\"ג</small>"}</span>`;
-    return listRow({ ic: isDraft ? "📝" : "📖", tint: isDraft ? "var(--warn-soft)" : "var(--brand-soft)", name: r.name, meta, end, onClick: () => openRecipeDetails(r, container) });
+    return listRow({ id: r.id, ic: isDraft ? "📝" : "📖", tint: isDraft ? "var(--warn-soft)" : "var(--brand-soft)", name: r.name, meta, end, onClick: () => openRecipeDetails(r, container) });
 }
 
 // ---------- פרטי מתכון: רכיבים, עלות, הוראות, מסמך מקורי, ורשימת רכיבים לתווית ----------

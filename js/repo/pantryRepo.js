@@ -213,15 +213,9 @@ export async function getDeleteInfo(id) {
 const escHtml = (t) => String(t ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
 export function deleteConfirmText(info) {
-    let msg = info.is_child
-        ? `למחוק את התוצר "${escHtml(info.name)}"? חומר הגלם שלו יישאר בחומרי הגלם.`
-        : `למחוק את "${escHtml(info.name)}" לגמרי, כולל מחומרי הגלם?<br><br>זה מוחק את המוצר עצמו, לא רק את העיבוד. כדי להחזיר רק את הניצולת ל-100% השתמש בכפתור "אפס עיבוד" בעמוד עיבוד.`;
-    if (info.children.length) {
-        msg += `<br><br>יימחקו גם ${info.children.length} תוצרים מפורקים שלו: ${info.children.map((c) => escHtml(c.name)).join(", ")}`;
-    }
-    if (info.recipe_count || info.dish_count) {
-        msg += `<br><br>המוצר משמש ב-${info.recipe_count} מתכונים וב-${info.dish_count} מנות. הם לא יימחקו והעלות ששמורה בהם נשארת, אבל המרכיב הזה יוסר מהם בפעם הבאה שתערוך אותם.`;
-    }
+    let msg = `למחוק את "${escHtml(info.name)}"?`;
+    if (info.children.length) msg += `<br>יימחקו גם ${info.children.length} תוצרים מפורקים שלו.`;
+    if (info.recipe_count || info.dish_count) msg += `<br>משמש ב-${info.recipe_count} מתכונים וב-${info.dish_count} מנות.`;
     return msg;
 }
 

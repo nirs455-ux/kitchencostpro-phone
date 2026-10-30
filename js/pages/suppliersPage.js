@@ -13,6 +13,7 @@ import { openScanModal } from "./scanModal.js";
 import { addonOn } from "../addons.js";
 import { openOrderModal } from "./orderModal.js";
 import { ordersOverview } from "../repo/ordersRepo.js";
+import { attachBulk } from "../bulkSelect.js";
 import { listRow, groupsEl } from "./listKit.js";
 import { compressImage, showImageFullscreen } from "../imageUtil.js";
 import { localMonth } from "../dates.js";
@@ -102,6 +103,7 @@ export async function renderSuppliersPage(container) {
             ${uiFilter.mode === "owed" && owed.count ? `<div class="card-row" style="margin:4px 2px 8px;"><span>${owed.count} קבלות · ${money(owed.total)}</span><button type="button" class="btn btn-secondary btn-small" id="btn-reimb-all">סמן הכול כהוחזר</button></div>` : ""}
             <div id="inv-groups"></div>
         `;
+        { const gl = body.querySelector("#inv-groups"); attachBulk({ host: gl, listEl: gl, rowSel: ".px-row", idOf: (r) => r.dataset.bid ?? null, nameOf: (r) => (r.querySelector(".px-name") || {}).textContent, noun: "חשבוניות", verb: "העבר לארכיון", done: "הועברו לארכיון", remove: async (ids) => { for (const id of ids) await deleteInvoice(Number(id)); }, refresh: rerender }); }
         const q = body.querySelector("#flt-q");
         q.addEventListener("input", () => { uiFilter.q = q.value; drawGroups(); });
         const fOwed = body.querySelector("#flt-owed");
@@ -158,7 +160,7 @@ export async function renderSuppliersPage(container) {
             for (const inv of arr) {
                 const preview = inv.items.slice(0, 2).map((it) => escapeHtml(it.product_name)).join(", ") + (inv.items.length > 2 ? ` +${inv.items.length - 2}` : "");
                 const tags = (inv.document_type === "credit" ? ' <span class="tag tag-danger">זיכוי</span>' : "") + (inv.petty_cash ? ` <button type="button" class="petty-tag ${inv.reimbursed ? "paid" : "owed"}" data-petty="${inv.id}">${inv.reimbursed ? "הוחזר" : "ממתין להחזר"}</button>` : "");
-                const row = listRow({ ic: inv.document_type === "credit" ? "↩" : "🧾", tint: inv.petty_cash && !inv.reimbursed ? "var(--danger-soft)" : "var(--accent-soft)", name: inv.supplier_name,
+                const row = listRow({ id: inv.id, ic: inv.document_type === "credit" ? "↩" : "🧾", tint: inv.petty_cash && !inv.reimbursed ? "var(--danger-soft)" : "var(--accent-soft)", name: inv.supplier_name,
                     meta: `${shortDate(inv.invoice_date)} · ${preview}${tags}`, end: `${money(inv.total_amount)}${inv.has_image ? " 🖼" : ""}`, onClick: () => openInvoiceDetails(inv) });
                 const pt = row.querySelector("[data-petty]");
                 if (pt) pt.onclick = async (e) => {
@@ -266,12 +268,13 @@ export async function renderSuppliersPage(container) {
         body.querySelector("#btn-add-supplier").onclick = () => openSupplierModal(container);
         const list = body.querySelector("#sup-list");
         if (!suppliers.length) { list.innerHTML = '<div class="empty-state">עדיין אין ספקים.<br>הם נוספים אוטומטית בסריקה, או ידנית כאן.</div>'; return; }
+        attachBulk({ host: list, listEl: list, rowSel: ".px-row", idOf: (r) => r.dataset.bid ?? null, nameOf: (r) => (r.querySelector(".px-name") || {}).textContent, noun: "ספקים", remove: async (ids) => { for (const id of ids) await deleteSupplier(Number(id)); }, refresh: rerender });
         const thisMonth = localMonth();
         for (const s of suppliers) {
             const mine = invoices.filter((i) => i.supplier_id === s.id);
             const monthTotal = mine.filter((i) => (i.invoice_date || "").startsWith(thisMonth)).reduce((n, i) => n + (i.document_type === "credit" ? -i.total_amount : i.total_amount), 0);
             const last = mine.map((i) => i.invoice_date).sort().pop();
-            const row = listRow({ ic: "🚚", tint: "var(--accent-soft)", name: s.name, meta: `${mine.length === 1 ? "חשבונית אחת" : mine.length + " חשבוניות"}${last ? " · אחרונה " + shortDate(last) : ""}`, end: `${money(monthTotal)}<small>החודש</small>` });
+            const row = listRow({ id: s.id, ic: "🚚", tint: "var(--accent-soft)", name: s.name, meta: `${mine.length === 1 ? "חשבונית אחת" : mine.length + " חשבוניות"}${last ? " · אחרונה " + shortDate(last) : ""}`, end: `${money(monthTotal)}<small>החודש</small>` });
             row.onclick = () => {
                 const overlay = openModal(`
                     <h2>${escapeHtml(s.name)}</h2>

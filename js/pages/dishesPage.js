@@ -5,6 +5,7 @@ import { NON_FOOD_CATEGORIES } from "../constants.js";
 import { pricePerGram, itemCost as calcItemCost, computeDishPricing, isCountItem } from "../formulas.js";
 import { textToGrams, gramsToKgText, describeQty, qtyWarning, textToCount, countToText, describeCount, countWarning, isGramMode } from "../qty.js";
 import { bindPickerButton, refreshPickerButton, resetPickerMemory } from "./ingredientPicker.js";
+import { attachBulk } from "../bulkSelect.js";
 import { listRow, matchesDeep } from "./listKit.js";
 import { renderSalesTab, renderGapTab } from "./salesPage.js";
 import { assignAutoSubs, subOf } from "../autoGroups.js";
@@ -56,6 +57,7 @@ export async function renderDishesPage(container) {
     container.innerHTML = `${segHtml()}${dishes.length ? `<div class="px-top"><input type="search" id="ds-q" placeholder="חיפוש מנה..." autocomplete="off"></div>` : ""}<div id="dishes-list"></div><button class="fab-add" id="btn-add">+</button>`;
     wireSeg(container);
     const list = container.querySelector("#dishes-list");
+    if (dishes.length) attachBulk({ host: list, listEl: list, rowSel: ".px-row", idOf: (r) => r.dataset.bid ?? null, nameOf: (r) => (r.querySelector(".px-name") || {}).textContent, noun: "מנות", remove: async (ids) => { for (const id of ids) await deleteDish(Number(id)); }, refresh: () => renderDishesPage(container) });
     const draw = () => {
         list.innerHTML = "";
         if (!dishes.length) { list.innerHTML = '<div class="empty-state">אין עדיין מנות - לחץ על + כדי להוסיף.</div>'; return; }
@@ -66,7 +68,7 @@ export async function renderDishesPage(container) {
             const tone = fc > 33 ? "danger" : fc > 30 ? "warn" : "ok";
             const tint = tone === "danger" ? "var(--danger-soft)" : tone === "warn" ? "var(--warn-soft)" : "var(--ok-soft)";
             list.appendChild(listRow({
-                ic: "🍽️", tint, name: d.name,
+                id: d.id, ic: "🍽️", tint, name: d.name,
                 meta: `מחיר ${money(d.selling_price)} · עלות ${money(d.total_cost)} · רווח ${Number(d.profit_pct).toFixed(0)}%`,
                 end: `<span class="tag ${tone === "danger" ? "tag-danger" : tone === "warn" ? "tag-warn" : ""}">${fc.toFixed(1)}%</span><small>עלות מזון</small>`,
                 onClick: () => openDishModal(d, container),
