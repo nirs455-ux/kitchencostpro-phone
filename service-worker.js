@@ -1,4 +1,5 @@
-const CACHE_NAME = "kcp-v108";
+const CACHE_NAME = "kcp-v109";
+const NET_TIMEOUT_MS = 4000;
 const ASSETS = [
     "./",
     "./index.html",
@@ -160,13 +161,21 @@ self.addEventListener("fetch", (event) => {
     if (/(^|\.)(googleapis|google|gstatic)\.com$/.test(url.hostname)) return;
 
     // קודם רשת (כדי שעדכונים יגיעו מיד), ואם אין אינטרנט - מהמטמון
+    // רשת איטית/חצי-מתה (מטבח, מחסן): אחרי NET_TIMEOUT_MS מגישים מהמטמון, והרשת ממשיכה לעדכן אותו ברקע
+    const net = fetch(event.request, { cache: "no-cache" }).then((response) => {
+        if (response.ok && url.origin === location.origin) {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+        }
+        return response;
+    });
+    let timer;
+    const timeout = new Promise((_, reject) => { timer = setTimeout(() => reject(new Error("net-timeout")), NET_TIMEOUT_MS); });
     event.respondWith(
-        fetch(event.request, { cache: "no-cache" }).then((response) => {
-            if (response.ok && url.origin === location.origin) {
-                const clone = response.clone();
-                caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
-            }
-            return response;
-        }).catch(() => caches.match(event.request))
+        Promise.race([net, timeout]).finally(() => clearTimeout(timer)).catch(async (e) => {
+            const cached = await caches.match(event.request);
+            if (cached) { net.catch(() => {}); return cached; }
+            return e && e.message === "net-timeout" ? net : undefined; // אין במטמון: ממשיכים לחכות לרשת (כמו קודם)
+        })
     );
 });

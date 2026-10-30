@@ -24,6 +24,7 @@ export async function renderInventoryPage(container) {
             <button type="button" class="btn btn-secondary" id="ca-voice" style="flex:1;">🎤 הקראה</button>
         </div>
         <div class="px-top"><input type="search" id="inv-q" placeholder="חיפוש מוצר לספירה..." autocomplete="off"></div>
+        <div class="muted" id="count-progress" style="margin:2px 0 6px;"></div>
         <div id="inventory-list"></div>
         <div class="btn-row" style="position:sticky;bottom:60px;">
             <button class="btn btn-primary btn-block" id="btn-save">שמירת ספירה</button>
@@ -65,6 +66,7 @@ export async function renderInventoryPage(container) {
                 const input = row.querySelector(`#count-${it.id}`);
                 const varEl = row.querySelector(`#variance-${it.id}`);
                 input.addEventListener("input", () => {
+                    updateProgress();
                     const theoretical = parseFloat(input.dataset.theoretical) || 0;
                     const counted = parseFloat(String(input.value).replace(",", "."));
                     if (Number.isNaN(counted)) { varEl.textContent = ""; return; }
@@ -78,6 +80,14 @@ export async function renderInventoryPage(container) {
         sections.push({ sec, head: sec.querySelector(".px-sh"), body, rows, cat });
     }
 
+    // כמה מוצרים כבר נספרו (שדה לא ריק) מתוך כולם
+    function updateProgress() {
+        const all = container.querySelectorAll(".count-input");
+        let done = 0;
+        all.forEach((i) => { if (i.value !== "") done++; });
+        const el = container.querySelector("#count-progress");
+        if (el) el.textContent = all.length ? `נספרו ${done} מתוך ${all.length}` : "";
+    }
     let q = "";
     function applyView() {
         const searching = !!normalize(q);
@@ -97,6 +107,7 @@ export async function renderInventoryPage(container) {
     for (const g of sections) g.head.onclick = () => { if (invOpen.has(g.cat)) invOpen.delete(g.cat); else invOpen.add(g.cat); applyView(); };
     container.querySelector("#inv-q").oninput = (e) => { q = e.target.value; applyView(); };
     applyView();
+    updateProgress();
 
     // ממלא את שדות הספירה (לא שומר): המשתמש בודק ולוחץ "שמירת ספירה"
     const applyCounts = (map) => {

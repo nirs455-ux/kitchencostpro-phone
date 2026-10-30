@@ -607,7 +607,7 @@ function openInvoiceModal(existing, suppliers, pantryItems, container) {
         if (existing || !sid) return;
         supplierInvoices = (await listInvoicesWithItems()).filter((i) => String(i.supplier_id) === sid && i.items.length).slice(0, 8);
         if (!supplierInvoices.length) return;
-        repeatSel.innerHTML = supplierInvoices.map((i, k) => `<option value="${k}">${i.invoice_date} · ${i.items.length} שורות · ${money(i.total_amount)}</option>`).join("");
+        repeatSel.innerHTML = supplierInvoices.map((i, k) => `<option value="${k}">${escapeHtml(i.invoice_date)} · ${i.items.length} שורות · ${money(i.total_amount)}</option>`).join("");
         repeatBox.style.display = "block";
     };
     overlay.querySelector("#f-supplier").addEventListener("change", loadRepeatOptions);

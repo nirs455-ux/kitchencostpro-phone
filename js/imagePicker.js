@@ -1,11 +1,11 @@
 // בורר תמונה/קובץ: מצלמה בתוך האפליקציה (עם חזרה לקלט capture אם לא זמינה) וגלריה/קבצים.
-import { openModal, closeModal, info } from "./ui.js";
+import { openModal, closeModal, info, escapeHtml } from "./ui.js";
 import { DOC_ACCEPT } from "./filePrep.js";
 import { driveButtonHtml, pickFromDrive, warmDrivePicker, ONEDRIVE_LOGO } from "./cloud/drivePicker.js";
 
 export function openImagePicker({ title, hint, onFile }) {
     const overlay = openModal(`
-        <h2>${title} ${hint ? info(hint.replace(/<[^>]+>/g, "")) : ""}</h2>
+        <h2>${escapeHtml(title)} ${hint ? info(hint.replace(/<[^>]+>/g, "")) : ""}</h2>
         <div class="btn-row">
             <button type="button" class="btn btn-accent" id="pick-camera">צלם</button>
             <button type="button" class="btn btn-secondary" id="pick-gallery">🖼️ גלריה</button>

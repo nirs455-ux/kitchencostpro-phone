@@ -1,22 +1,22 @@
 // לוגיקת ספירת מלאי - תרגום מדויק של inventory_page / save_inventory_counts.
-import { dbGetAll, dbGet, dbGetByIndex, dbAtomic } from "../db.js";
+import { dbGetAll, dbGet, dbAtomic } from "../db.js";
 import { loadSalesCtx } from "./salesRepo.js";
 import { consumptionEvents, consumedBetween, theoreticalStock } from "../salesCalc.js";
 
-async function lastCountFor(pantryItemId) {
-    const rows = await dbGetByIndex("inventoryCounts", "pantry_item_id", pantryItemId);
-    if (rows.length === 0) return null;
-    rows.sort((a, b) => (b.count_date || "").localeCompare(a.count_date || "") || b.id - a.id);
-    return rows[0];
+function lastCountOf(rows) {
+    if (!rows || rows.length === 0) return null;
+    return [...rows].sort((a, b) => (b.count_date || "").localeCompare(a.count_date || "") || b.id - a.id)[0];
 }
 
-async function purchasedSince(pantryItemId, sinceDate) {
-    const items = await dbGetByIndex("invoiceItems", "pantry_item_id", pantryItemId);
-    if (items.length === 0) return 0;
-    const invoices = await dbGetAll("invoices");
-    const invoiceById = Object.fromEntries(invoices.map((i) => [i.id, i]));
+const groupBy = (rows, key) => {
+    const m = new Map();
+    for (const r of rows) { const k = r[key]; if (!m.has(k)) m.set(k, []); m.get(k).push(r); }
+    return m;
+};
+
+function purchasedSince(items, invoiceById, sinceDate) {
     let total = 0;
-    for (const it of items) {
+    for (const it of items || []) {
         const inv = invoiceById[it.invoice_id];
         if (!inv || inv.deleted_at) continue;
         if (sinceDate && !(inv.invoice_date > sinceDate)) continue;
@@ -36,12 +36,17 @@ export async function buildInventoryView() {
     } catch (e) { events = []; }
     const topLevel = all.filter((it) => !it.parent_id).sort((a, b) => a.category.localeCompare(b.category, "he") || a.name.localeCompare(b.name, "he"));
 
+    // טוענים הכול פעם אחת (קודם נטענו כל החשבוניות עם התמונות מחדש לכל מוצר)
+    const invoiceById = Object.fromEntries((await dbGetAll("invoices")).map((i) => [i.id, { invoice_date: i.invoice_date, deleted_at: i.deleted_at, document_type: i.document_type }]));
+    const itemsByPantry = groupBy(await dbGetAll("invoiceItems"), "pantry_item_id");
+    const countsByPantry = groupBy(await dbGetAll("inventoryCounts"), "pantry_item_id");
+
     const out = [];
     for (const p of topLevel) {
-        const last = await lastCountFor(p.id);
+        const last = lastCountOf(countsByPantry.get(p.id));
         const lastCountedQuantity = last ? last.counted_quantity : 0;
         const lastCountDate = last ? last.count_date : null;
-        const purchased = await purchasedSince(p.id, lastCountDate);
+        const purchased = purchasedSince(itemsByPantry.get(p.id), invoiceById, lastCountDate);
         const soldConsumed = consumedBetween(events, p.id, lastCountDate || "", "", ["sale"]);
         const wasted = consumedBetween(events, p.id, lastCountDate || "", "", ["waste"]);
         const theoretical = theoreticalStock({ lastCounted: lastCountedQuantity, purchased, soldConsumed, wasted });
