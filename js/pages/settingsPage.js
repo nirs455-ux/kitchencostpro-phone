@@ -17,8 +17,9 @@ import { renderCloudCard } from "../cloud/cloudUi.js";
 import { getUsdaKey, setUsdaKey } from "../repo/nutritionRepo.js";
 import { loadDemoData } from "../demoData.js";
 import { agentConfigured } from "../agent.js";
+import { ADDONS, addonOn, setAddon } from "../addons.js";
 
-const setOpen = new Set(); // אזורים פתוחים (כברירת מחדל הכול סגור)
+const setOpen = new Set(["addons"]); // אזורים פתוחים (כברירת מחדל הכול סגור, חוץ מהתוספות)
 
 export async function renderSettingsPage(container) {
     const apiKey = (await getSetting("gemini_api_key")) || "";
@@ -33,10 +34,17 @@ export async function renderSettingsPage(container) {
     try { persisted = navigator.storage && navigator.storage.persisted ? await navigator.storage.persisted() : null; } catch (e) { /* לא נתמך */ }
 
     container.innerHTML = `
+        <div class="px-sec set-sec" data-sec="addons">
+            <div class="px-sh"><span class="px-ic" style="background:var(--brand-soft);">🧩</span><b>תוספות: מה אתה רוצה במערכת</b><span class="px-chev">${setOpen.has("addons") ? "▾" : "◂"}</span></div>
+            <div class="set-body" ${setOpen.has("addons") ? "" : "hidden"}>
+                <div class="hint" style="margin-bottom:6px;">הבסיס תמיד פעיל: חומרי גלם, מתכונים, מנות, פחת, ספקים והזמנות. את השאר מפעילים רק אם צריך, וכך המסכים נשארים נקיים. כיבוי לא מוחק נתונים, והפעלה מחדש מחזירה הכול.</div>
+                ${ADDONS.map((a) => `<div class="card"><div class="checkbox-field"><input type="checkbox" id="ad-${a.key}" data-addon="${a.key}" ${addonOn(a.key) ? "checked" : ""}><label for="ad-${a.key}"><b>${a.icon} ${a.label}</b><br><span class="muted">${a.desc}</span></label></div></div>`).join("")}
+            </div>
+        </div>
         <div class="px-sec set-sec" data-sec="backup">
             <div class="px-sh"><span class="px-ic" style="background:var(--accent-soft);">☁</span><b>גיבוי וענן</b><span class="px-chev">${setOpen.has("backup") ? "▾" : "◂"}</span></div>
             <div class="set-body" ${setOpen.has("backup") ? "" : "hidden"}>
-                <div class="card" id="cloud-card"></div>
+                ${addonOn("cloud") ? '<div class="card" id="cloud-card"></div>' : ""}
                 <div class="card">
             <div class="card-title">גיבוי (ייצוא/ייבוא) ${info("אין שרת ואין סנכרון אוטומטי - זה הגיבוי היחיד לנתונים שבטלפון. מומלץ לייצא אחרי כל עדכון משמעותי.")}</div>
             <div class="hint" style="margin-bottom:6px;"><b>גיבוי אחרון:</b> ${lastExport ? new Date(lastExport).toLocaleString("he-IL") : "עדיין לא יוצא"}
@@ -145,7 +153,16 @@ export async function renderSettingsPage(container) {
     };
     container.querySelector("#btn-producer").onclick = () => { location.hash = "producer"; };
     container.querySelector("#btn-files").onclick = () => { location.hash = "files"; };
-    renderCloudCard(container.querySelector("#cloud-card"));
+    const cloudCard = container.querySelector("#cloud-card");
+    if (cloudCard) renderCloudCard(cloudCard);
+    // תוספות: מתג לכל יכולת. הפעלה/כיבוי מעדכנים את התפריט והמסכים
+    container.querySelectorAll("input[data-addon]").forEach((c) => {
+        c.onchange = async () => { await setAddon(c.dataset.addon, c.checked); toast(c.checked ? "התוספת הופעלה" : "התוספת כובתה"); renderSettingsPage(container); };
+    });
+    // המתג הישן של מודול יצרן וכפתור הקיצור: נשארים רק כשהתוספת פעילה (המתג עצמו עבר לתוספות)
+    container.querySelector("#f-producer-mode").closest(".card").hidden = true;
+    if (!addonOn("producer")) container.querySelector("#btn-producer").closest(".card").hidden = true;
+    if (!addonOn("nutrition")) container.querySelector("#f-usdakey").closest(".card").hidden = true;
     container.querySelector("#btn-tour").onclick = async () => openTour({ role: (await getSetting("role")) || "manager" });
     container.querySelector("#set-qty").onchange = async (e) => { await saveQtyMode(e.target.value); toast("נשמר"); };
     container.querySelector("#btn-wizard").onclick = () => openSetupWizard({ onDone: () => location.reload() });

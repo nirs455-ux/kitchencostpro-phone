@@ -10,6 +10,7 @@ import { renderSalesTab, renderGapTab } from "./salesPage.js";
 import { assignAutoSubs, subOf } from "../autoGroups.js";
 import { h, openModal, closeModal, confirmDialog, toast, escapeHtml, money, info, busy, attemptClose, markDirty, cur, curLabel } from "../ui.js";
 import { suggestedPrice } from "../dishPricing.js";
+import { addonOn } from "../addons.js";
 
 async function allSources() {
     const pantry = (await listAllPantryItems()).filter((it) => !NON_FOOD_CATEGORIES.has(it.category));
@@ -37,10 +38,11 @@ function ppgFor(src) {
 // לשוניות הדף: מנות | מכירות | דוח סטיות
 let dishTab = "dishes";
 const DISH_TABS = [["dishes", "מנות"], ["sales", "מכירות"], ["gap", "דוח סטיות"]];
-const segHtml = () => `<div class="seg" id="ds-seg">${DISH_TABS.map(([k, l]) => `<button type="button" data-tab="${k}" class="${k === dishTab ? "active" : ""}">${l}</button>`).join("")}</div>`;
+const segHtml = () => !addonOn("sales") ? "" : `<div class="seg" id="ds-seg">${DISH_TABS.filter(([k]) => k === "dishes" || addonOn("sales")).map(([k, l]) => `<button type="button" data-tab="${k}" class="${k === dishTab ? "active" : ""}">${l}</button>`).join("")}</div>`;
 function wireSeg(container) { container.querySelectorAll("#ds-seg [data-tab]").forEach((b) => { b.onclick = () => { dishTab = b.dataset.tab; renderDishesPage(container); }; }); }
 
 export async function renderDishesPage(container) {
+    if (dishTab !== "dishes" && !addonOn("sales")) dishTab = "dishes"; // תוספת כבויה
     if (dishTab !== "dishes") {
         container.innerHTML = `${segHtml()}<div id="ds-sub"></div>`;
         wireSeg(container);

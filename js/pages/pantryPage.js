@@ -19,6 +19,7 @@ import { openPriceHistory } from "./priceHistoryModal.js";
 import { openLabelScan } from "./labelModal.js";
 import { getLabelInfo } from "../repo/nutritionRepo.js";
 import { allergenLabels } from "../allergens.js";
+import { addonOn } from "../addons.js";
 
 // חומרי גלם = שלוש לשוניות: מוצרים | ספירת מלאי | עיבוד וניצולת. מצב עובד רואה רק ספירת מלאי.
 const TABS = [["products", "מוצרים"], ["inventory", "ספירת מלאי"], ["processing", "עיבוד"], ["waste", "פחת"]];
@@ -30,7 +31,8 @@ const UNIT_FORM_LABELS = { weight: 'לפי משקל (מחיר לק"ג)', liter: 
 
 export async function renderPantryPage(container) {
     if (isStaffMode() && !STAFF_TABS.includes(currentTab)) currentTab = "inventory";
-    const tabs = isStaffMode() ? TABS.filter(([k]) => STAFF_TABS.includes(k)) : TABS;
+    if (currentTab === "inventory" && !addonOn("count")) currentTab = isStaffMode() ? "waste" : "products"; // תוספת כבויה
+    const tabs = (isStaffMode() ? TABS.filter(([k]) => STAFF_TABS.includes(k)) : TABS).filter(([k]) => k !== "inventory" || addonOn("count"));
     const seg = `<div class="seg" id="pantry-seg">${tabs.map(([k, l]) => `<button type="button" data-tab="${k}" class="${k === currentTab ? "active" : ""}">${l}</button>`).join("")}</div>`;
     container.innerHTML = `${seg}<div id="pantry-tab"></div>`;
     const sub = container.querySelector("#pantry-tab");

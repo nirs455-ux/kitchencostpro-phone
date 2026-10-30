@@ -2,6 +2,7 @@
 // לחיצה מסבירה מה זה אומר ומציעה לחבר. מוסתרים במצב טבח.
 import { getSetting } from "./repo/settingsRepo.js";
 import { getAgentKey, agentConfigured } from "./agent.js";
+import { addonOn } from "./addons.js";
 import { getCloudStatus, isCloudAvailable, runBackup } from "./cloud/cloudGlue.js";
 import { resolveCloudIssue, fmtWhen } from "./cloud/cloudUi.js";
 import { openModal, closeModal, toast, escapeHtml } from "./ui.js";
@@ -38,9 +39,10 @@ export async function renderStatusIcons() {
     const st = await computeStatus();
     el.innerHTML = `
         <button type="button" class="st-icon st-${st.agent}" id="st-agent" aria-label="עוזר AI: ${LABEL[st.agent]}" title="עוזר AI (Gemini): ${LABEL[st.agent]}">🤖<i></i></button>
-        <button type="button" class="st-icon st-${st.cloud}" id="st-cloud" aria-label="ענן: ${LABEL[st.cloud]}" title="ענן (Drive): ${LABEL[st.cloud]}">☁️<i></i></button>`;
+        ${addonOn("cloud") ? `<button type="button" class="st-icon st-${st.cloud}" id="st-cloud" aria-label="ענן: ${LABEL[st.cloud]}" title="ענן (Drive): ${LABEL[st.cloud]}">☁️<i></i></button>` : ""}`;
     el.querySelector("#st-agent").onclick = () => openAgentPopup(st);
-    el.querySelector("#st-cloud").onclick = () => openCloudPopup(st);
+    const cb = el.querySelector("#st-cloud");
+    if (cb) cb.onclick = () => openCloudPopup(st);
 }
 
 function popup(title, text, buttons) {

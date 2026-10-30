@@ -29,6 +29,7 @@ import { openScanModal } from "./pages/scanModal.js";
 import { scanRecipeFile } from "./pages/recipesPage.js";
 import { openModal, closeModal, dropLayers, toastAction, escapeHtml } from "./ui.js";
 import { openDB } from "./db.js";
+import { loadAddons, addonOn } from "./addons.js";
 
 const PAGES = {
     home: { title: "בית", render: renderHomePage, info: "מסך הבית: סריקה מהירה, והתראות." },
@@ -73,6 +74,7 @@ async function navigate(pageKey) {
     crumb("navigate " + pageKey);
     await ensureCostsFresh(); // שינוי מחיר בחומרי הגלם שעדיין מחושב מחדש במתכונים/מנות: ממתינים כדי שלא יוצג מספר ישן
     if (!PAGES[pageKey]) pageKey = "home";
+    if ((pageKey === "prep" && !addonOn("prep")) || (pageKey === "inventory" && !addonOn("count"))) pageKey = "home"; // תוספת כבויה
     // הגדרות מוגנות בקוד מנהל (אם הוגדר). יצרן לא רואה מנות.
     if (pageKey === "settings" && (await hasPin()) && !settingsUnlocked()) {
         guardSettings(() => navigate("settings"), () => { if (location.hash === "#settings") navigate("home"); });
@@ -146,7 +148,9 @@ try { await openDB(); } catch (e) {
     throw e;
 }
 window.addEventListener("kcp-db-blocked", () => toastAction("האפליקציה פתוחה גם בלשונית אחרת", "רענן", () => location.reload(), 60000));
-await initLocale(); // סמל מטבע וכו' לפני שהמסכים מצוירים
+await initLocale();
+await loadAddons(); // אילו תוספות פעילות (לפני שהמסכים מצוירים)
+// סמל מטבע וכו' לפני שהמסכים מצוירים
 await recalcAllCosts().catch(() => {}); // ריפוי: עלויות שנשארו ישנות מגרסאות קודמות מתעדכנות לפי חומרי הגלם הנוכחי
 startAutoRecalc(); // מכאן כל שינוי בחומרי הגלם מעדכן מתכונים ומנות לבד
 await initLang(); // שפת האשף והסיור
@@ -158,8 +162,15 @@ const refreshProducerNav = async () => {
     const pb = document.querySelector('#bottom-nav [data-page="producer"]');
     if (pb) pb.style.display = on && !isStaffMode() ? "" : "none";
 };
+// כפתור "מיז אן פלאס" בתפריט: רק כשהתוספת פעילה
+const refreshPrepNav = () => {
+    const pb = document.querySelector('#bottom-nav [data-page="prep"]');
+    if (pb) pb.style.display = addonOn("prep") && !isStaffMode() ? "" : "none";
+};
 await refreshProducerNav();
+refreshPrepNav();
 window.addEventListener("kcp-nav-refresh", refreshProducerNav);
+document.addEventListener("kcp-addons", () => { refreshProducerNav(); refreshPrepNav(); renderStatusIcons(); });
 await initCloud().catch(() => {}); // גיבוי אוטומטי לענן (אם מחובר)
 // פתיחה בלי כתובת (למשל אחרי שהטלפון סגר את האפליקציה ברקע, או חזרה ממצלמה/בורר קבצים): חוזרים לדף האחרון ולא לבית
 let lastPage = "";

@@ -1,5 +1,6 @@
 // אשף הפעלה: מסך אחד קל, רק שפה ומטבע (מדינה). שאר ההגדרות (ענן, מפתח אישי, תפקיד, קוד) נמצאות בהגדרות, ואפשר לשנות הכול שם.
 // הטקסטים נשלפים מ-i18n (עברית, אנגלית, גרמנית).
+import { setAddon } from "../addons.js";
 import { getSetting, setSetting } from "../repo/settingsRepo.js";
 import { COUNTRIES, CURRENCIES, countryByKey, saveLocale, saveQtyMode } from "../locale.js";
 import { escapeHtml } from "../ui.js";
@@ -42,7 +43,7 @@ export async function openSetupWizard({ onDone } = {}) {
         if (save) await saveQtyMode(state.qty);
         await setSetting("setup_done", true);
         if (!(await getSetting("role"))) await setSetting("role", "manager");
-        if (save) await setSetting("producer_mode", !!state.producer);
+        if (save) await setAddon("producer", !!state.producer); // מסנכרן גם את producer_mode
         root.remove();
         window.dispatchEvent(new CustomEvent("kcp-status-refresh"));
         window.dispatchEvent(new CustomEvent("kcp-nav-refresh"));

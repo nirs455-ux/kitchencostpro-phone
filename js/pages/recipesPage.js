@@ -23,6 +23,7 @@ import { isStaffMode } from "../staff.js";
 import { listRow, groupsEl, orderCategories, matchesDeep, normalize } from "./listKit.js";
 import { requestNewProductFor } from "./producerPage.js";
 import { openNutritionLookup } from "./nutritionModal.js";
+import { addonOn } from "../addons.js";
 import { getNutritionDb, applyRememberedNutrition } from "../repo/nutritionRepo.js";
 import { computeNutrition, perServing, NUTRIENTS } from "../nutrition.js";
 import { assignAutoSubs, subOf } from "../autoGroups.js";
@@ -204,6 +205,7 @@ function printLabel(name, text) {
 }
 
 async function openRecipeDetails(r, container, startTab = "recipe") {
+    if (!addonOn("nutrition") && (startTab === "label" || startTab === "nutri")) startTab = "recipe"; // תוספת כבויה
     const rows = await dbGetAll("pantryItems");
     const byId = new Map(rows.map((p) => [p.id, p]));
     let nutriDb = await getNutritionDb();
@@ -465,8 +467,8 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
             <div class="seg" id="d-seg">
                 <button type="button" data-t="recipe" class="${tab === "recipe" ? "active" : ""}">מתכון</button>
                 <button type="button" data-t="percent" class="${tab === "percent" ? "active" : ""}">באחוזים</button>
-                <button type="button" data-t="label" class="${tab === "label" ? "active" : ""}">אלרגנים</button>
-                <button type="button" data-t="nutri" class="${tab === "nutri" ? "active" : ""}">תזונה</button>
+                ${addonOn("nutrition") ? `<button type="button" data-t="label" class="${tab === "label" ? "active" : ""}">אלרגנים</button>
+                <button type="button" data-t="nutri" class="${tab === "nutri" ? "active" : ""}">תזונה</button>` : ""}
                 ${r.status === "draft" ? "" : `<button type="button" data-t="gen" class="${tab === "gen" ? "active" : ""}">התאמת כמויות</button>`}
             </div>
             ${body}

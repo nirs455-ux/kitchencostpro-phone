@@ -5,6 +5,7 @@ import { getAgentKey } from "../agent.js";
 import { dbGetAll } from "../db.js";
 import { listInvoicesWithItems, priceChanges, pettyCashOwed } from "../repo/suppliersRepo.js";
 import { openScanModal } from "./scanModal.js";
+import { addonOn } from "../addons.js";
 import { showPriceChangesDialog } from "./priceAlerts.js";
 import { downloadExport } from "../export.js";
 import { setSuppliersView } from "./suppliersPage.js";
@@ -29,7 +30,7 @@ function renderStaffHome(container) {
         <button class="btn btn-primary btn-big btn-block" id="staff-shoot" style="margin:14px 0 6px;">📷 צלם קבלה</button>
         <div class="hint" style="text-align:center;margin-bottom:14px;">הקבלה נשלחת לבדיקה של המנהל</div>
         <button class="btn btn-secondary btn-big btn-block" id="staff-recipes" style="margin-bottom:10px;">📖 מתכונים</button>
-        <button class="btn btn-secondary btn-big btn-block" id="staff-count">📋 ספירת מלאי</button>
+        ${addonOn("count") ? '<button class="btn btn-secondary btn-big btn-block" id="staff-count">📋 ספירת מלאי</button>' : ""}
         <button class="btn btn-secondary btn-big btn-block" id="staff-waste" style="margin-top:10px;">🗑 רישום פחת</button>
         <div id="staff-sent" class="hint" style="text-align:center;margin-top:14px;"></div>`;
     const input = container.querySelector("#staff-file");
@@ -43,7 +44,8 @@ function renderStaffHome(container) {
         container.querySelector("#staff-sent").textContent = `נשלחו ${(await listQueue()).length} קבלות שמחכות למנהל`;
     });
     container.querySelector("#staff-recipes").onclick = () => go("recipes");
-    container.querySelector("#staff-count").onclick = () => go("inventory");
+    const sc = container.querySelector("#staff-count");
+    if (sc) sc.onclick = () => go("inventory");
     container.querySelector("#staff-waste").onclick = () => go("waste");
 }
 
@@ -76,7 +78,7 @@ export async function renderHomePage(container) {
         <div class="qa-grid">
             <button type="button" class="qa-tile" id="qa-waste"><span class="qa-ic">🗑</span>רישום פחת</button>
             <button type="button" class="qa-tile" id="qa-recipe"><span class="qa-ic">📖</span>מתכון חדש</button>
-            <button type="button" class="qa-tile" id="qa-count"><span class="qa-ic">📋</span>ספירת מלאי</button>
+            ${addonOn("count") ? '<button type="button" class="qa-tile" id="qa-count"><span class="qa-ic">📋</span>ספירת מלאי</button>' : ""}
             <button type="button" class="qa-tile" id="qa-files"><span class="qa-ic">📁</span>קבצים</button>
         </div>
         <div class="sec-title">פעילות אחרונה</div>
@@ -84,7 +86,8 @@ export async function renderHomePage(container) {
     `;
     container.querySelector("#qa-waste").onclick = () => { setFlag("waste-new"); go("waste"); };
     container.querySelector("#qa-recipe").onclick = () => { setFlag("recipe-new"); go("recipes"); };
-    container.querySelector("#qa-count").onclick = () => go("inventory");
+    const qc = container.querySelector("#qa-count");
+    if (qc) qc.onclick = () => go("inventory");
     container.querySelector("#qa-files").onclick = () => go("files");
 
     // ---- התראות ----
@@ -96,13 +99,13 @@ export async function renderHomePage(container) {
     const cloudNow = getCloudStatus();
     const cloudFresh = cloudNow.enabled && cloudNow.lastBackup && daysSince(cloudNow.lastBackup) < 3; // גיבוי טרי בענן מחליף תזכורת לגיבוי ידני
     if (pantry.length + invoices.length > 0 && !cloudFresh && daysSince(lastExport) >= 7) items.push({ cls: "warn", icon: "💾", text: lastExport ? `לא יוצא גיבוי ${daysSince(lastExport)} ימים` : "עדיין לא יוצא גיבוי", btn: "ייצא", fn: async () => { await downloadExport(); rerender(); } });
-    if (counts.length && daysSince(lastCount) >= 14) items.push({ cls: "warn", icon: "📋", text: `ספירת המלאי האחרונה לפני ${daysSince(lastCount)} ימים`, btn: "לספירה", fn: () => go("inventory") });
+    if (addonOn("count") && counts.length && daysSince(lastCount) >= 14) items.push({ cls: "warn", icon: "📋", text: `ספירת המלאי האחרונה לפני ${daysSince(lastCount)} ימים`, btn: "לספירה", fn: () => go("inventory") });
     const sts = await computeStatus();
     if (stale()) return;
     if (sts.agent === "bad") items.unshift({ cls: "danger", icon: "🤖", text: "אין עוזר AI מחובר - אי אפשר לסרוק חשבוניות ומתכונים מתמונה", btn: "חבר", fn: () => openWizardAt(1) });
-    if (sts.cloud === "bad") items.push({ cls: "warn", icon: "☁️", text: sts.cloudAvailable ? "אין גיבוי בענן - הנתונים שמורים רק בטלפון הזה" : "אין גיבוי בענן (החיבור עדיין לא הוגדר) - ייצא גיבוי ידני", btn: sts.cloudAvailable ? "חבר" : "ייצא", fn: sts.cloudAvailable ? () => openWizardAt(2) : async () => { await downloadExport(); rerender(); } });
+    if (addonOn("cloud") && sts.cloud === "bad") items.push({ cls: "warn", icon: "☁️", text: sts.cloudAvailable ? "אין גיבוי בענן - הנתונים שמורים רק בטלפון הזה" : "אין גיבוי בענן (החיבור עדיין לא הוגדר) - ייצא גיבוי ידני", btn: sts.cloudAvailable ? "חבר" : "ייצא", fn: sts.cloudAvailable ? () => openWizardAt(2) : async () => { await downloadExport(); rerender(); } });
     const cst = getCloudStatus();
-    if (cst.enabled && (cst.state === "conflict" || cst.state === "needs-auth" || cst.state === "error")) {
+    if (addonOn("cloud") && cst.enabled && (cst.state === "conflict" || cst.state === "needs-auth" || cst.state === "error")) {
         const text = cst.state === "conflict" ? "הענן שונה ממכשיר אחר" : cst.state === "needs-auth" ? "הגיבוי לענן מחכה לאישור שלך" : "הגיבוי לענן נכשל";
         items.unshift({ cls: "warn", icon: "☁️", text, btn: "טפל", fn: async () => { await resolveCloudIssue(); rerender(); } });
     }

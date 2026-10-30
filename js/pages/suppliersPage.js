@@ -10,6 +10,7 @@ import { restoreInvoice } from "../repo/suppliersRepo.js";
 import { dbGet, dbPut, dbDelete } from "../db.js";
 import { h, openModal, closeModal, confirmDialog, toast, escapeHtml, money, info, busy, attemptClose, toastAction, cur } from "../ui.js";
 import { openScanModal } from "./scanModal.js";
+import { addonOn } from "../addons.js";
 import { openOrderModal } from "./orderModal.js";
 import { ordersOverview } from "../repo/ordersRepo.js";
 import { listRow, groupsEl } from "./listKit.js";
@@ -48,8 +49,8 @@ export async function renderSuppliersPage(container) {
 
     container.innerHTML = `
         <div class="sup-actions">
-            <button class="btn btn-primary btn-big" id="btn-scan">📷 סרוק חשבונית</button>
-            <button class="btn btn-secondary btn-big" id="btn-add-invoice">+ ידנית</button>
+            ${addonOn("scan") ? '<button class="btn btn-primary btn-big" id="btn-scan">📷 סרוק חשבונית</button>' : ""}
+            <button class="btn ${addonOn("scan") ? "btn-secondary" : "btn-primary"} btn-big" id="btn-add-invoice">+ ${addonOn("scan") ? "ידנית" : "חשבונית"}</button>
         </div>
         <div class="attn" id="attn"></div>
         <div class="seg" id="seg">
@@ -71,7 +72,8 @@ export async function renderSuppliersPage(container) {
     if (alertsBtn) alertsBtn.onclick = () => showPriceChangesDialog(alerts, "שינויי מחיר (30 יום אחרונים)");
 
     container.querySelector("#btn-add-invoice").onclick = () => openInvoiceModal(null, suppliers, pantryItems, container);
-    container.querySelector("#btn-scan").onclick = () => openScanModal({ supplierAware: true, onDone: rerender });
+    const scanBtn = container.querySelector("#btn-scan");
+    if (scanBtn) scanBtn.onclick = () => openScanModal({ supplierAware: true, onDone: rerender });
 
     // ---- לשוניות ----
     const body = container.querySelector("#tab-body");
@@ -211,7 +213,7 @@ export async function renderSuppliersPage(container) {
         body.innerHTML = `
             <div class="form-row" style="align-items:center;">
                 <div class="field" style="margin:0;"><select id="sum-month">${months.map((m) => `<option value="${m}" ${m === current ? "selected" : ""}>${monthLabel(m)}</option>`).join("")}</select></div>
-                <button type="button" class="btn btn-secondary btn-small" id="btn-csv">⬇ אקסל</button>
+                ${addonOn("scan") ? '<button type="button" class="btn btn-secondary btn-small" id="btn-csv">⬇ אקסל</button>' : ""}
             </div>
             <div id="sum-body" style="margin-top:10px;"></div>
         `;
@@ -226,7 +228,8 @@ export async function renderSuppliersPage(container) {
                 <div class="card-title" style="margin:12px 4px 6px;">לפי קטגוריה</div><div class="card">${rows(r.by_category)}</div>`;
         };
         body.querySelector("#sum-month").onchange = draw;
-        body.querySelector("#btn-csv").onclick = () => {
+        const csvBtn = body.querySelector("#btn-csv");
+        if (csvBtn) csvBtn.onclick = () => {
             const ym = body.querySelector("#sum-month").value;
             const list = invoices.filter((i) => (i.invoice_date || "").startsWith(ym));
             if (!list.length) { toast("אין חשבוניות לייצוא"); return; }
