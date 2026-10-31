@@ -15,6 +15,14 @@ export function gramsText(g, en) {
     return `${+n.toFixed(1)} ${en ? "g" : "גרם"}`;
 }
 const UNIT = { 'ק"ג': "kg", "ליטר": "L", "יח'": "pcs" };
+const DRAFT_UNIT = { g: ["גרם", "g"], kg: ['ק"ג', "kg"], ml: ['מ"ל', "ml"], l: ["ליטר", "L"], tbsp: ["כף", "tbsp"], tsp: ["כפית", "tsp"], cup: ["כוס", "cup"], unit: ["יחידות", "pcs"] };
+// רכיב טיוטה (עוד לא במזווה): כמות מספרית מוגדלת כמו שאר המתכון, וכמות לא ברורה מופיעה כפי שנכתבה
+const draftQty = (d, k, en) => {
+    const q = Number(d.quantity);
+    const u = d.unit ? (DRAFT_UNIT[d.unit] ? DRAFT_UNIT[d.unit][en ? 1 : 0] : d.unit) : "";
+    if (d.quantity == null || d.quantity === "") return u;
+    return Number.isFinite(q) ? `${+(q * k).toFixed(2)}${u ? " " + u : ""}` : `${d.quantity}${u ? " " + u : ""}`;
+};
 const unitText = (u, en) => (en ? UNIT[u] || u : u);
 
 // מרכיב את נתוני המסמך. result = planPrep(...), groups = שורות הזמנה לפי ספק (כולל extras ידניים), prepRecipes = [{id,name,g}]
@@ -40,6 +48,7 @@ export function buildEventDoc({ plan, ctx, result, groups, loose = [], prepRecip
             const q = (Number(i.quantity_g) || 0) * k;
             return { name: sub ? sub.name : pan ? pan.name : "", sub: !!sub, qty: i.unit_count ? `${+q.toFixed(2)} ${en ? "pcs" : "יחידות"}` : gramsText(q, en), g: i.unit_count ? 0 : q };
         }).filter((i) => i.name).sort((a, b) => b.g - a.g);
+        for (const d of rec.draft_ingredients || []) items.push({ name: d.name, sub: false, qty: draftQty(d, k, en), g: 0 });
         return { name: rec.name, target: gramsText(p.g, en), scaled: fw > 0, method: rec.method || "", items };
     }).filter(Boolean);
 
