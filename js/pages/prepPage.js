@@ -9,6 +9,8 @@ import { planPrep, groupBySupplier, entryQuantity, allergenCheck, DEFAULT_MARGIN
 import { ALLERGENS } from "../allergens.js";
 import { qtyText, orderText, whatsappUrl } from "../shareText.js";
 import { checklistText, checklistHtml } from "../prepChecklist.js";
+import { buildEventDoc, eventDocHtml } from "../eventDoc.js";
+import { makeTranslator } from "../i18nCore.js";
 import { listPlans, savePlans, upsertPlan, removePlan, normalizePlan, progress } from "../repo/prepPlansRepo.js";
 
 const fmt = (n) => +Number(n).toFixed(2);
@@ -236,6 +238,7 @@ export async function renderPrepTab(container) {
         }
 
         resEl.innerHTML = `
+            <div class="card"><button type="button" class="btn btn-primary btn-block" id="pp-doc">📄 מסמך אירוע להדפסה ושליחה</button><div class="hint" style="margin-top:6px;">תפריט, כמויות, מתכונים מלאים והזמנות לפי ספק, בלי מחירים. בחלון ההדפסה בוחרים שמירה כ PDF ואז שולחים.</div></div>
             ${allergenHtml}
             ${prepKeys.length ? `<div class="card-title" style="margin:14px 4px 4px;">מה להכין <span class="muted">· בוצעו ${pp.finished} מתוך ${pp.total}</span> ${info("כמויות כולל מרווח הביטחון. מתכון שמשמש כמה רכיבים מוצג פעם אחת, מחושב מסך הצריכה. ✎ משנה כמות.")}</div>
             <div class="card">
@@ -260,6 +263,21 @@ export async function renderPrepTab(container) {
         const taskLines = [...result.dishes.map((d) => ({ label: d.name, qty: ov("d" + d.id, d.portions + " מנות"), done: !!plan.done["d" + d.id] })), ...prepRecipes.map((r) => ({ label: r.name, qty: ov("r" + r.id, qtyText(r.g)), done: !!plan.done["r" + r.id] })), ...customPrep.map((c) => ({ label: c.label, qty: c.qty, done: !!plan.done["c" + c.id] }))];
         const head = { title: plan.name || "תכנון אירוע", date: plan.date, guests: plan.guests };
         const printBtn = resEl.querySelector("#pp-print"), waBtn = resEl.querySelector("#pp-wa");
+        resEl.querySelector("#pp-doc").onclick = () => {
+            const ovl = openModal(`<h2>מסמך אירוע</h2><div class="hint" style="margin-bottom:8px;">באיזו שפה להכין את המסמך?</div><div class="modal-actions"><button type="button" class="btn btn-secondary" id="ed-cancel">ביטול</button><button type="button" class="btn btn-primary" id="ed-he">עברית</button><button type="button" class="btn btn-primary" id="ed-en">English</button></div>`);
+            ovl.querySelector("#ed-cancel").onclick = closeModal;
+            const make = async (en) => {
+                closeModal();
+                let tr = (s) => s;
+                if (en) { try { tr = makeTranslator((await import("../i18n/ui-en.js")).default); } catch (e) { /* בלי תרגום */ } }
+                const doc = buildEventDoc({ plan, ctx, result, groups, loose, prepRecipes, customPrep }, en);
+                const url = URL.createObjectURL(new Blob([eventDocHtml(doc, tr, en)], { type: "text/html;charset=utf-8" }));
+                if (!window.open(url, "_blank")) toast("הדפדפן חסם את פתיחת הדף. אפשר חלונות קופצים לאתר ונסה שוב.");
+                setTimeout(() => URL.revokeObjectURL(url), 120000);
+            };
+            ovl.querySelector("#ed-he").onclick = () => make(false);
+            ovl.querySelector("#ed-en").onclick = () => make(true);
+        };
         if (printBtn) printBtn.onclick = () => {
             const url = URL.createObjectURL(new Blob([checklistHtml(head, taskLines)], { type: "text/html;charset=utf-8" }));
             if (!window.open(url, "_blank")) toast("הדפדפן חסם את פתיחת הדף. אפשר חלונות קופצים לאתר ונסה שוב.");
