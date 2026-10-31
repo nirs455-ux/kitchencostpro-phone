@@ -65,7 +65,10 @@ export function explodeSale(line, ctx) {
     const pantry = {}, recipes = {};
     const qty = Number(line.quantity) || 0;
     if (!(qty > 0)) return { pantry, recipes };
-    if (line.source_type === "recipe") {
+    if (line.source_type === "pantry") { // חומר גלם ישיר: גרמים שמישים -> יחידות קנייה
+        const row = ctx.pantry.get(line.source_id);
+        if (row) addUnits(pantry, topId(row), gramsToPurchaseUnits(row, qty));
+    } else if (line.source_type === "recipe") {
         recipes[line.source_id] = (recipes[line.source_id] || 0) + qty;
         explodeRecipe(ctx, line.source_id, qty, pantry);
     } else {

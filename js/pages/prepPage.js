@@ -1,25 +1,25 @@
-// מיז אן פלאס ומשימות: תפריט (מנות מהמערכת + פריטים ידניים) x כמה מנות לסועד x מספר סועדים
-// -> רשימת משימות הכנה ורשימת הזמנות לפי ספק, עם סימון "בוצע". התוכניות נשמרות (prepPlansRepo.js). החישוב ב-prepPlan.js (טהור).
+// תכנון אירוע: שם, תאריך, סועדים ואלרגנים. תפריט של מנות, מתכונים וחומרי גלם מהמערכת, או פריטים ידניים.
+// לכל רכיב קובעים כמה גרם מקבל סועד באירוע (בלי קשר לגודל המנה בתמחור). המערכת מחשבת כמויות להכנה, רשימת הזמנות לפי ספק
+// ורשימת הכנות, עם סימון "בוצע". התוכניות נשמרות (prepPlansRepo.js). החישוב ב-prepPlan.js (טהור).
 import { toast, escapeHtml, info, confirmDialog, openModal, closeModal } from "../ui.js";
 import { enhanceSelect } from "../picker.js";
 import { dbGetAll } from "../db.js";
 import { loadSalesCtx } from "../repo/salesRepo.js";
-import { planPrep, groupBySupplier, entryQuantity, DEFAULT_MARGIN_PCT } from "../prepPlan.js";
+import { planPrep, groupBySupplier, entryQuantity, allergenCheck, DEFAULT_MARGIN_PCT } from "../prepPlan.js";
+import { ALLERGENS } from "../allergens.js";
 import { qtyText, orderText, whatsappUrl } from "../shareText.js";
 import { checklistText, checklistHtml } from "../prepChecklist.js";
-import { listPlans, savePlans, upsertPlan, removePlan, normalizePlan, progress, todayIso } from "../repo/prepPlansRepo.js";
+import { listPlans, savePlans, upsertPlan, removePlan, normalizePlan, progress } from "../repo/prepPlansRepo.js";
 
 const fmt = (n) => +Number(n).toFixed(2);
 const shortDate = (d) => { const [y, m, day] = String(d || "").split("-"); return day ? `${parseInt(day, 10)}.${parseInt(m, 10)}` : ""; };
-const planLabel = (p) => `${p.name || "תוכנית"} · ${shortDate(p.date)}`;
+const planLabel = (p) => `${p.name || "אירוע"} · ${shortDate(p.date)}`;
 let currentId = null; // התוכנית הפתוחה (נשמר בין מעברי מסכים)
 
 export async function renderPrepTab(container) {
     const [ctx, suppliers] = await Promise.all([loadSalesCtx(), dbGetAll("suppliers")]);
     let plans = await listPlans();
     const supplierOptions = (sel) => [...suppliers].sort((a, b) => a.name.localeCompare(b.name, "he")).map((s) => `<option value="${s.id}"${s.id === sel ? " selected" : ""}>${escapeHtml(s.name)}</option>`).join("");
-    const dishes = [...ctx.dishes.values()].sort((a, b) => a.name.localeCompare(b.name, "he"));
-    if (!dishes.length) { container.innerHTML = '<div class="empty-state">כדי לתכנן צריך קודם להוסיף מנות בלשונית "מנות".</div>'; return; }
 
     let plan = plans.find((p) => p.id === currentId) || plans[0] || normalizePlan({ margin: String(DEFAULT_MARGIN_PCT) });
     currentId = plan.id;
@@ -32,74 +32,118 @@ export async function renderPrepTab(container) {
     };
 
     container.innerHTML = `
-        <div class="hint" style="margin-bottom:8px;">בונים תפריט ממנות המערכת, קובעים כמה מנות מקבל כל סועד, ומזינים כמה סועדים. גודל המנה נלקח מהתמחור. האפליקציה אומרת מה להכין ומה להזמין מכל ספק, כולל ניצולת ומרווח ביטחון. אפשר לסמן ✓ כל משימה שבוצעה. הכול נשמר.</div>
         <div class="card">
+            <div class="card-title" style="margin:0 0 6px;">תכנון אירוע ${info("בוחרים פריטים מהמערכת או מוסיפים ידנית, וקובעים לכל רכיב כמה גרם מקבל סועד באירוע. האפליקציה מחשבת מה להכין ומה להזמין מכל ספק, כולל ניצולת ומרווח ביטחון. מה שחסר בו מידע מסומן להזנה ידנית. הכול נשמר.")}</div>
             <div class="form-row">
-                <div class="field"><label>תוכנית</label><select id="pp-plan"></select></div>
-                <div class="field" style="align-self:end;"><div class="btn-row"><button type="button" class="btn btn-secondary btn-small" id="pp-new">＋ חדשה</button><button type="button" class="btn btn-secondary btn-small" id="pp-del">מחק</button></div></div>
+                <div class="field"><label>אירוע</label><select id="pp-plan"></select></div>
+                <div class="field" style="align-self:end;"><div class="btn-row"><button type="button" class="btn btn-secondary btn-small" id="pp-new">＋ חדש</button><button type="button" class="btn btn-secondary btn-small" id="pp-del">מחק</button></div></div>
             </div>
             <div class="form-row">
-                <div class="field"><label>שם</label><input type="text" id="pp-name" placeholder="למשל: אירוע שישי"></div>
+                <div class="field"><label>שם האירוע</label><input type="text" id="pp-name" placeholder="למשל: חתונה של דנה"></div>
                 <div class="field"><label>תאריך</label><input type="date" id="pp-date"></div>
             </div>
             <div class="form-row">
-                <div class="field"><label>מספר סועדים</label><input type="text" inputmode="numeric" id="pp-guests" placeholder="80"></div>
-                <div class="field"><label>מרווח ביטחון % ${info("תוספת על הכמות המחושבת, כדי לא להישאר בלי. בבופה כדאי 10-15. תבלינים לא תמיד גדלים ביחס ישר, לכן אפשר להוריד.")}</label><input type="text" inputmode="decimal" id="pp-margin"></div>
+                <div class="field"><label>כמות סועדים</label><input type="text" inputmode="numeric" id="pp-guests" placeholder="80"></div>
+                <div class="field"><label>מרווח ביטחון באחוזים ${info("תוספת על הכמות המחושבת, כדי לא להישאר בלי. בבופה כדאי עשרה עד חמישה עשר. תבלינים לא תמיד גדלים ביחס ישר, לכן אפשר להוריד.")}</label><input type="text" inputmode="decimal" id="pp-margin"></div>
             </div>
+            <div class="field"><label>אלרגנים של הסועדים ${info("מסמנים אלרגנים שיש בין הסועדים. האפליקציה רושמת אותם בתכנון ומזהירה על פריטים בתפריט שמכילים אותם, לפי הגדרות האלרגנים במערכת. פריט ידני ופריט בלי הגדרות לא נבדקים.")}</label><div id="pp-alg" class="btn-row" style="flex-wrap:wrap;"></div></div>
         </div>
         <div class="card">
-            <div class="field"><label>מנה</label><select id="pp-item"><option value="">בחר מנה...</option>${dishes.map((d) => `<option value="dish:${d.id}">${escapeHtml(d.name)}</option>`).join("")}</select></div>
-            <div class="field"><label>כמה מנות לכל סועד ${info("ברירת המחדל היא מנה אחת, לפי גודל המנה בתמחור. אפשר לכתוב חצי מנה או מנה וחצי.")}</label><input type="text" inputmode="decimal" id="pp-per" value="1"></div>
-            <button type="button" class="btn btn-secondary btn-block" id="pp-add">＋ הוסף לתפריט</button>
-            <div class="error-msg" id="pp-err"></div>
+            <div class="card-title" style="margin:0 0 6px;">תפריט</div>
+            <button type="button" class="btn btn-secondary btn-block" id="pp-pick">＋ הוספת פריטים מהמערכת</button>
+            <div id="pp-menu"></div>
         </div>
         <div class="card">
-            <div class="card-title" style="margin:0 0 6px;">פריט ידני ${info("מנה שאין במערכת, או משימה לאותו אירוע. הכמות היא טקסט חופשי. הפריט מופיע בצ'ק ליסט, בהדפסה ובוואטסאפ.")}</div>
+            <div class="card-title" style="margin:0 0 6px;">פריט ידני ${info("מנה או משימה שאין במערכת. הכמות היא טקסט חופשי. הפריט מופיע בצ'ק ליסט, בהדפסה ובוואטסאפ.")}</div>
             <div class="form-row">
                 <div class="field"><label>שם</label><input type="text" id="pc-label" placeholder="למשל: סלט קינואה"></div>
-                <div class="field"><label>כמות</label><input type="text" id="pc-qty" placeholder="למשל: 3 מגשים"></div>
+                <div class="field"><label>כמות</label><input type="text" id="pc-qty" placeholder="למשל: שלושה מגשים"></div>
             </div>
             <div class="field"><label>סוג</label><select id="pc-kind"><option value="prep">להכין</option><option value="order">להזמין</option></select></div>
             <div class="field" id="pc-sup-wrap" style="display:none;"><label>ספק</label><select id="pc-sup"><option value="">ללא ספק קבוע</option>${supplierOptions()}</select></div>
             <button type="button" class="btn btn-secondary btn-block" id="pc-add">＋ הוסף פריט ידני</button>
             <div class="error-msg" id="pc-err"></div>
         </div>
-        <div id="pp-menu"></div>
         <div id="pp-result"></div>`;
 
     const q = (s) => container.querySelector(s);
-    const itemEl = q("#pp-item");
-    for (const id of ["#pp-plan", "#pp-item", "#pc-kind", "#pc-sup"]) enhanceSelect(q(id));
+    for (const id of ["#pp-plan", "#pc-kind", "#pc-sup"]) enhanceSelect(q(id));
 
     function loadFields() {
         q("#pp-name").value = plan.name; q("#pp-date").value = plan.date; q("#pp-guests").value = plan.guests; q("#pp-margin").value = plan.margin;
         const sel = q("#pp-plan");
         const list = plans.some((p) => p.id === plan.id) ? plans : [plan, ...plans];
-        sel.innerHTML = list.map((p) => `<option value="${escapeHtml(p.id)}"${p.id === plan.id ? " selected" : ""}>${escapeHtml(plans.some((x) => x.id === p.id) ? planLabel(p) : "תוכנית חדשה")}</option>`).join("");
+        sel.innerHTML = list.map((p) => `<option value="${escapeHtml(p.id)}"${p.id === plan.id ? " selected" : ""}>${escapeHtml(plans.some((x) => x.id === p.id) ? planLabel(p) : "אירוע חדש")}</option>`).join("");
         if (sel.refreshPicker) sel.refreshPicker();
+        drawAllergenChips();
     }
-    const bind = (sel, key) => { q(sel).oninput = async (e) => { plan[key] = e.target.value; draw(); await persist(); }; };
+    function drawAllergenChips() {
+        const box = q("#pp-alg");
+        box.innerHTML = ALLERGENS.map((a) => `<button type="button" class="btn btn-small ${plan.allergens.includes(a.key) ? "btn-primary" : "btn-secondary"}" data-ak="${a.key}">${escapeHtml(a.label)}</button>`).join("");
+        box.querySelectorAll("[data-ak]").forEach((b) => {
+            b.onclick = async () => {
+                const k = b.dataset.ak;
+                plan.allergens = plan.allergens.includes(k) ? plan.allergens.filter((x) => x !== k) : [...plan.allergens, k];
+                drawAllergenChips(); drawResult(); await persist();
+            };
+        });
+    }
+    const bind = (sel, key) => { q(sel).oninput = async (e) => { plan[key] = e.target.value; drawMenu(); drawResult(); await persist(); }; };
     bind("#pp-name", "name"); bind("#pp-date", "date"); bind("#pp-guests", "guests"); bind("#pp-margin", "margin");
     q("#pp-date").onchange = q("#pp-date").oninput;
     q("#pp-plan").onchange = (e) => { plan = plans.find((p) => p.id === e.target.value) || plan; currentId = plan.id; loadFields(); draw(); };
     q("#pp-new").onclick = () => { plan = normalizePlan({ margin: plan.margin }); currentId = plan.id; loadFields(); draw(); };
     q("#pp-del").onclick = async () => {
         if (!plans.some((p) => p.id === plan.id)) { plan = normalizePlan({ margin: plan.margin }); currentId = plan.id; loadFields(); draw(); return; }
-        if (!(await confirmDialog(`למחוק את התוכנית "${escapeHtml(plan.name || "ללא שם")}"?`))) return;
+        if (!(await confirmDialog(`למחוק את האירוע "${escapeHtml(plan.name || "ללא שם")}"?`))) return;
         plans = removePlan(plans, plan.id);
         await savePlans(plans);
         plan = plans[0] || normalizePlan({ margin: plan.margin });
         currentId = plan.id; loadFields(); draw();
     };
-    q("#pp-add").onclick = async () => {
-        const err = q("#pp-err"); err.style.display = "none";
-        const [type, idStr] = String(itemEl.value).split(":");
-        const src = type === "dish" ? ctx.dishes.get(Number(idStr)) : ctx.recipes.get(Number(idStr));
-        if (!src) { err.textContent = "בחר פריט מהתפריט."; err.style.display = "block"; return; }
-        if (!(entryQuantity(1, q("#pp-per").value, "100") > 0)) { err.textContent = "הזן כמה מנות לכל סועד, יותר מאפס."; err.style.display = "block"; return; }
-        plan.rows.push({ source_type: type, source_id: Number(idStr), name: src.name, per: q("#pp-per").value, share: "100" });
-        itemEl.value = ""; q("#pp-per").value = "1"; itemEl.refreshPicker();
-        draw(); await persist(); loadFields();
+
+    // בחירת פריטים מהמערכת: חלון אחד עם חיפוש וסימון של כמה פריטים יחד. מנה נפתחת לרכיביה, ולכל רכיב כמות משלו
+    q("#pp-pick").onclick = () => {
+        const byName = (a, b) => a.name.localeCompare(b.name, "he");
+        const dishes = [...ctx.dishes.values()].sort(byName);
+        const recipes = [...ctx.recipes.values()].sort(byName);
+        const products = [...ctx.pantry.values()].filter((p) => !p.parent_id).sort(byName);
+        const sections = [["מנות", "dish", dishes], ["מתכונים", "recipe", recipes], ["חומרי גלם", "pantry", products]].filter((s) => s[2].length);
+        const picked = new Set();
+        const ovl = openModal(`<h2>הוספת פריטים</h2>
+            <div class="field"><input type="search" id="pk2-q" placeholder="חיפוש"></div>
+            <div id="pk2-list" style="max-height:52vh;overflow:auto;">${sections.map(([title, type, list]) => `<div class="pk2-sec"><div class="card-title" style="margin:10px 4px 4px;">${title}</div>${list.map((it) => `<label class="card-row pk2-row" data-n="${escapeHtml(it.name.toLowerCase())}" style="gap:8px;align-items:center;padding:8px 4px;cursor:pointer;"><input type="checkbox" data-k="${type}:${it.id}" style="width:22px;height:22px;flex:none;"><span style="flex:1;">${escapeHtml(it.name)}</span></label>`).join("")}</div>`).join("") || '<div class="empty-state">אין עדיין מנות, מתכונים או חומרי גלם במערכת. אפשר להוסיף פריט ידני.</div>'}</div>
+            <div class="modal-actions"><button type="button" class="btn btn-secondary" id="pk2-cancel">ביטול</button><button type="button" class="btn btn-primary" id="pk2-ok" disabled>הוסף</button></div>`);
+        const okBtn = ovl.querySelector("#pk2-ok");
+        const sync = () => { okBtn.disabled = !picked.size; okBtn.textContent = picked.size ? `הוסף ${picked.size}` : "הוסף"; };
+        ovl.querySelectorAll("input[data-k]").forEach((c) => { c.onchange = () => { if (c.checked) picked.add(c.dataset.k); else picked.delete(c.dataset.k); sync(); }; });
+        ovl.querySelector("#pk2-q").oninput = (e) => {
+            const t = e.target.value.trim().toLowerCase();
+            ovl.querySelectorAll(".pk2-row").forEach((r) => { r.style.display = !t || r.dataset.n.includes(t) ? "" : "none"; });
+            ovl.querySelectorAll(".pk2-sec").forEach((s) => { s.style.display = [...s.querySelectorAll(".pk2-row")].some((r) => r.style.display !== "none") ? "" : "none"; });
+        };
+        ovl.querySelector("#pk2-cancel").onclick = closeModal;
+        okBtn.onclick = async () => {
+            const has = (t, id, g) => plan.rows.some((r) => r.source_type === t && r.source_id === id && (r.group || "") === g);
+            const add = (t, id, name, g) => { if (name && !has(t, id, g)) plan.rows.push({ source_type: t, source_id: id, name, per: "", share: "100", group: g }); };
+            let empty = 0;
+            for (const key of picked) {
+                const [type, idStr] = key.split(":"); const id = Number(idStr);
+                if (type === "dish") {
+                    const d = ctx.dishes.get(id);
+                    const parts = ctx.dishItems.get(id) || [];
+                    if (!parts.length) empty++;
+                    for (const it of parts) {
+                        const src = it.source_type === "recipe" ? ctx.recipes.get(it.source_id) : ctx.pantry.get(it.source_id);
+                        add(it.source_type === "recipe" ? "recipe" : "pantry", it.source_id, src ? src.name : "", d ? d.name : "");
+                    }
+                } else if (type === "recipe") { const r = ctx.recipes.get(id); add("recipe", id, r ? r.name : "", ""); }
+                else { const p = ctx.pantry.get(id); add("pantry", id, p ? p.name : "", ""); }
+            }
+            closeModal();
+            if (empty) toast("מנה בלי רכיבים לא נוספה. אפשר להוסיף רכיבים ידנית.");
+            draw(); await persist();
+        };
     };
 
     q("#pc-kind").onchange = () => { q("#pc-sup-wrap").style.display = q("#pc-kind").value === "order" ? "" : "none"; };
@@ -117,20 +161,48 @@ export async function renderPrepTab(container) {
     // שורת משימה: תיבת סימון, שם, כמות, וכפתור ✎ (שינוי כמות מחושבת, או עריכת פריט ידני)
     const check = (key, label, right, o = {}) => `<div class="card-row pp-task" style="gap:6px;align-items:center;${plan.done[key] ? "opacity:.55;text-decoration:line-through;" : ""}"><label style="display:flex;gap:8px;align-items:center;flex:1;min-width:0;cursor:pointer;"><input type="checkbox" data-k="${key}"${plan.done[key] ? " checked" : ""} style="width:22px;height:22px;flex:none;"><span style="flex:1;">${label}</span><b>${right}</b></label>${o.cidx != null && o.cidx >= 0 ? `<button type="button" class="btn btn-secondary btn-small" data-cedit="${o.cidx}">✎</button>` : o.name ? `<button type="button" class="btn btn-secondary btn-small" data-qedit="${key}" data-name="${escapeHtml(o.name)}" data-cur="${escapeHtml(o.cur)}">✎</button>` : ""}</div>`;
 
-    function draw() {
-        const menuEl = q("#pp-menu"), resEl = q("#pp-result");
+    // טקסט הסיכום של שורת תפריט: כמה בסך הכול, או מה חסר
+    const rowNote = (r) => {
+        const legacy = r.source_type === "dish";
+        const qty = entryQuantity(plan.guests, r.per, r.share);
+        if (!(Number(String(r.per).replace(",", ".")) > 0)) return legacy ? "הזן כמה מנות לסועד" : "הזן גרם לסועד";
+        if (!qty) return "הזן כמות סועדים";
+        const total = legacy ? `סה"כ ${fmt(qty)} מנות` : `סה"כ ${qtyText(qty)}`;
+        const rec = r.source_type === "recipe" ? ctx.recipes.get(r.source_id) : null;
+        const noWeight = rec && !(Number(rec.final_weight) > 0);
+        return noWeight ? `${total} · אין משקל סופי במתכון, יש להזין במתכון` : total;
+    };
+
+    function drawMenu() {
+        const menuEl = q("#pp-menu");
         const supName = (id) => (suppliers.find((s) => s.id === id) || {}).name || "";
-        menuEl.innerHTML = (plan.rows.length ? `<div class="card-title" style="margin:10px 4px 4px;">התפריט</div>` + plan.rows.map((r, i) => {
-            const qty = entryQuantity(plan.guests, r.per, r.share);
-            return `<div class="card-row" style="padding:6px 4px;border-bottom:1px solid var(--border,#0001);"><span><b>${escapeHtml(r.name)}</b><br><span class="muted">${escapeHtml(String(r.per))} ${r.source_type === "recipe" ? "גרם" : "מנות"} לסועד${String(r.share) !== "100" ? ` · ${escapeHtml(String(r.share))}%` : ""} · ${qty ? `סה"כ ${r.source_type === "recipe" ? qtyText(qty) : fmt(qty) + " מנות"}` : "הזן סועדים"}</span></span><button type="button" class="btn btn-secondary btn-small" data-rm="${i}">✕</button></div>`;
-        }).join("") : "") + (plan.custom.length ? `<div class="card-title" style="margin:10px 4px 4px;">פריטים ידניים</div>` + plan.custom.map((c, i) => `<div class="card-row" style="padding:6px 4px;border-bottom:1px solid var(--border,#0001);"><span><b>${escapeHtml(c.label)}</b><br><span class="muted">${c.kind === "order" ? "להזמין" + (c.supplier_id && supName(c.supplier_id) ? " · " + escapeHtml(supName(c.supplier_id)) : "") : "להכין"}${c.qty ? " · " + escapeHtml(c.qty) : ""}</span></span><span><button type="button" class="btn btn-secondary btn-small" data-cedit="${i}">✎</button> <button type="button" class="btn btn-secondary btn-small" data-crm="${i}">✕</button></span></div>`).join("") : "");
+        let lastGroup = null;
+        const rowsHtml = plan.rows.map((r, i) => {
+            const legacy = r.source_type === "dish";
+            const head = (r.group || "") !== lastGroup && (r.group || lastGroup) ? `<div class="muted" style="margin:10px 4px 2px;">${r.group ? "🍽️ " + escapeHtml(r.group) : "📦 פריטים נוספים"}</div>` : "";
+            lastGroup = r.group || "";
+            return head + `<div class="card-row" style="padding:6px 4px;gap:8px;align-items:center;border-bottom:1px solid var(--border,#0001);"><span style="flex:1;min-width:0;"><b>${escapeHtml(r.name)}</b><br><span class="muted" data-note="${i}">${escapeHtml(rowNote(r))}</span></span><input type="text" inputmode="decimal" data-per="${i}" value="${escapeHtml(String(r.per))}" placeholder="${legacy ? "מנות" : "גרם"}" style="width:76px;text-align:center;flex:none;"><span class="muted" style="flex:none;">${legacy ? "מנות לסועד" : "גרם לסועד"}</span><button type="button" class="btn btn-secondary btn-small" data-rm="${i}">✕</button></div>`;
+        }).join("");
+        menuEl.innerHTML = (plan.rows.length ? `<div class="hint" style="margin:8px 4px 0;">בכל שורה כותבים כמה גרם מקבל סועד באירוע.</div>${rowsHtml}` : "") + (plan.custom.length ? `<div class="card-title" style="margin:12px 4px 4px;">פריטים ידניים</div>` + plan.custom.map((c, i) => `<div class="card-row" style="padding:6px 4px;border-bottom:1px solid var(--border,#0001);"><span><b>${escapeHtml(c.label)}</b><br><span class="muted">${c.kind === "order" ? "להזמין" + (c.supplier_id && supName(c.supplier_id) ? " · " + escapeHtml(supName(c.supplier_id)) : "") : "להכין"}${c.qty ? " · " + escapeHtml(c.qty) : ""}</span></span><span><button type="button" class="btn btn-secondary btn-small" data-cedit="${i}">✎</button> <button type="button" class="btn btn-secondary btn-small" data-crm="${i}">✕</button></span></div>`).join("") : "");
+        menuEl.querySelectorAll("[data-per]").forEach((inp) => {
+            inp.oninput = async () => {
+                const i = Number(inp.dataset.per);
+                plan.rows[i].per = inp.value;
+                const note = menuEl.querySelector(`[data-note="${i}"]`);
+                if (note) note.textContent = rowNote(plan.rows[i]);
+                drawResult(); await persist();
+            };
+        });
         menuEl.querySelectorAll("[data-rm]").forEach((b) => { b.onclick = async () => { plan.rows.splice(Number(b.dataset.rm), 1); draw(); await persist(); }; });
         menuEl.querySelectorAll("[data-crm]").forEach((b) => { b.onclick = async () => { const [gone] = plan.custom.splice(Number(b.dataset.crm), 1); if (gone) { delete plan.done["c" + gone.id]; } draw(); await persist(); }; });
         menuEl.querySelectorAll("[data-cedit]").forEach((b) => { b.onclick = () => editCustom(Number(b.dataset.cedit)); });
+    }
 
+    function drawResult() {
+        const resEl = q("#pp-result");
         const entries = plan.rows.map((r) => ({ source_type: r.source_type, source_id: r.source_id, quantity: entryQuantity(plan.guests, r.per, r.share) })).filter((e) => e.quantity > 0);
         const customPrep = plan.custom.filter((c) => c.kind === "prep"), customOrder = plan.custom.filter((c) => c.kind === "order");
-        if (!entries.length && !plan.custom.length) { resEl.innerHTML = plan.rows.length ? '<div class="empty-state">הזן מספר סועדים כדי לראות מה להכין ולהזמין.</div>' : ""; return; }
+        if (!entries.length && !plan.custom.length) { resEl.innerHTML = plan.rows.length ? '<div class="empty-state">הזן כמות סועדים וגרם לכל רכיב כדי לראות מה להכין ולהזמין.</div>' : ""; return; }
         const result = entries.length ? planPrep(entries, ctx, plan.margin) : { dishes: [], recipes: {}, pantry: {}, foodGrams: 0 };
         const prepRecipes = Object.entries(result.recipes).map(([id, g]) => ({ id, name: (ctx.recipes.get(Number(id)) || {}).name || "?", g })).sort((a, b) => a.name.localeCompare(b.name, "he"));
 
@@ -152,8 +224,20 @@ export async function renderPrepTab(container) {
         const cell = (key, html) => (plan.overrides[key] ? `${escapeHtml(plan.overrides[key])} <span class="muted">· שונתה</span>` : html);
         const customRow = (c) => check(`c${c.id}`, `✏️ ${escapeHtml(c.label)}`, escapeHtml(c.qty), { cidx: plan.custom.indexOf(c) });
 
+        // אלרגנים של הסועדים מול התפריט
+        let allergenHtml = "";
+        if (plan.allergens.length) {
+            const chk = allergenCheck(plan.rows.map((r) => ({ source_type: r.source_type, source_id: r.source_id, name: r.name })), ctx, plan.allergens);
+            const labels = ALLERGENS.filter((a) => plan.allergens.includes(a.key)).map((a) => a.label).join(", ");
+            allergenHtml = `<div class="card"><div class="card-title" style="margin:0 0 6px;">אלרגנים של הסועדים</div><div class="muted" style="margin-bottom:6px;">${escapeHtml(labels)}</div>
+                ${chk.hits.length ? chk.hits.map((h) => `<div class="card-row" style="padding:4px 0;"><span>⚠️ <b>${escapeHtml(h.name)}</b></span><span>מכיל ${escapeHtml(h.labels.join(", "))}</span></div>`).join("") : '<div class="muted">לא נמצאו בתפריט פריטים עם האלרגנים האלה, לפי ההגדרות במערכת.</div>'}
+                ${chk.unknown.length ? `<div class="muted" style="margin-top:6px;">לא הוגדרו אלרגנים ב: ${escapeHtml([...new Set(chk.unknown)].join(", "))}. יש לבדוק ידנית.</div>` : ""}
+                ${plan.custom.length ? '<div class="muted" style="margin-top:6px;">פריטים ידניים לא נבדקים.</div>' : ""}</div>`;
+        }
+
         resEl.innerHTML = `
-            ${prepKeys.length ? `<div class="card-title" style="margin:14px 4px 4px;">מה להכין <span class="muted">· בוצעו ${pp.finished} מתוך ${pp.total}</span> ${info("כמויות כולל מרווח הביטחון. מתכון שמשמש כמה מנות מוצג פעם אחת, מחושב מסך הצריכה. ✎ משנה כמות.")}</div>
+            ${allergenHtml}
+            ${prepKeys.length ? `<div class="card-title" style="margin:14px 4px 4px;">מה להכין <span class="muted">· בוצעו ${pp.finished} מתוך ${pp.total}</span> ${info("כמויות כולל מרווח הביטחון. מתכון שמשמש כמה רכיבים מוצג פעם אחת, מחושב מסך הצריכה. ✎ משנה כמות.")}</div>
             <div class="card">
                 ${result.dishes.map((d) => check(`d${d.id}`, `🍽️ ${escapeHtml(d.name)}`, cell(`d${d.id}`, `${d.portions} מנות`), { name: d.name, cur: `${d.portions} מנות` })).join("")}
                 ${prepRecipes.map((r) => check(`r${r.id}`, `📖 ${escapeHtml(r.name)}`, cell(`r${r.id}`, qtyText(r.g)), { name: r.name, cur: qtyText(r.g) })).join("")}
@@ -163,17 +247,18 @@ export async function renderPrepTab(container) {
             ${orderKeys.length ? `<div class="card-title" style="margin:14px 4px 4px;">מה להזמין <span class="muted">· הוזמנו ${po.finished} מתוך ${po.total}</span> ${info("מחולק לפי רשימת ההזמנה הקבועה של כל ספק, ופריטים ידניים שנבחר להם ספק מצטרפים אליו. כמויות מעוגלות כלפי מעלה, ואריזות שלמות כשהספק מוכר בארגז. ✎ משנה כמות.")}</div>` : ""}
             ${groups.map((g, gi) => `<div class="card">
                 <div class="card-row"><b>${g.supplier ? escapeHtml(g.supplier.name) : "ללא ספק קבוע"}</b>${g.supplier ? `<button type="button" class="btn btn-secondary btn-small" data-copy="${gi}">העתק</button>` : ""}</div>
+                ${g.supplier ? "" : '<div class="muted" style="margin:0 0 4px;">אין ספק קבוע לחומרי הגלם האלה. יש להוסיף אותם לרשימת ההזמנה של ספק.</div>'}
                 ${g.lines.map((l) => check(`o${l.id}`, escapeHtml(l.name), cell(`o${l.id}`, lineQty(l)), { name: l.name, cur: lineQty(l, true) })).join("")}
                 ${g.extras.map(customRow).join("")}
             </div>`).join("")}
             ${loose.length ? `<div class="card"><div class="card-row"><b>הוספות ידניות</b></div>${loose.map(customRow).join("")}</div>` : ""}`;
 
-        resEl.querySelectorAll("input[data-k]").forEach((c) => { c.onchange = async () => { if (c.checked) plan.done[c.dataset.k] = true; else delete plan.done[c.dataset.k]; draw(); await persist(); }; });
+        resEl.querySelectorAll("input[data-k]").forEach((c) => { c.onchange = async () => { if (c.checked) plan.done[c.dataset.k] = true; else delete plan.done[c.dataset.k]; drawResult(); await persist(); }; });
         resEl.querySelectorAll("[data-qedit]").forEach((b) => { b.onclick = () => editQty(b.dataset.qedit, b.dataset.name, b.dataset.cur); });
         resEl.querySelectorAll("[data-cedit]").forEach((b) => { b.onclick = () => editCustom(Number(b.dataset.cedit)); });
         const ov = (key, fallback) => plan.overrides[key] || fallback;
         const taskLines = [...result.dishes.map((d) => ({ label: d.name, qty: ov("d" + d.id, d.portions + " מנות"), done: !!plan.done["d" + d.id] })), ...prepRecipes.map((r) => ({ label: r.name, qty: ov("r" + r.id, qtyText(r.g)), done: !!plan.done["r" + r.id] })), ...customPrep.map((c) => ({ label: c.label, qty: c.qty, done: !!plan.done["c" + c.id] }))];
-        const head = { title: plan.name || "מיז אן פלאס", date: plan.date, guests: plan.guests };
+        const head = { title: plan.name || "תכנון אירוע", date: plan.date, guests: plan.guests };
         const printBtn = resEl.querySelector("#pp-print"), waBtn = resEl.querySelector("#pp-wa");
         if (printBtn) printBtn.onclick = () => {
             const url = URL.createObjectURL(new Blob([checklistHtml(head, taskLines)], { type: "text/html;charset=utf-8" }));
@@ -190,6 +275,7 @@ export async function renderPrepTab(container) {
             };
         });
     }
+    function draw() { drawMenu(); drawResult(); }
 
     // שינוי כמות של משימה/שורת הזמנה שחושבה: טקסט חופשי שמחליף את החישוב (בהדפסה, בוואטסאפ ובהעתקה). אפשר לחזור לחישוב
     function editQty(key, name, cur) {
@@ -197,7 +283,7 @@ export async function renderPrepTab(container) {
             <div class="hint" style="margin-bottom:6px;">הכמות שחושבה: <b>${escapeHtml(cur)}</b>. אפשר לכתוב כמות אחרת, והיא תופיע בצ'ק ליסט, בהדפסה ובהעתקה.</div>
             <div class="field"><input type="text" id="eq-val" value="${escapeHtml(plan.overrides[key] || cur)}"></div>
             <div class="modal-actions"><button type="button" class="btn btn-secondary" id="eq-cancel">ביטול</button>${plan.overrides[key] ? '<button type="button" class="btn btn-secondary" id="eq-reset">חזור לחישוב</button>' : ""}<button type="button" class="btn btn-primary" id="eq-save">שמירה</button></div>`);
-        const done = async () => { closeModal(); draw(); await persist(); };
+        const done = async () => { closeModal(); drawResult(); await persist(); };
         ovl.querySelector("#eq-cancel").onclick = closeModal;
         const rs = ovl.querySelector("#eq-reset");
         if (rs) rs.onclick = () => { delete plan.overrides[key]; done(); };

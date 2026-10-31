@@ -26,7 +26,7 @@ export function normalizeOverrides(o) {
 
 // תוכנית תקינה מכל קלט (גם מגיבוי ישן/פגום)
 export function normalizePlan(p) {
-    const rows = Array.isArray(p && p.rows) ? p.rows.filter((r) => r && (r.source_type === "dish" || r.source_type === "recipe") && Number.isFinite(Number(r.source_id))) : [];
+    const rows = Array.isArray(p && p.rows) ? p.rows.filter((r) => r && (r.source_type === "dish" || r.source_type === "recipe" || r.source_type === "pantry") && Number.isFinite(Number(r.source_id))) : [];
     const done = {};
     for (const [k, v] of Object.entries((p && p.done) || {})) if (v) done[k] = true;
     return {
@@ -35,7 +35,8 @@ export function normalizePlan(p) {
         date: /^\d{4}-\d{2}-\d{2}$/.test(txt(p && p.date)) ? p.date : todayIso(),
         guests: txt(p && p.guests),
         margin: p && p.margin != null && txt(p.margin) !== "" ? txt(p.margin) : "10",
-        rows: rows.map((r) => ({ source_type: r.source_type, source_id: Number(r.source_id), name: txt(r.name), per: txt(r.per), share: txt(r.share) })),
+        rows: rows.map((r) => ({ source_type: r.source_type, source_id: Number(r.source_id), name: txt(r.name), per: txt(r.per), share: txt(r.share), group: txt(r.group) })),
+        allergens: Array.isArray(p && p.allergens) ? p.allergens.filter((k) => typeof k === "string") : [],
         custom: normalizeCustom(p && p.custom),
         overrides: normalizeOverrides(p && p.overrides),
         done,

@@ -2,6 +2,9 @@
 // טהור (בלי DOM/DB). הפירוק לחומרי גלם הוא בדיוק הפירוק של דוח המכירות (explodeSale), כולל ניצולת, קרח, תת-מתכונים וביצים.
 // לא נוגעים בנוסחאות התמחור: כאן רק הכפלת כמויות.
 import { explodeSale } from "./salesCalc.js";
+import { flattenRecipeItems } from "./repo/subRecipes.js";
+import { resolveAllergens } from "./allergenResolve.js";
+import { ALLERGEN_LABEL } from "./allergens.js";
 
 export const DEFAULT_MARGIN_PCT = 10;
 
@@ -40,7 +43,7 @@ export function planPrep(entries, ctx, marginPct = DEFAULT_MARGIN_PCT) {
         const sale = explodeSale({ source_type: e.source_type, source_id: e.source_id, quantity: qty * factor }, ctx);
         for (const [id, u] of Object.entries(sale.pantry)) pantry[id] = (pantry[id] || 0) + u;
         for (const [id, g] of Object.entries(sale.recipes)) recipes[id] = (recipes[id] || 0) + g;
-        if (e.source_type === "recipe") foodGrams += qty;
+        if (e.source_type === "recipe" || e.source_type === "pantry") foodGrams += qty;
         else {
             const d = ctx.dishes.get(e.source_id);
             const per = (ctx.dishItems.get(e.source_id) || []).reduce((s, it) => s + (Number(it.quantity_g) || 0), 0);
@@ -61,6 +64,45 @@ export function planPrep(entries, ctx, marginPct = DEFAULT_MARGIN_PCT) {
         dishes: [...dishes.values()].map((d) => ({ ...d, portions: Math.ceil(round3(d.portions)) })),
         recipes: outRecipes, pantry: outPantry, foodGrams: Math.round(foodGrams),
     };
+}
+
+// אלרגנים של פריט בתפריט: { keys: Set, unknown: האם יש רכיב שלא הוגדרו לו אלרגנים }
+function sourceAllergens(type, id, ctx, depth = 0) {
+    const out = { keys: new Set(), unknown: false };
+    const add = (res) => { for (const k of res.keys || []) out.keys.add(k); if (res.status === "unknown") out.unknown = true; };
+    if (depth > 3) return out;
+    if (type === "pantry") {
+        const row = ctx.pantry.get(id);
+        if (!row) out.unknown = true; else add(resolveAllergens(row, ctx.pantry, {}));
+    } else if (type === "recipe") {
+        const flat = flattenRecipeItems(ctx.recipeItems.get(id) || [], ctx.recipes, (i) => ctx.recipeItems.get(i) || []);
+        for (const it of flat) {
+            const row = it.pantry_item_id != null ? ctx.pantry.get(it.pantry_item_id) : null;
+            if (!row) out.unknown = true; else add(resolveAllergens(row, ctx.pantry, {}));
+        }
+    } else if (type === "dish") {
+        for (const it of ctx.dishItems.get(id) || []) {
+            const sub = sourceAllergens(it.source_type, it.source_id, ctx, depth + 1);
+            for (const k of sub.keys) out.keys.add(k);
+            if (sub.unknown) out.unknown = true;
+        }
+    }
+    return out;
+}
+
+// בדיקת אלרגנים של הסועדים מול התפריט. rows: [{ source_type, source_id, name }], wanted: מפתחות אלרגנים.
+// מחזיר { hits: [{ name, labels }], unknown: [שמות] }. פריט ידני לא נבדק כאן.
+export function allergenCheck(rows, ctx, wanted) {
+    const want = new Set(wanted || []);
+    const hits = [], unknown = [];
+    if (!want.size) return { hits, unknown };
+    for (const r of rows || []) {
+        const a = sourceAllergens(r.source_type, r.source_id, ctx);
+        const found = [...a.keys].filter((k) => want.has(k)).map((k) => ALLERGEN_LABEL[k]).filter(Boolean);
+        if (found.length) hits.push({ name: r.name, labels: found });
+        else if (a.unknown) unknown.push(r.name);
+    }
+    return { hits, unknown };
 }
 
 const BASE_UNIT = { weight: 'ק"ג', liter: "ליטר", unit: "יח'" };
