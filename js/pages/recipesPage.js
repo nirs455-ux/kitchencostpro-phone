@@ -762,7 +762,6 @@ async function openRecipeModal(existing, container, draft = null) {
                     <button type="button" class="remove-row-btn" data-remove="${id}">✕</button>
                 </div>
                 ${um ? "" : `<select id="ing-mode-${id}" style="width:auto;font-size:12px;padding:2px 6px;margin:2px 0;">${modeOptionsHtml((prefill && (prefill.pct_mode || prefill.est_mode)) || "", (sources.find((x) => String(x.id) === String(prefill && prefill.pantry_item_id)) || {}).item)}</select>`}
-                ${um ? "" : `<input type="text" id="ing-tech-${id}" maxlength="60" placeholder="טכניקה, למשל: שרוף או קצוץ" value="${escapeHtml((prefill && prefill.technique) || "")}" style="margin:2px 0;font-size:13px;">`}
                 <div class="line-total" id="ing-line-${id}"></div>
                 <div class="hint" id="ing-echo-${id}" style="margin:2px 0;"></div>
                 <div id="ing-egg-${id}" style="display:none;margin:6px 0;">
