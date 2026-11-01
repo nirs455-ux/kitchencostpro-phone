@@ -60,6 +60,16 @@ async function assertUniqueName(name, excludeId = null) {
     if (clash) throw new Error("כבר קיים מוצר בשם הזה בחומרי הגלם. בחר אותו מהרשימה או שנה את השם.");
 }
 
+// משקל יחידה בגרמים למוצר שנקנה במשקל או בנפח אבל סופרים ביחידות במתכון (עלה דפנה, פרוסה, חתיכה). null = לא הוגדר
+export const pieceGrams = (v) => { const n = parseFloat(String(v ?? "").replace(",", ".")); return Number.isFinite(n) && n > 0 && n < 100000 ? Math.round(n * 1000) / 1000 : null; };
+export async function setPieceWeight(id, grams) {
+    const row = await dbGet("pantryItems", id);
+    if (!row || row.unit_type === "unit") return;
+    const g = pieceGrams(grams);
+    if (g) row.piece_g = g; else delete row.piece_g;
+    await dbPut("pantryItems", row);
+}
+
 export async function addPantryItem(data) {
     const name = (data.name || "").trim();
     const { weightBefore, weightAfter, yieldPct, isFrozen } = validateBase(data);
@@ -87,6 +97,7 @@ export async function addPantryItem(data) {
         pkg_size: data.unit_type !== "unit" && parseFloat(data.pkg_size) > 0 ? parseFloat(data.pkg_size) : null, // גודל אריזה (ק"ג/ליטר) לספירה באריזות
         price, yield_pct: yieldPct, weight_before: weightBefore, weight_after: weightAfter,
         is_frozen: isFrozen ? 1 : 0, parent_id: null, ...(noPrice ? { price_missing: true } : {}),
+        ...(data.unit_type !== "unit" && pieceGrams(data.piece_g) ? { piece_g: pieceGrams(data.piece_g) } : {}),
         ...(data.unit_type === "unit" && EGG_SIZES[data.egg_size] ? { egg_size: data.egg_size } : {}),
         // אלרגנים: רק אם הוגדרו במפורש. אחרת השדה לא קיים = "לא ידוע" (המאגר מכריע בזמן התצוגה). אין ניחוש לפי שם.
         ...(Array.isArray(data.allergens) ? { allergens: data.allergens, allergens_auto: false } : {}),
@@ -154,6 +165,7 @@ export async function updatePantryItem(id, data) {
         unit_amount: unitAmount, price, is_frozen: isFrozen ? 1 : 0,
     });
     if (price > 0) delete existing.price_missing; // הושלם מחיר
+    if ("piece_g" in data) { const pg = data.unit_type !== "unit" ? pieceGrams(data.piece_g) : null; if (pg) existing.piece_g = pg; else delete existing.piece_g; }
     if (data.unit_type === "unit" && EGG_SIZES[data.egg_size]) existing.egg_size = data.egg_size;
     existing.pkg_size = data.unit_type !== "unit" && parseFloat(data.pkg_size) > 0 ? parseFloat(data.pkg_size) : null;
     if (Array.isArray(data.allergens)) { existing.allergens = data.allergens; existing.allergens_auto = false; }

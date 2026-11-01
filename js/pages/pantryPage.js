@@ -252,6 +252,7 @@ async function openProductSheet(it, children, container, root) {
         ${row("מחיר קנייה", `${cur()}${Number(it.price).toFixed(2)} / ${unitWord(it)}`)}
         ${Math.abs(eff - Number(it.price)) > 0.004 ? row("מחיר אמיתי (אחרי ניצולת)", `${cur()}${eff.toFixed(2)} (${Number(it.yield_pct).toFixed(0)}%)`) : ""}
         ${it.unit_type === "unit" ? row("משקל ליחידה", it.unit_amount ? `${gramsToKgText(it.unit_amount)} ${isGramMode() ? "גרם" : 'ק"ג'}` : '<span class="muted">לא הוגדר (בסדר, אפשר לעבוד ביחידות)</span>') : ""}
+        ${it.unit_type !== "unit" && it.piece_g ? row("משקל ליחידה", `${it.piece_g} גרם`) : ""}
         ${stock ? row("מלאי תיאורטי", `${+Number(stock.theoretical_quantity).toFixed(3)} ${unitWord(it)}`) : ""}
         ${labelInfo && labelInfo.ingredients ? row("רכיבים (מהתווית)", escapeHtml(labelInfo.ingredients.length > 160 ? labelInfo.ingredients.slice(0, 160) + "…" : labelInfo.ingredients)) : ""}
         ${labelInfo && labelInfo.may_contain && labelInfo.may_contain.length ? row("עלול להכיל עקבות", escapeHtml(allergenLabels(labelInfo.may_contain).join(", "))) : ""}
@@ -311,6 +312,10 @@ function openPantryModal(existing, container) {
             <div class="field" id="f-egg-size-wrap" style="display:none;">
                 <label>גודל הביצה ${info("קובע את משקל הביצה ללא קליפה ואת כמות החלבון והחלמון, כדי שהמתכונים יחשבו כמה ביצים לשבור ומה העלות.")}</label>
                 <select id="f-egg-size">${Object.keys(EGG_SIZES).map((k) => `<option value="${k}">${k}</option>`).join("")}</select>
+            </div>
+            <div class="field" id="f-piece-wrap">
+                <label>משקל ליחידה בגרמים, לעלה, פרוסה או חתיכה ${info("מוצר שקונים בקילו או בליטר אבל במתכון סופרים ביחידות, למשל עלי דפנה. כותבים כמה גרם שוקלת יחידה אחת, ובמתכון אפשר לכתוב 5 יחידות והמערכת תחשב. לא חובה.")}</label>
+                <input type="text" inputmode="decimal" id="f-piece" value="${existing && existing.piece_g ? existing.piece_g : ""}" placeholder="למשל 0.3">
             </div>
             <div class="field" id="f-unit-amount-wrap">
                 <label>${isGramMode() ? "משקל ליחידה (גרם, לא חובה)" : 'משקל ליחידה (ק"ג, לא חובה)'} ${info(isGramMode() ? 'כמה שוקלת יחידה אחת, בגרמים: ביצה 61, לימון 100. אפשר להשאיר ריק, למשל בלחמניה. במתכון כותבים כמה יחידות, והעלות מחושבת ממחיר היחידה. משקל נחוץ רק אם רוצים משקל ותזונה לרכיב הזה.' : 'כמה שוקלת יחידה אחת, בק"ג עם נקודה עשרונית: ביצה 0.061, לימון 0.100. אפשר להשאיר ריק, למשל בלחמניה. במתכון כותבים כמה יחידות, והעלות מחושבת ממחיר היחידה. משקל נחוץ רק אם רוצים משקל ותזונה לרכיב הזה.')}</label>
@@ -401,6 +406,7 @@ function openPantryModal(existing, container) {
     unitAmountInput.addEventListener("input", syncPrice);
     function syncUnitAmount() {
         unitAmountWrap.style.display = unitTypeSelect.value === "unit" ? "block" : "none";
+        overlay.querySelector("#f-piece-wrap").style.display = unitTypeSelect.value === "unit" ? "none" : "block";
     }
     catSelect.onchange = syncSubcategory;
     packInput.addEventListener("input", () => { packInput.dataset.touched = "1"; });
@@ -442,6 +448,7 @@ function openPantryModal(existing, container) {
             subcategory: overlay.querySelector("#f-subcategory").value,
             unit_type: unitTypeSelect.value,
             unit_amount: String(textToGrams(overlay.querySelector("#f-unit-amount").value) ?? ""),
+            piece_g: overlay.querySelector("#f-piece").value,
             price: unitTypeSelect.value !== "unit" && !existing && bulkKg() > 0 && parseFloat(overlay.querySelector("#f-price").value) > 0
                 ? String(Math.round((parseFloat(overlay.querySelector("#f-price").value) / bulkKg()) * 10000) / 10000)
                 : unitTypeSelect.value === "unit" && packCount() > 1 && parseFloat(overlay.querySelector("#f-price").value) > 0
