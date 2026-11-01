@@ -47,6 +47,9 @@ const pctFields = (it) => ({
     ...(EST_MODES.includes(it.est_mode) && Number(it.est_n) > 0 ? { est_mode: it.est_mode, est_n: Number(it.est_n) } : {}),
 });
 
+// טכניקה חופשית לשורה ("שרוף", "קצוץ"): טקסט בלבד, לא משפיע על חישובים
+const techField = (it) => (it.technique && String(it.technique).trim() ? { technique: String(it.technique).trim().slice(0, 60) } : {});
+
 export async function resolveRecipeItems(items, { selfId = null, cache = null } = {}) {
     const getRecipe = async (id) => (cache ? cache.recipes.get(id) : await dbGet("recipes", id));
     const getPantry = async (id) => (cache ? cache.pantry.get(id) : await dbGet("pantryItems", id));
@@ -72,7 +75,7 @@ export async function resolveRecipeItems(items, { selfId = null, cache = null } 
             const scost = calcItemCost(spg, q);
             totalCost += scost;
             rawWeight += q;
-            resolved.push({ pantry_item_id: null, sub_recipe_id: subId, ingredient_name: sub.name, quantity_g: q, price_per_gram: spg, item_cost: scost, ...pctFields(it) });
+            resolved.push({ pantry_item_id: null, sub_recipe_id: subId, ingredient_name: sub.name, quantity_g: q, price_per_gram: spg, item_cost: scost, ...pctFields(it), ...techField(it) });
             continue;
         }
         const pantryId = parseInt(it.pantry_item_id, 10);
@@ -89,7 +92,7 @@ export async function resolveRecipeItems(items, { selfId = null, cache = null } 
         const cost = calcItemCost(ppg, qty);
         totalCost += cost;
         if (!count) rawWeight += qty; // מוצר ספירה (יחידות בלי משקל): הכמות היא יחידות ולא גרמים
-        resolved.push({ pantry_item_id: pantryId, ingredient_name: row.name, quantity_g: qty, price_per_gram: ppg, item_cost: cost, ...(count ? { unit_count: true } : {}), ...(eggPart ? { egg_part: eggPart } : {}), ...pctFields(it) });
+        resolved.push({ pantry_item_id: pantryId, ingredient_name: row.name, quantity_g: qty, price_per_gram: ppg, item_cost: cost, ...(count ? { unit_count: true } : {}), ...(eggPart ? { egg_part: eggPart } : {}), ...pctFields(it), ...techField(it) });
         if (eggPart) eggRows.push({ idx: resolved.length - 1, row });
     }
     // ביצים: משלמים על כל הביצים ששוברים (לא רק על הגרמים שבשימוש). העלות מתחלקת בין שורות הביצים של אותו מוצר
@@ -144,6 +147,7 @@ export async function saveRecipe(existingId, data) {
         status: draftIngredients.length ? "draft" : "ready",
         draft_ingredients: draftIngredients,
         method: (data.method || "").trim() || null,
+        ...(data.notes !== undefined ? { notes: String(data.notes || "").trim() || null } : {}),
     };
     // קובץ המקור: Blob חדש = החלפה; null = הסרה; לא הועבר = נשמר הקיים
     if (data.source_file instanceof Blob) recipeRow.source_file = data.source_file;
@@ -154,6 +158,7 @@ export async function saveRecipe(existingId, data) {
         if (prev) {
             if (data.source_file === undefined && prev.source_file) recipeRow.source_file = prev.source_file;
             if (!data.source_text && prev.source_text) recipeRow.source_text = prev.source_text;
+            if (data.notes === undefined && prev.notes) recipeRow.notes = prev.notes;
         }
         recipeRow.id = existingId;
     }
@@ -177,9 +182,9 @@ export async function replaceIngredientWithSubRecipe(recipeId, pantryItemId, sub
     const rows = await dbGetByIndex("recipeItems", "recipe_id", recipeId);
     let replaced = 0;
     const items = rows.map((row) => {
-        if (row.sub_recipe_id != null) return { sub_recipe_id: row.sub_recipe_id, quantity_g: row.quantity_g };
+        if (row.sub_recipe_id != null) return { sub_recipe_id: row.sub_recipe_id, quantity_g: row.quantity_g, ...techField(row) };
         if (row.pantry_item_id === pantryItemId) { replaced++; return { sub_recipe_id: subId, quantity_g: row.quantity_g }; }
-        return { pantry_item_id: row.pantry_item_id, quantity_g: row.quantity_g, ...(row.egg_part ? { egg_part: row.egg_part } : {}) };
+        return { pantry_item_id: row.pantry_item_id, quantity_g: row.quantity_g, ...(row.egg_part ? { egg_part: row.egg_part } : {}), ...techField(row) };
     });
     if (!replaced) throw new Error("הרכיב לא נמצא במתכון");
     await saveRecipe(recipeId, {

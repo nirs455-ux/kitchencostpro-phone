@@ -51,6 +51,7 @@ export async function renderPrepTab(container) {
                 <div class="field"><label>מרווח ביטחון באחוזים ${info("תוספת על הכמות המחושבת, כדי לא להישאר בלי. בבופה כדאי עשרה עד חמישה עשר. תבלינים לא תמיד גדלים ביחס ישר, לכן אפשר להוריד.")}</label><input type="text" inputmode="decimal" id="pp-margin"></div>
             </div>
             <div class="field"><label>אלרגנים של הסועדים ${info("מסמנים אלרגנים שיש בין הסועדים. האפליקציה רושמת אותם בתכנון ומזהירה על פריטים בתפריט שמכילים אותם, לפי הגדרות האלרגנים במערכת. פריט ידני ופריט בלי הגדרות לא נבדקים.")}</label><div id="pp-alg" class="btn-row" style="flex-wrap:wrap;"></div></div>
+            <div class="field"><label>הערות לאירוע ${info("מקום חופשי לכל מה שלא קשור לאוכל: סידורים, הכרות, ארגון, שעות, ציוד. ההערות מופיעות במסמך האירוע.")}</label><textarea id="pp-note" rows="3" style="width:100%;" placeholder="סידורים, הכרות, ארגון, מה שצריך לזכור"></textarea></div>
         </div>
         <div class="card">
             <div class="card-title" style="margin:0 0 6px;">תפריט</div>
@@ -74,7 +75,7 @@ export async function renderPrepTab(container) {
     for (const id of ["#pp-plan", "#pc-kind", "#pc-sup"]) enhanceSelect(q(id));
 
     function loadFields() {
-        q("#pp-name").value = plan.name; q("#pp-date").value = plan.date; q("#pp-guests").value = plan.guests; q("#pp-margin").value = plan.margin;
+        q("#pp-note").value = plan.note || ""; q("#pp-name").value = plan.name; q("#pp-date").value = plan.date; q("#pp-guests").value = plan.guests; q("#pp-margin").value = plan.margin;
         const sel = q("#pp-plan");
         const list = plans.some((p) => p.id === plan.id) ? plans : [plan, ...plans];
         sel.innerHTML = list.map((p) => `<option value="${escapeHtml(p.id)}"${p.id === plan.id ? " selected" : ""}>${escapeHtml(plans.some((x) => x.id === p.id) ? planLabel(p) : "אירוע חדש")}</option>`).join("");
@@ -93,6 +94,7 @@ export async function renderPrepTab(container) {
         });
     }
     const bind = (sel, key) => { q(sel).oninput = async (e) => { plan[key] = e.target.value; drawMenu(); drawResult(); await persist(); }; };
+    q("#pp-note").oninput = async (e) => { plan.note = e.target.value; await persist(); };
     bind("#pp-name", "name"); bind("#pp-date", "date"); bind("#pp-guests", "guests"); bind("#pp-margin", "margin");
     q("#pp-date").onchange = q("#pp-date").oninput;
     q("#pp-plan").onchange = (e) => { plan = plans.find((p) => p.id === e.target.value) || plan; currentId = plan.id; loadFields(); draw(); };

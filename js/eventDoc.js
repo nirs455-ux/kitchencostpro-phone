@@ -62,7 +62,7 @@ export function buildEventDoc({ plan, ctx, result, groups, loose = [], prepRecip
         ...prepRecipes.map((r) => ({ name: r.name, qty: plan.overrides["r" + r.id] || gramsText(r.g, en) })),
         ...customPrep.map((c) => ({ name: c.label, qty: c.qty })),
     ];
-    return { title: plan.name, date: plan.date, guests: plan.guests, margin: plan.margin, algLabels, hits: chk.hits, unknown: [...new Set(chk.unknown)], hasCustom: plan.custom.length > 0, rows, prep, recipes, orders };
+    return { note: plan.note || "", title: plan.name, date: plan.date, guests: plan.guests, margin: plan.margin, algLabels, hits: chk.hits, unknown: [...new Set(chk.unknown)], hasCustom: plan.custom.length > 0, rows, prep, recipes, orders };
 }
 
 // tr: פונקציית תרגום לתוויות העברית. en: כיוון ושפה
@@ -96,6 +96,7 @@ tr.gh td{background:#eee;font-weight:700}
 <h1>${esc(doc.title || tr("מסמך אירוע"))}</h1>
 <div class="sub">${doc.date ? `${T("תאריך")}: ${esc(dateText(doc.date))} &nbsp; ` : ""}${doc.guests ? `${T("סועדים")}: ${esc(doc.guests)}` : ""}</div>
 ${alg}
+${doc.note ? `<div class="alg"><b>${T("הערות לאירוע")}:</b><div style="white-space:pre-wrap;">${esc(doc.note)}</div></div>` : ""}
 <h2>${T("תפריט")}</h2>
 <table><thead><tr><th>${T("פריט")}</th><th class="q">${T("לסועד")}</th><th class="q">${T("סך הכול")}</th></tr></thead><tbody>${menu}</tbody></table>
 ${doc.prep.length ? `<h2>${T("כמויות להכנה")}</h2><div class="note">${T("הכמויות כוללות ניצולת ומרווח ביטחון")}: ${esc(doc.margin)}%</div><table><tbody>${doc.prep.map((p) => `<tr><td>${esc(p.name)}</td><td class="q">${esc(p.qty)}</td></tr>`).join("")}</tbody></table>` : ""}

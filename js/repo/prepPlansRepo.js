@@ -34,6 +34,7 @@ export function normalizePlan(p) {
         name: txt(p && p.name),
         date: /^\d{4}-\d{2}-\d{2}$/.test(txt(p && p.date)) ? p.date : todayIso(),
         guests: txt(p && p.guests),
+        note: typeof (p && p.note) === "string" ? p.note.slice(0, 4000) : "",
         margin: p && p.margin != null && txt(p.margin) !== "" ? txt(p.margin) : "10",
         rows: rows.map((r) => ({ source_type: r.source_type, source_id: Number(r.source_id), name: txt(r.name), per: txt(r.per), share: txt(r.share), group: txt(r.group) })),
         allergens: Array.isArray(p && p.allergens) ? p.allergens.filter((k) => typeof k === "string") : [],

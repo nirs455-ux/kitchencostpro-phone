@@ -174,7 +174,7 @@ function renderRecipeRow(r, container) {
     const missing = (r.draft_ingredients || []).length;
     const isDraft = r.status === "draft";
     const meta = `${r.direct_items.length} מרכיבים${missing ? ` · <span class="tag tag-warn">טיוטה, חסרים ${missing}</span>` : ""}${r.source_file ? " · 📎" : ""}${r.final_weight > 0 ? " · " + r.final_weight.toFixed(0) + " גרם" : ""}`;
-    const end = `<span class="cost-only">${isDraft ? "חלקי " + money(r.total_cost) : money(r.cost_per_gram * 1000)}${isDraft ? "" : "<small>/ ק\"ג</small>"}</span>`;
+    const end = `<span class="cost-only">${isDraft ? "חלקי " : ""}${money(r.total_cost)}<small>עלות מתכון</small></span>`;
     return listRow({ id: r.id, ic: isDraft ? "📝" : "📖", tint: isDraft ? "var(--warn-soft)" : "var(--brand-soft)", name: r.name, meta, end, onClick: () => openRecipeDetails(r, container) });
 }
 
@@ -189,7 +189,7 @@ function printRecipe(r, lines, totalG) {
         <body><h1>${escapeHtml(r.name)}</h1><div class="c">${escapeHtml(r.category || "")}</div>
         <table><thead><tr><th>רכיב</th><th>כמות</th></tr></thead><tbody>${rowsHtml}</tbody></table>
         <div class="tot">סה"כ ${escapeHtml(totalG)}</div>
-        ${r.method ? `<h2>אופן ההכנה</h2><div class="m">${escapeHtml(r.method)}</div>` : ""}</body></html>`);
+        ${r.method ? `<h2>אופן ההכנה</h2><div class="m">${escapeHtml(r.method)}</div>` : ""}${r.notes ? `<h2>הערות</h2><div class="m">${escapeHtml(r.notes)}</div>` : ""}</body></html>`);
     w.document.close();
     w.focus();
     setTimeout(() => w.print(), 300);
@@ -360,15 +360,16 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
         if (tab === "recipe") {
             body = `
             <table class="simple"><thead><tr><th>רכיב</th><th>גרם</th><th class="cost-only">עלות</th></tr></thead><tbody>
-                ${[...r.direct_items].sort((a, b) => b.quantity_g - a.quantity_g).map((i) => `<tr${exists(i) ? "" : ' style="color:var(--danger);"'}><td>${exists(i) ? "" : "⚠ "}${i.sub_recipe_id != null ? "📖 " : ""}${escapeHtml(nameOf(i))}${i.egg_part && i.egg_part !== "whole" ? " (" + EGG_PART_UI[i.egg_part] + ")" : ""}${exists(i) ? "" : i.sub_recipe_id != null ? " · המתכון נמחק" : " · נמחק מחומרי הגלם"}</td><td>${i.unit_count ? `${+Number(i.quantity_g).toFixed(2)} <span>יחידות</span>` : +Number(i.quantity_g).toFixed(1)}</td><td class="cost-only">${money(i.item_cost)}</td></tr>`).join("")}
+                ${[...r.direct_items].sort((a, b) => b.quantity_g - a.quantity_g).map((i) => `<tr${exists(i) ? "" : ' style="color:var(--danger);"'}><td>${exists(i) ? "" : "⚠ "}${i.sub_recipe_id != null ? "📖 " : ""}${escapeHtml(nameOf(i))}${i.technique ? " · " + escapeHtml(i.technique) : ""}${i.egg_part && i.egg_part !== "whole" ? " (" + EGG_PART_UI[i.egg_part] + ")" : ""}${exists(i) ? "" : i.sub_recipe_id != null ? " · המתכון נמחק" : " · נמחק מחומרי הגלם"}</td><td>${i.unit_count ? `${+Number(i.quantity_g).toFixed(2)} <span>יחידות</span>` : +Number(i.quantity_g).toFixed(1)}</td><td class="cost-only">${money(i.item_cost)}</td></tr>`).join("")}
                 ${missing.map((m) => `<tr style="color:var(--danger);"><td>⚠ ${escapeHtml(m.name)}</td><td colspan="2">${originalHtml(m) || "—"} · לא בחומרי הגלם</td></tr>`).join("")}
             </tbody></table>
             ${r.status === "draft" ? `<div class="hint-warn">העלות חלקית - מחושבת רק מהרכיבים שבחומרי הגלם. לחץ "השלם" כדי להוסיף את החסרים.</div>`
-                : `<div class="card-row cost-only" style="font-weight:700;margin:8px 0;"><span>עלות כוללת ${money(r.total_cost)}</span><span>${money(r.cost_per_gram)} / גרם</span></div>
+                : `<div class="card-row cost-only" style="font-weight:700;margin:8px 0;"><span>עלות מתכון ${money(r.total_cost)}</span></div>
                 <div class="hint" style="margin:-4px 0 8px;">${r.final_weight > 0 && !r.is_auto_weight ? `משקל גולמי ${Math.round(r.direct_items.reduce((n, i) => n + (i.unit_count ? 0 : Number(i.quantity_g) || 0), 0))} גרם · <b>משקל סופי ${Math.round(r.final_weight)} גרם</b>. העלות לגרם מחושבת על המשקל הסופי.` : "המשקל הוא סכום הרכיבים הגולמיים. אם יש ירידה בבישול או בסינון, מזינים משקל סופי בעריכת המתכון."}</div>`}
             ${r.direct_items.some((i) => !exists(i)) ? `<div class="hint-warn mgr-only">רכיב נמחק. העלות שלו נשארת כפי שהייתה בפעם האחרונה ואינה מתעדכנת. ערוך את המתכון והחלף אותו.</div>` : ""}
             ${eggNotes.map((e) => `<div class="hint-warn" style="background:var(--brand-soft);color:var(--text);">${escapeHtml(eggSummaryText(e))}</div>`).join("")}
             ${r.method ? `<div class="card-title" style="margin:12px 0 4px;">הוראות הכנה</div><div style="white-space:pre-wrap;font-size:14px;">${escapeHtml(r.method)}</div>` : ""}
+            ${r.notes ? `<div class="card-title" style="margin:12px 0 4px;">הערות</div><div style="white-space:pre-wrap;font-size:14px;">${escapeHtml(r.notes)}</div>` : ""}
             <div class="btn-row"><button type="button" class="btn btn-secondary btn-small" id="d-print-recipe">🖨 הדפס מתכון</button><button type="button" class="btn btn-secondary btn-small" id="d-wa-recipe">💬 שלח בוואטסאפ</button><button type="button" class="btn btn-secondary btn-small mgr-only" id="d-make-product">🏷 מוצר ומדבקה</button>${r.source_file ? '<button type="button" class="btn btn-accent btn-small" id="d-source">📎 המסמך המקורי</button>' : ""}</div>`;
         } else if (tab === "percent") {
             const pv = pctView();
@@ -730,8 +731,9 @@ async function openRecipeModal(existing, container, draft = null) {
             <div class="pg-sec">מרכיבים</div>
             <div id="ingredients-box"></div>
             <button type="button" class="pg-add" id="btn-add-row">＋ הוסף מרכיב</button>
-            <button type="button" class="pg-add" id="btn-add-manual">＋ רכיב שעדיין לא בחומרי הגלם (טיוטה)</button>
+            <button type="button" class="pg-add" id="btn-add-manual"${isEdit || draft ? "" : ' style="display:none;"'}>＋ רכיב שעדיין לא בחומרי הגלם (טיוטה)</button>
             <details class="pg-more"><summary>הוראות הכנה</summary><textarea id="f-method" rows="5" style="width:100%;">${src && src.method ? escapeHtml(src.method) : ""}</textarea></details>
+            <details class="pg-more"><summary>הערות</summary><textarea id="f-notes" rows="3" style="width:100%;" placeholder="חיי מדף, ציוד, דגשי הגשה. לא משפיע על העלות">${existing && existing.notes ? escapeHtml(existing.notes) : ""}</textarea></details>
             <div class="card-pg" style="margin-top:10px;">
                 <div class="field" style="margin:0;"><label>${isGramMode() ? "משקל סופי אחרי בישול וסינון (גרם, לא חובה)" : 'משקל סופי אחרי בישול וסינון (ק"ג, לא חובה)'} ${info('ריק = סכום הרכיבים הגולמיים. אם המתכון מתבשל, מתמצה או מסונן והמשקל יורד (למשל מ-0.733 ל-0.550), כתוב כאן את המשקל שיוצא בפועל. העלות לגרם והעלות לק"ג יחושבו על המשקל הסופי, כך שהם מדויקים.')}</label>
                     <input type="text" inputmode="decimal" id="f-manual-weight" value="${existing && !existing.is_auto_weight ? gramsToKgText(existing.final_weight) : ""}" placeholder="${isGramMode() ? "למשל 550" : "למשל 0.550"}">
@@ -743,7 +745,7 @@ async function openRecipeModal(existing, container, draft = null) {
             <button type="button" class="btn btn-secondary" id="btn-add-missing" style="display:none;margin:6px 0;">➕ הוסף את כל החסרים לחומרי הגלם (בלי מחיר)</button>
             <div class="error-msg"></div>
         </div>
-        <div class="pg-foot"><div class="pg-sum"><span>עלות כוללת</span><b id="total-cost-display">${cur()}0.00</b></div>
+        <div class="pg-foot"><div class="pg-sum"><span>עלות מתכון</span><b id="total-cost-display">${cur()}0.00</b></div>
             <button type="button" class="btn btn-primary btn-block" id="btn-save">שמירת מתכון</button></div>
     `, { page: true });
 
@@ -772,6 +774,7 @@ async function openRecipeModal(existing, container, draft = null) {
                     <button type="button" class="remove-row-btn" data-remove="${id}">✕</button>
                 </div>
                 ${um ? "" : `<select id="ing-mode-${id}" style="width:auto;font-size:12px;padding:2px 6px;margin:2px 0;">${modeOptionsHtml((prefill && (prefill.pct_mode || prefill.est_mode)) || "", (sources.find((x) => String(x.id) === String(prefill && prefill.pantry_item_id)) || {}).item)}</select>`}
+                ${um ? "" : `<input type="text" id="ing-tech-${id}" maxlength="60" placeholder="טכניקה, למשל: שרוף או קצוץ" value="${escapeHtml((prefill && prefill.technique) || "")}" style="margin:2px 0;font-size:13px;">`}
                 <div class="line-total" id="ing-line-${id}"></div>
                 <div class="hint" id="ing-echo-${id}" style="margin:2px 0;"></div>
                 <div id="ing-egg-${id}" style="display:none;margin:6px 0;">
@@ -894,7 +897,7 @@ async function openRecipeModal(existing, container, draft = null) {
                 const err = row.querySelector(`#qa-err-${id}`);
                 try {
                     const newId = await addPantryItem({
-                        name: um.name, category: row.querySelector(`#qa-cat-${id}`).value, unit_type: ut.value,
+                        name: ((row.querySelector(`#ing-name-${id}`) || {}).value || "").trim() || um.name, category: row.querySelector(`#qa-cat-${id}`).value, unit_type: ut.value,
                         unit_amount: row.querySelector(`#qa-ua-${id}`).value, price: row.querySelector(`#qa-price-${id}`).value, allow_no_price: true,
                     });
                     const item = await dbGet("pantryItems", newId);
@@ -1182,8 +1185,9 @@ async function openRecipeModal(existing, container, draft = null) {
             const pctPart = pm && quantity_g ? { pct: textToCount(overlay.querySelector(`#ing-qty-${id}`).value), pct_mode: pm } : em && quantity_g ? { est_mode: em, est_n: textToCount(overlay.querySelector(`#ing-qty-${id}`).value) } : {};
             const meta = rowMeta.get(Number(id));
             if (egg && meta.eggSize) eggSizeChanges.set(egg.s.id, meta.eggSize);
-            if (pantry_item_id.startsWith("r") && quantity_g) items.push({ sub_recipe_id: Number(pantry_item_id.slice(1)), quantity_g, ...pctPart });
-            else if (pantry_item_id && quantity_g) items.push({ pantry_item_id, quantity_g, ...(egg ? { egg_part: egg.part } : {}), ...pctPart });
+            const techEl = overlay.querySelector(`#ing-tech-${id}`), technique = techEl ? techEl.value.trim() : "";
+            if (pantry_item_id.startsWith("r") && quantity_g) items.push({ sub_recipe_id: Number(pantry_item_id.slice(1)), quantity_g, ...pctPart, ...(technique ? { technique } : {}) });
+            else if (pantry_item_id && quantity_g) items.push({ pantry_item_id, quantity_g, ...(egg ? { egg_part: egg.part } : {}), ...pctPart, ...(technique ? { technique } : {}) });
             else if (meta && meta.um && meta.um.manual) {
                 // רכיב שהוקלד ידנית ועדיין לא בחומרי הגלם: נשמר בטיוטה עם הכמות בגרמים (אם הוזנה)
                 const nm = String(meta.um.name || "").trim();
@@ -1198,6 +1202,7 @@ async function openRecipeModal(existing, container, draft = null) {
             items,
             draft_ingredients: draftIngredients,
             method: overlay.querySelector("#f-method").value,
+            notes: overlay.querySelector("#f-notes").value,
             final_weight: String(textToGrams(overlay.querySelector("#f-manual-weight").value) ?? ""),
         };
         if (!isEdit && draft && draft.source_file) data.source_file = draft.source_file;
