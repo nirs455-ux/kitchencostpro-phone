@@ -40,6 +40,7 @@ export function normalizePlan(p) {
         allergens: Array.isArray(p && p.allergens) ? p.allergens.filter((k) => typeof k === "string") : [],
         custom: normalizeCustom(p && p.custom),
         overrides: normalizeOverrides(p && p.overrides),
+        overrideBase: normalizeOverrides(p && p.overrideBase), // הטקסט המחושב ברגע השינוי, כדי לזהות שינוי שהתיישן
         done,
         updated: Number(p && p.updated) || Date.now(),
     };

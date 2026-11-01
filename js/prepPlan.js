@@ -8,7 +8,14 @@ import { ALLERGEN_LABEL } from "./allergens.js";
 
 export const DEFAULT_MARGIN_PCT = 10;
 
-const num = (v) => { const n = parseFloat(String(v == null ? "" : v).replace(",", ".")); return Number.isFinite(n) ? n : 0; };
+// פענוח כמות שהוקלדה: יחידה בסוף (g / גרם) נחתכת; פסיק שאחריו בדיוק שלוש ספרות הוא מפריד אלפים, אחרת פסיק עשרוני
+export function parseQty(v) {
+    let s = String(v == null ? "" : v).trim().replace(/\s*(?:g|gr|גרם|גר')\s*$/i, "");
+    s = s.replace(/,(?=\d{3}(?:\D|$))/g, "").replace(",", ".");
+    const n = parseFloat(s);
+    return Number.isFinite(n) ? n : 0;
+}
+const num = parseQty;
 const ceilTo = (n, step) => Math.ceil(Math.round((n / step) * 1e6) / 1e6) * step;
 const round3 = (n) => Math.round(n * 1000) / 1000;
 
@@ -26,23 +33,40 @@ export function entryQuantity(guests, perGuest, sharePct = 100) {
     return Math.round(g * p * (s / 100) * 1e6) / 1e6;
 }
 
+// תת-מתכונים שהמטבח צריך להכין: גרמים לפי השימוש בהם (כמות השורה x גרמי המתכון האב / משקלו הסופי). רק דיווח, בלי השפעה על חומרי הגלם
+function addSubRecipes(recipeId, grams, ctx, out, depth = 0, trail = new Set()) {
+    const rec = ctx.recipes.get(recipeId);
+    const fw = rec ? Number(rec.final_weight) : 0;
+    if (!rec || !(fw > 0) || !(grams > 0) || depth >= 4 || trail.has(recipeId)) return;
+    const next = new Set([...trail, recipeId]);
+    for (const it of ctx.recipeItems.get(recipeId) || []) {
+        if (it.sub_recipe_id == null || !ctx.recipes.get(it.sub_recipe_id)) continue;
+        const g = (Number(it.quantity_g) || 0) * (grams / fw);
+        if (!(g > 0)) continue;
+        out[it.sub_recipe_id] = (out[it.sub_recipe_id] || 0) + g;
+        addSubRecipes(it.sub_recipe_id, g, ctx, out, depth + 1, next);
+    }
+}
+
 // entries: [{ source_type: "dish"|"recipe", source_id, quantity }] (מנה: מספר מנות. מתכון: גרם)
 // ctx: כמו ב-loadSalesCtx. מחזיר:
 //   dishes: [{ id, name, portions }]  (עם מרווח הביטחון, מעוגל למעלה)
-//   recipes: { id: גרם }  (מתכונים שצריך להכין, כולל תת-מתכונים)
+//   recipes: { id: גרם }  (מתכונים ברמה העליונה)
+//   subRecipes: { id: גרם }  (תת-מתכונים שצריך להכין, לפי השימוש בהם)
 //   pantry: { id ראשי: יחידות קנייה (ק"ג / ליטר / יחידות) }  (מעוגל למעלה)
 //   foodGrams: סך גרמי האוכל המוגש (בלי מרווח)
 export function planPrep(entries, ctx, marginPct = DEFAULT_MARGIN_PCT) {
     const factor = 1 + Math.max(0, num(marginPct)) / 100;
     const pantry = {}, recipes = {};
     const dishes = new Map();
+    const subs = {};
     let foodGrams = 0;
     for (const e of entries || []) {
         const qty = num(e.quantity);
         if (!(qty > 0)) continue;
         const sale = explodeSale({ source_type: e.source_type, source_id: e.source_id, quantity: qty * factor }, ctx);
         for (const [id, u] of Object.entries(sale.pantry)) pantry[id] = (pantry[id] || 0) + u;
-        for (const [id, g] of Object.entries(sale.recipes)) recipes[id] = (recipes[id] || 0) + g;
+        for (const [id, g] of Object.entries(sale.recipes)) { recipes[id] = (recipes[id] || 0) + g; addSubRecipes(Number(id), g, ctx, subs); }
         if (e.source_type === "recipe" || e.source_type === "pantry") foodGrams += qty;
         else {
             const d = ctx.dishes.get(e.source_id);
@@ -60,9 +84,11 @@ export function planPrep(entries, ctx, marginPct = DEFAULT_MARGIN_PCT) {
     }
     const outRecipes = {};
     for (const [id, g] of Object.entries(recipes)) outRecipes[id] = Math.ceil(round3(g));
+    const outSubs = {};
+    for (const [id, g] of Object.entries(subs)) outSubs[id] = Math.ceil(round3(g));
     return {
         dishes: [...dishes.values()].map((d) => ({ ...d, portions: Math.ceil(round3(d.portions)) })),
-        recipes: outRecipes, pantry: outPantry, foodGrams: Math.round(foodGrams),
+        recipes: outRecipes, subRecipes: outSubs, pantry: outPantry, foodGrams: Math.round(foodGrams),
     };
 }
 

@@ -1,11 +1,10 @@
 // מסמך אירוע להדפסה / שמירה כ-PDF ושליחה: כותרת ואלרגנים, תפריט, כמויות להכנה, מתכונים מלאים והזמנות לפי ספק. בלי מחירים.
 // טהור (בלי DOM/DB): מקבל את התוכנית, ההקשר והתוצאה המחושבת, ופונקציית תרגום tr (זהות בעברית). שמות שהמשתמש כתב נשארים כמו שהם.
 import { ALLERGENS } from "./allergens.js";
-import { allergenCheck } from "./prepPlan.js";
-import { entryQuantity } from "./prepPlan.js";
+import { allergenCheck, entryQuantity, parseQty } from "./prepPlan.js";
 
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-const num = (v) => { const n = parseFloat(String(v == null ? "" : v).replace(",", ".")); return Number.isFinite(n) ? n : 0; };
+const num = parseQty;
 const dateText = (iso) => String(iso || "").split("-").reverse().join("/");
 
 // כמות בגרמים -> טקסט, בשפת המסמך
@@ -41,7 +40,12 @@ export function buildEventDoc({ plan, ctx, result, groups, loose = [], prepRecip
         const rec = ctx.recipes.get(Number(p.id));
         if (!rec) return null;
         const fw = Number(rec.final_weight) || 0;
-        const k = fw > 0 ? p.g / fw : 1;
+        // שינוי ידני בטבלת ההכנה קובע גם את היעד בכרטיס המתכון: אם אפשר לקרוא אותו כגרמים, גם הכמויות מוגדלות אליו
+        const ov = (plan.overrides || {})["r" + p.id];
+        const m = ov ? /^\s*([\d.,]+)\s*(kg|ק"ג|g|גרם)?\s*$/i.exec(ov) : null;
+        const ovG = m ? num(m[1]) * (m[2] && /^(kg|ק"ג)$/i.test(m[2]) ? 1000 : 1) : 0;
+        const useG = ovG > 0 ? ovG : p.g;
+        const k = fw > 0 ? useG / fw : 1;
         const items = (ctx.recipeItems.get(rec.id) || []).map((i) => {
             const sub = i.sub_recipe_id != null ? ctx.recipes.get(i.sub_recipe_id) : null;
             const pan = i.pantry_item_id != null ? ctx.pantry.get(i.pantry_item_id) : null;
@@ -49,7 +53,7 @@ export function buildEventDoc({ plan, ctx, result, groups, loose = [], prepRecip
             return { name: sub ? sub.name : pan ? pan.name : "", sub: !!sub, qty: i.unit_count ? `${+q.toFixed(2)} ${en ? "pcs" : "יחידות"}` : gramsText(q, en), g: i.unit_count ? 0 : q };
         }).filter((i) => i.name).sort((a, b) => b.g - a.g);
         for (const d of rec.draft_ingredients || []) items.push({ name: d.name, sub: false, qty: draftQty(d, k, en), g: 0 });
-        return { name: rec.name, target: gramsText(p.g, en), scaled: fw > 0, method: rec.method || "", items };
+        return { name: rec.name, target: ov ? (ovG > 0 ? gramsText(ovG, en) : ov) : gramsText(p.g, en), changed: !!ov, scaled: fw > 0, method: rec.method || "", items };
     }).filter(Boolean);
 
     const orders = groups.map((g) => ({
@@ -58,8 +62,8 @@ export function buildEventDoc({ plan, ctx, result, groups, loose = [], prepRecip
     })).concat(loose.length ? [{ supplier: "", extra: true, lines: loose.map((c) => ({ name: c.label, qty: c.qty })) }] : []);
 
     const prep = [
-        ...result.dishes.map((d) => ({ name: d.name, qty: plan.overrides["d" + d.id] || `${d.portions} ${en ? "portions" : "מנות"}` })),
-        ...prepRecipes.map((r) => ({ name: r.name, qty: plan.overrides["r" + r.id] || gramsText(r.g, en) })),
+        ...result.dishes.map((d) => ({ name: d.name, qty: plan.overrides["d" + d.id] || `${d.portions} ${en ? "portions" : "מנות"}`, changed: !!plan.overrides["d" + d.id] })),
+        ...prepRecipes.map((r) => ({ name: r.name, qty: plan.overrides["r" + r.id] || gramsText(r.g, en), changed: !!plan.overrides["r" + r.id] })),
         ...customPrep.map((c) => ({ name: c.label, qty: c.qty })),
     ];
     return { note: plan.note || "", title: plan.name, date: plan.date, guests: plan.guests, margin: plan.margin, algLabels, hits: chk.hits, unknown: [...new Set(chk.unknown)], hasCustom: plan.custom.length > 0, rows, prep, recipes, orders };
@@ -76,7 +80,7 @@ export function eventDocHtml(doc, tr = (s) => s, en = false) {
         ${doc.hits.length ? `<ul>${doc.hits.map((h) => `<li>⚠ <b>${esc(h.name)}</b> - ${T("מכיל")} ${esc(h.labels.map(tr).join(", "))}</li>`).join("")}</ul>` : `<div>${T("לא נמצאו בתפריט פריטים עם האלרגנים האלה, לפי ההגדרות במערכת.")}</div>`}
         ${doc.unknown.length ? `<div>${T("לא הוגדרו אלרגנים ב")}: ${esc(doc.unknown.join(", "))}. ${T("יש לבדוק ידנית.")}</div>` : ""}
         ${doc.hasCustom ? `<div>${T("פריטים ידניים לא נבדקים.")}</div>` : ""}</div>` : "";
-    const recipes = doc.recipes.map((r) => `<div class="rec"><h3>${esc(r.name)} <span class="tg">${esc(r.target)}</span></h3>
+    const recipes = doc.recipes.map((r) => `<div class="rec"><h3>${esc(r.name)} <span class="tg">${esc(r.target)}${r.changed ? ` · ${T("שונתה")}` : ""}</span></h3>
         ${r.scaled ? "" : `<div class="note">${T("אין משקל סופי במתכון, הכמויות לפי המתכון המקורי")}</div>`}
         <table><thead><tr><th>${T("רכיב")}</th><th class="q">${T("כמות")}</th></tr></thead><tbody>${r.items.map((i) => `<tr><td>${i.sub ? "📖 " : ""}${esc(i.name)}</td><td class="q">${esc(i.qty)}</td></tr>`).join("")}</tbody></table>
         ${r.method ? `<div class="m"><b>${T("אופן ההכנה")}</b><br>${esc(r.method)}</div>` : ""}</div>`).join("");
@@ -99,7 +103,7 @@ ${alg}
 ${doc.note ? `<div class="alg"><b>${T("הערות לאירוע")}:</b><div style="white-space:pre-wrap;">${esc(doc.note)}</div></div>` : ""}
 <h2>${T("תפריט")}</h2>
 <table><thead><tr><th>${T("פריט")}</th><th class="q">${T("לסועד")}</th><th class="q">${T("סך הכול")}</th></tr></thead><tbody>${menu}</tbody></table>
-${doc.prep.length ? `<h2>${T("כמויות להכנה")}</h2><div class="note">${T("הכמויות כוללות ניצולת ומרווח ביטחון")}: ${esc(doc.margin)}%</div><table><tbody>${doc.prep.map((p) => `<tr><td>${esc(p.name)}</td><td class="q">${esc(p.qty)}</td></tr>`).join("")}</tbody></table>` : ""}
+${doc.prep.length ? `<h2>${T("כמויות להכנה")}</h2><div class="note">${T("הכמויות כוללות ניצולת ומרווח ביטחון")}: ${esc(doc.margin)}%</div><table><tbody>${doc.prep.map((p) => `<tr><td>${esc(p.name)}</td><td class="q">${esc(p.qty)}${p.changed ? ` <span class="tg">· ${T("שונתה")}</span>` : ""}</td></tr>`).join("")}</tbody></table>` : ""}
 ${recipes ? `<h2>${T("מתכונים")}</h2>${recipes}` : ""}
 ${orders ? `<h2>${T("הזמנות לפי ספק")}</h2>${orders}` : ""}
 <script>window.onload=function(){setTimeout(function(){window.print()},300)}</script>

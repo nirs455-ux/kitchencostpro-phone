@@ -71,9 +71,12 @@ export async function openIngredientPicker({ title = "בחר מרכיב", items,
     const tabList = tabs && tabs.length > 1 ? tabs : null;
     const st = { tab: tabList ? tabList[0].key : null, q: "", cat: "", sub: "", open: null, openGroups: new Set() };
     let restoreScroll = 0;
-    if (memory && (!tabList || tabList.some((t) => t.key === memory.tab))) {
+    // הזיכרון משותף לכל הבוחרים: משחזרים רק אם הלשונית שייכת לבורר הזה, והקטגוריה קיימת בו (בורר אחר לא יסתיר פריטים)
+    const sameKind = !!memory && (tabList ? tabList.some((t) => t.key === memory.tab) : memory.tab === null);
+    if (memory && sameKind) {
         st.tab = memory.tab; st.cat = memory.cat; st.sub = memory.sub; // החיפוש מתנקה בכל פתיחה
         restoreScroll = memory.q ? 0 : memory.scroll || 0;
+        if (st.cat && !items.some((i) => i.category === st.cat && (!st.tab || i.tab === st.tab))) { st.cat = ""; st.sub = ""; restoreScroll = 0; }
     }
     let lastScroll = restoreScroll;
     const remember = () => { memory = { tab: st.tab, q: st.q, cat: st.cat, sub: st.sub, scroll: lastScroll }; };
@@ -125,7 +128,7 @@ export async function openIngredientPicker({ title = "בחר מרכיב", items,
             try {
                 const item = await onCreate(data);
                 if (multi) {
-                    const full = { ...item, tab: st.tab || item.tab };
+                    const full = { ...item, tab: item.tab || st.tab };
                     items.push(full); flat = items.flatMap((i) => [i, ...(i.children || [])]);
                     sel.set(full.key, full); st.q = ""; st.cat = ""; st.sub = "";
                     draw();

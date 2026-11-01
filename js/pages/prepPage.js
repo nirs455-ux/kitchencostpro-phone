@@ -7,7 +7,7 @@ import { dbGetAll, dbGet } from "../db.js";
 import { openIngredientPicker } from "./ingredientPicker.js";
 import { addPantryItem } from "../repo/pantryRepo.js";
 import { loadSalesCtx } from "../repo/salesRepo.js";
-import { planPrep, groupBySupplier, entryQuantity, allergenCheck, DEFAULT_MARGIN_PCT } from "../prepPlan.js";
+import { planPrep, groupBySupplier, entryQuantity, allergenCheck, parseQty, DEFAULT_MARGIN_PCT } from "../prepPlan.js";
 import { ALLERGENS } from "../allergens.js";
 import { qtyText, orderText, whatsappUrl } from "../shareText.js";
 import { checklistText, checklistHtml } from "../prepChecklist.js";
@@ -31,7 +31,7 @@ export async function renderPrepTab(container) {
     const persist = async () => {
         if (isBlank(plan)) return;
         plans = upsertPlan(plans, plan);
-        plan = plans[0];
+        plan.updated = plans[0].updated; // התוכנית החיה נשארת כפי שהוקלדה (שדה ריק לא הופך לברירת מחדל); רק הנשמר מנורמל
         await savePlans(plans);
     };
 
@@ -168,7 +168,7 @@ export async function renderPrepTab(container) {
     const rowNote = (r) => {
         const legacy = r.source_type === "dish";
         const qty = entryQuantity(plan.guests, r.per, r.share);
-        if (!(Number(String(r.per).replace(",", ".")) > 0)) return legacy ? "הזן כמה מנות לסועד" : "הזן גרם לסועד";
+        if (!(parseQty(r.per) > 0)) return legacy ? "הזן כמה מנות לסועד" : "הזן גרם לסועד";
         if (!qty) return "הזן כמות סועדים";
         const total = legacy ? `סה"כ ${fmt(qty)} מנות` : `סה"כ ${qtyText(qty)}`;
         const rec = r.source_type === "recipe" ? ctx.recipes.get(r.source_id) : null;
@@ -206,8 +206,10 @@ export async function renderPrepTab(container) {
         const entries = plan.rows.map((r) => ({ source_type: r.source_type, source_id: r.source_id, quantity: entryQuantity(plan.guests, r.per, r.share) })).filter((e) => e.quantity > 0);
         const customPrep = plan.custom.filter((c) => c.kind === "prep"), customOrder = plan.custom.filter((c) => c.kind === "order");
         if (!entries.length && !plan.custom.length) { resEl.innerHTML = plan.rows.length ? '<div class="empty-state">הזן כמות סועדים וגרם לכל רכיב כדי לראות מה להכין ולהזמין.</div>' : ""; return; }
-        const result = entries.length ? planPrep(entries, ctx, plan.margin) : { dishes: [], recipes: {}, pantry: {}, foodGrams: 0 };
-        const prepRecipes = Object.entries(result.recipes).map(([id, g]) => ({ id, name: (ctx.recipes.get(Number(id)) || {}).name || "?", g })).sort((a, b) => a.name.localeCompare(b.name, "he"));
+        const result = entries.length ? planPrep(entries, ctx, plan.margin) : { dishes: [], recipes: {}, subRecipes: {}, pantry: {}, foodGrams: 0 };
+        const allRecipes = { ...result.recipes };
+        for (const [id, g] of Object.entries(result.subRecipes || {})) allRecipes[id] = (allRecipes[id] || 0) + g; // תת-מתכון שגם משמש ישירות מוכן פעם אחת
+        const prepRecipes = Object.entries(allRecipes).map(([id, g]) => ({ id, name: (ctx.recipes.get(Number(id)) || {}).name || "?", g })).sort((a, b) => a.name.localeCompare(b.name, "he"));
 
         // הזמנות: חישוב לפי ספק + פריטים ידניים שנבחר להם ספק (מצטרפים להזמנה של אותו ספק); בלי ספק -> כרטיס "הוספות ידניות"
         const groups = groupBySupplier(result.pantry, ctx.pantry, suppliers).map((g) => ({ ...g, extras: [] }));
@@ -224,6 +226,19 @@ export async function renderPrepTab(container) {
         const prepKeys = [...result.dishes.map((d) => `d${d.id}`), ...prepRecipes.map((r) => `r${r.id}`), ...customPrep.map((c) => `c${c.id}`)];
         const orderKeys = [...groups.flatMap((g) => [...g.lines.map((l) => `o${l.id}`), ...g.extras.map((c) => `c${c.id}`)]), ...loose.map((c) => `c${c.id}`)];
         const pp = progress(prepKeys, plan.done), po = progress(orderKeys, plan.done);
+        // שינוי ידני שהחישוב מאחוריו זז (סועדים השתנו) כבר לא נכון: מוחקים אותו
+        {
+            const calc = {};
+            for (const d of result.dishes) calc["d" + d.id] = `${d.portions} מנות`;
+            for (const r of prepRecipes) calc["r" + r.id] = qtyText(r.g);
+            for (const g of groups) for (const l of g.lines) calc["o" + l.id] = lineQty(l, true);
+            plan.overrideBase = plan.overrideBase || {};
+            let dropped = false;
+            for (const k of Object.keys(plan.overrides)) {
+                if (plan.overrideBase[k] != null && calc[k] != null && plan.overrideBase[k] !== calc[k]) { delete plan.overrides[k]; delete plan.overrideBase[k]; dropped = true; }
+            }
+            if (dropped) persist();
+        }
         const cell = (key, html) => (plan.overrides[key] ? `${escapeHtml(plan.overrides[key])} <span class="muted">· שונתה</span>` : html);
         const customRow = (c) => check(`c${c.id}`, `✏️ ${escapeHtml(c.label)}`, escapeHtml(c.qty), { cidx: plan.custom.indexOf(c) });
 
@@ -305,8 +320,8 @@ export async function renderPrepTab(container) {
         const done = async () => { closeModal(); drawResult(); await persist(); };
         ovl.querySelector("#eq-cancel").onclick = closeModal;
         const rs = ovl.querySelector("#eq-reset");
-        if (rs) rs.onclick = () => { delete plan.overrides[key]; done(); };
-        ovl.querySelector("#eq-save").onclick = () => { const v = ovl.querySelector("#eq-val").value.trim(); if (!v || v === cur) delete plan.overrides[key]; else plan.overrides[key] = v; done(); };
+        if (rs) rs.onclick = () => { delete plan.overrides[key]; if (plan.overrideBase) delete plan.overrideBase[key]; done(); };
+        ovl.querySelector("#eq-save").onclick = () => { const v = ovl.querySelector("#eq-val").value.trim(); plan.overrideBase = plan.overrideBase || {}; if (!v || v === cur) { delete plan.overrides[key]; delete plan.overrideBase[key]; } else { plan.overrides[key] = v; plan.overrideBase[key] = cur; } done(); };
     }
 
     // עריכת פריט ידני: שם, כמות, סוג וספק
