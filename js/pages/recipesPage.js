@@ -748,7 +748,7 @@ async function openRecipeModal(existing, container, draft = null) {
         rowMeta.set(id, { um, eggPart: (prefill && prefill.egg_part) || "whole", eggSize: null, eggUnit: "g", pct: (prefill && (prefill.pct_mode || prefill.est_mode)) || null });
         const row = h(`
             <div class="item-row-inputs" id="ing-row-${id}">
-                ${um && um.manual ? `<div class="field" style="margin:0 0 6px;"><input type="text" id="ing-name-${id}" placeholder="שם הרכיב (עדיין לא בחומרי הגלם)" value="${escapeHtml(um.name || "")}"></div>` : um ? `<div class="hint-warn" style="margin-top:0;">
+                ${um && um.manual ? `<div class="field" style="margin:0 0 6px;"><input type="text" id="ing-name-${id}" placeholder="שם הרכיב (עדיין לא בחומרי הגלם)" value="${escapeHtml(um.name || "")}"></div>` : um ? `<div class="hint-warn" id="ing-um-${id}" style="margin-top:0;">
                     <div class="field" style="margin:0 0 6px;"><label>מהמסמך (אפשר לתקן)</label><input type="text" id="ing-name-${id}" value="${escapeHtml(um.name || "")}"></div>
                     <div class="form-row"><div class="field"><label>כמות במסמך</label><input type="text" inputmode="decimal" id="ing-oq-${id}" value="${um.quantity != null ? escapeHtml(um.quantity) : ""}"></div>
                     <div class="field"><label>יחידה</label><select id="ing-ou-${id}"><option value=""></option>${[...new Set([...Object.keys(UNIT_HE), um.unit].filter(Boolean))].map((k) => `<option value="${escapeHtml(k)}" ${k === um.unit ? "selected" : ""}>${escapeHtml(UNIT_HE[k] || k)}</option>`).join("")}</select></div></div></div>` : ""}
@@ -789,6 +789,23 @@ async function openRecipeModal(existing, container, draft = null) {
         `);
         box.appendChild(row);
         if (um) rowMeta.get(id).autoQty = row.querySelector(`#ing-qty-${id}`).value; // מולא מהמסמך, לא הוקלד
+        // אחרי שנבחר מוצר מחומרי הגלם, הבלוק הצהוב של המסמך מצטמצם לשורה אפורה קטנה (אחרת נראה שעוד חסר משהו)
+        if (um && !um.manual) {
+            const blk = row.querySelector(`#ing-um-${id}`), src = row.querySelector(`#ing-source-${id}`);
+            const sum = document.createElement("div");
+            sum.className = "muted";
+            sum.style.cssText = "font-size:12px;margin:0 0 4px;";
+            blk.insertAdjacentElement("afterend", sum);
+            row._syncUm = () => {
+                const done = src.value !== "";
+                blk.style.display = done ? "none" : "";
+                sum.style.display = done ? "" : "none";
+                const nm = (row.querySelector(`#ing-name-${id}`) || {}).value || um.name || "";
+                sum.textContent = `מהמסמך: ${nm} ${originalText(um)}`.trim();
+            };
+            src.addEventListener("change", row._syncUm);
+            row._syncUm();
+        }
         bindPickerButton({
             button: row.querySelector(`#ing-pick-${id}`), select: row.querySelector(`#ing-source-${id}`), title: "בחר מרכיב", keyOf: (it) => String(it.id),
             tabs: subOpts.length ? [{ key: "pantry", label: "מוצרים" }, { key: "recipe", label: "מתכונים (תת-מתכון)" }] : null,
@@ -897,6 +914,7 @@ async function openRecipeModal(existing, container, draft = null) {
                         sel.appendChild(opt);
                     });
                     row.querySelector(`#ing-source-${id}`).value = String(newId);
+                    if (row._syncUm) row._syncUm();
                     const qtyEl = row.querySelector(`#ing-qty-${id}`);
                     if (!qtyEl.value) { if (isCountItem(item) && um.unit === "unit" && Number(um.quantity) > 0) qtyEl.value = countToText(um.quantity); else { const g = gramsFromOriginal(um, item); if (g != null) qtyEl.value = gramsToKgText(g); } }
                     qa.style.display = "none";
@@ -1144,6 +1162,7 @@ async function openRecipeModal(existing, container, draft = null) {
                 else { const g = gramsFromOriginal(x.um, item); if (g != null) qtyEl.value = gramsToKgText(g); }
             }
             refreshPickerButton(overlay.querySelector(`#ing-pick-${x.id}`), sel);
+            { const rw = overlay.querySelector(`#ing-row-${x.id}`); if (rw && rw._syncUm) rw._syncUm(); }
             const qaBtn = overlay.querySelector(`#ing-qa-btn-${x.id}`);
             if (qaBtn) qaBtn.style.display = "none";
             const qaBox = overlay.querySelector(`#ing-qa-${x.id}`);
