@@ -771,7 +771,6 @@ async function openRecipeModal(existing, container, draft = null) {
             <div class="pg-sec">מרכיבים</div>
             <div id="ingredients-box"></div>
             <button type="button" class="pg-add" id="btn-add-row">＋ הוסף מרכיב</button>
-            <button type="button" class="pg-add" id="btn-add-manual"${isEdit || draft ? "" : ' style="display:none;"'}>＋ רכיב שלא במערכת</button>
             <details class="pg-more"><summary>הוראות הכנה</summary><textarea id="f-method" rows="5" style="width:100%;">${src && src.method ? escapeHtml(src.method) : ""}</textarea></details>
             <details class="pg-more"><summary>הערות</summary><textarea id="f-notes" rows="3" style="width:100%;" placeholder="חיי מדף, ציוד, דגשי הגשה. לא משפיע על העלות">${existing && existing.notes ? escapeHtml(existing.notes) : ""}</textarea></details>
             <div class="card-pg" style="margin-top:10px;">
@@ -1279,7 +1278,8 @@ async function openRecipeModal(existing, container, draft = null) {
         recalc();
         toast(`נוספו ${added} מוצרים לחומרי הגלם${reused ? `, ${reused} כבר היו קיימים` : ""}${failed.length ? `. לא הצלחתי: ${failed.join(", ")}` : ""}`);
     });
-    overlay.querySelector("#btn-add-manual").onclick = () => addRow({ pantry_item_id: null, quantity_g: null, um: { name: "", quantity: null, unit: null, manual: true } });
+    const addManualBtn = overlay.querySelector("#btn-add-manual");
+    if (addManualBtn) addManualBtn.onclick = () => addRow({ pantry_item_id: null, quantity_g: null, um: { name: "", quantity: null, unit: null, manual: true } });
 
     overlay.querySelector("#btn-cancel").onclick = () => attemptClose(overlay);
     overlay.querySelector("#btn-save").onclick = busy(async () => {
