@@ -377,9 +377,9 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
             body = `
             <table class="simple"><thead><tr><th>רכיב</th><th>גרם</th><th class="cost-only">עלות</th></tr></thead><tbody>
                 ${[...r.direct_items].sort((a, b) => b.quantity_g - a.quantity_g).map((i) => `<tr${exists(i) ? "" : ' style="color:var(--danger);"'}><td>${exists(i) ? "" : "⚠ "}${i.sub_recipe_id != null ? "📖 " : ""}${escapeHtml(nameOf(i))}${i.technique ? " · " + escapeHtml(i.technique) : ""}${i.egg_part && i.egg_part !== "whole" ? " (" + EGG_PART_UI[i.egg_part] + ")" : ""}${exists(i) ? "" : i.sub_recipe_id != null ? " · המתכון נמחק" : " · נמחק מחומרי הגלם"}</td><td>${i.unit_count ? `${+Number(i.quantity_g).toFixed(2)} <span>יחידות</span>` : +Number(i.quantity_g).toFixed(1)}</td><td class="cost-only">${money(i.item_cost)}</td></tr>`).join("")}
-                ${missing.map((m) => `<tr style="color:var(--danger);"><td>⚠ ${escapeHtml(m.name)}</td><td colspan="2">${originalHtml(m) || "—"} · לא בחומרי הגלם</td></tr>`).join("")}
+                ${missing.map((m) => `<tr style="color:var(--danger);"><td>⚠ ${escapeHtml(m.name)}</td><td colspan="2">${originalHtml(m) || "—"} · לא במערכת</td></tr>`).join("")}
             </tbody></table>
-            ${r.status === "draft" ? `<div class="hint-warn">העלות חלקית - מחושבת רק מהרכיבים שבחומרי הגלם. לחץ "השלם" כדי להוסיף את החסרים.</div>`
+            ${r.status === "draft" ? `<div class="hint-warn">העלות חלקית, מחושבת רק מהרכיבים שיש במערכת. לחץ "ערוך" כדי להוסיף את החסרים.</div>`
                 : `<div class="card-row cost-only" style="font-weight:700;margin:8px 0;"><span>עלות מתכון ${(r.price_missing_names || []).length ? "חלקית " : ""}${money(r.total_cost)}</span></div>
                 ${(r.price_missing_names || []).length ? `<div class="hint-warn">ממתין למחיר: ${r.price_missing_names.map(escapeHtml).join(", ")}. הרכיבים האלה עדיין לא נספרים בעלות. מזינים מחיר בחומרי הגלם.</div>` : ""}
                 <div class="hint" style="margin:-4px 0 8px;">${r.final_weight > 0 && !r.is_auto_weight ? `משקל גולמי ${Math.round(r.direct_items.reduce((n, i) => n + (i.unit_count ? 0 : Number(i.quantity_g) || 0), 0))} גרם · <b>משקל סופי ${Math.round(r.final_weight)} גרם</b>. העלות לגרם מחושבת על המשקל הסופי.` : "המשקל הוא סכום הרכיבים הגולמיים. אם יש ירידה בבישול או בסינון, מזינים משקל סופי בעריכת המתכון."}</div>`}
@@ -493,7 +493,7 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
             ${body}
             <div class="modal-actions"><button type="button" class="btn btn-secondary" id="d-close">סגור</button>
                 <button type="button" class="btn btn-danger mgr-only" id="d-del">מחיקה</button>
-                <button type="button" class="btn btn-primary mgr-only" id="d-edit">${r.status === "draft" ? "השלם" : "עריכה"}</button></div>
+                <button type="button" class="btn btn-primary mgr-only" id="d-edit">${r.status === "draft" ? "ערוך" : "עריכה"}</button></div>
         `);
         if (keepTop) overlay.querySelector(".modal").scrollTop = keepTop;
         overlay.querySelector("#d-close").onclick = closeModal;
@@ -755,7 +755,7 @@ async function openRecipeModal(existing, container, draft = null) {
 
     const overlay = openModal(`
         <div class="pg-top"><button type="button" class="pg-back" id="btn-cancel" aria-label="חזרה">→</button>
-            <div class="pg-title">${isEdit ? (existing.status === "draft" ? "השלמת מתכון (טיוטה)" : "עריכת מתכון") : draft && draft.manual ? "מתכון חדש למוצר מעובד" : draft ? "מתכון חדש (מסריקה, בדוק לפני שמירה)" : "מתכון חדש"}</div></div>
+            <div class="pg-title">${isEdit ? (existing.status === "draft" ? "עריכת מתכון, טיוטה" : "עריכת מתכון") : draft && draft.manual ? "מתכון חדש למוצר מעובד" : draft ? "מתכון חדש (מסריקה, בדוק לפני שמירה)" : "מתכון חדש"}</div></div>
         <div class="pg-body">
             ${draft && draft.manual ? '<div class="hint-warn">הוסף את הכמויות (למשל שום ושמן), ומשקל סופי אחרי הטיגון אם יש ירידה. אחרי השמירה תוכל להחליף את המוצר במתכון הזה.</div>' : draft ? scanNoticeHtml(draft) : ""}
             <div class="field"><label>שם המתכון</label><input type="text" id="f-name" value="${src ? escapeHtml(src.name) : ""}"></div>
@@ -771,7 +771,7 @@ async function openRecipeModal(existing, container, draft = null) {
             <div class="pg-sec">מרכיבים</div>
             <div id="ingredients-box"></div>
             <button type="button" class="pg-add" id="btn-add-row">＋ הוסף מרכיב</button>
-            <button type="button" class="pg-add" id="btn-add-manual"${isEdit || draft ? "" : ' style="display:none;"'}>＋ רכיב שעדיין לא בחומרי הגלם (טיוטה)</button>
+            <button type="button" class="pg-add" id="btn-add-manual"${isEdit || draft ? "" : ' style="display:none;"'}>＋ רכיב שלא במערכת</button>
             <details class="pg-more"><summary>הוראות הכנה</summary><textarea id="f-method" rows="5" style="width:100%;">${src && src.method ? escapeHtml(src.method) : ""}</textarea></details>
             <details class="pg-more"><summary>הערות</summary><textarea id="f-notes" rows="3" style="width:100%;" placeholder="חיי מדף, ציוד, דגשי הגשה. לא משפיע על העלות">${existing && existing.notes ? escapeHtml(existing.notes) : ""}</textarea></details>
             <div class="card-pg" style="margin-top:10px;">
@@ -781,7 +781,7 @@ async function openRecipeModal(existing, container, draft = null) {
             </div>
             ${(existing && existing.source_file) || (draft && draft.source_file) ? '<div class="hint">📎 המסמך המקורי יישמר עם המתכון.</div>' : ""}
             <div class="hint" id="egg-note"></div>
-            <div class="hint" id="partial-note" style="display:none;color:var(--danger);">העלות חלקית - יש רכיבים שעדיין לא בחומרי הגלם.</div>
+            <div class="hint" id="partial-note" style="display:none;color:var(--danger);">העלות חלקית, יש רכיבים שלא במערכת.</div>
             <button type="button" class="btn btn-secondary" id="btn-add-missing" style="display:none;margin:6px 0;">➕ הוסף את כל החסרים לחומרי הגלם (בלי מחיר)</button>
             <div class="error-msg"></div>
         </div>
@@ -800,7 +800,7 @@ async function openRecipeModal(existing, container, draft = null) {
         rowMeta.set(id, { um, eggPart: (prefill && prefill.egg_part) || "whole", eggSize: null, eggUnit: "g", pct: (prefill && (prefill.pct_mode || prefill.est_mode)) || null });
         const row = h(`
             <div class="item-row-inputs" id="ing-row-${id}">
-                ${um && um.manual ? `<div class="field" style="margin:0 0 6px;"><input type="text" id="ing-name-${id}" placeholder="שם הרכיב (עדיין לא בחומרי הגלם)" value="${escapeHtml(um.name || "")}"></div>` : um ? `<div class="hint-warn" id="ing-um-${id}" style="margin-top:0;">
+                ${um && um.manual ? `<div class="field" style="margin:0 0 6px;"><input type="text" id="ing-name-${id}" placeholder="שם הרכיב, לא במערכת" value="${escapeHtml(um.name || "")}"></div>` : um ? `<div class="hint-warn" id="ing-um-${id}" style="margin-top:0;">
                     <div class="field" style="margin:0 0 6px;"><label>מהמסמך (אפשר לתקן)</label><input type="text" id="ing-name-${id}" value="${escapeHtml(um.name || "")}"></div>
                     <div class="form-row"><div class="field"><label>כמות במסמך</label><input type="text" inputmode="decimal" id="ing-oq-${id}" value="${um.quantity != null ? escapeHtml(um.quantity) : ""}"></div>
                     <div class="field"><label>יחידה</label><select id="ing-ou-${id}"><option value=""></option>${[...new Set([...Object.keys(UNIT_HE), um.unit].filter(Boolean))].map((k) => `<option value="${escapeHtml(k)}" ${k === um.unit ? "selected" : ""}>${escapeHtml(UNIT_HE[k] || k)}</option>`).join("")}</select></div></div></div>` : ""}
@@ -1209,7 +1209,9 @@ async function openRecipeModal(existing, container, draft = null) {
         const sel = overlay.querySelector(`#ing-source-${id}`);
         const nm = meta && meta.um ? String(((row.querySelector(`#ing-name-${id}`) || {}).value) || meta.um.name || "").trim() : "";
         if (!nm || sel.value) return;
-        const hit = subOpts.find((o) => sameWords(nm, o.name) && !conflicts(nm, o.name));
+        // גם שם עם חלופות ("ציר ירקות \ מים"): כל חלופה נבדקת בנפרד מול שמות המתכונים
+        const cands = [nm, ...nm.split(/[\\\/|]| או /).map((x) => x.trim()).filter(Boolean)];
+        const hit = subOpts.find((o) => cands.some((c) => sameWords(c, o.name) && !conflicts(c, o.name)));
         if (!hit) return;
         sel.value = "r" + hit.id;
         const qtyEl = overlay.querySelector(`#ing-qty-${id}`);
@@ -1318,7 +1320,7 @@ async function openRecipeModal(existing, container, draft = null) {
             final_weight: String(textToGrams(overlay.querySelector("#f-manual-weight").value) ?? ""),
         };
         if (!isEdit && draft && draft.source_file) data.source_file = draft.source_file;
-        if (draftIngredients.length && !window.confirm(`${draftIngredients.length} רכיבים עדיין לא בחומרי הגלם:\n${draftIngredients.map((d) => d.name).join(", ")}\n\nלשמור כטיוטה ולהשלים אותם אחר כך?`)) return;
+        if (draftIngredients.length && !window.confirm(`${draftIngredients.length} רכיבים לא במערכת:\n${draftIngredients.map((d) => d.name).join(", ")}\n\nלשמור כטיוטה ולהשלים אותם אחר כך?`)) return;
         try {
             for (const [eggId, size] of eggSizeChanges) await setEggSize(eggId, size);
             const savedId = await saveRecipe(existing ? existing.id : null, data);
