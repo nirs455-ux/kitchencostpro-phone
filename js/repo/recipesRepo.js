@@ -14,10 +14,14 @@ export async function listRecipesWithItems() {
     for (const row of allItems) { if (!byRecipe.has(row.recipe_id)) byRecipe.set(row.recipe_id, []); byRecipe.get(row.recipe_id).push(row); }
     const recipeById = new Map(recipes.map((r) => [r.id, r]));
     const itemsOf = (id) => byRecipe.get(id) || [];
+    const pantryById = new Map((await dbGetAll("pantryItems")).map((p) => [p.id, p]));
     return recipes.map((r) => {
         const direct = itemsOf(r.id).map((row) => (isSubRow(row) && !recipeById.has(row.sub_recipe_id) ? { ...row, sub_missing: true } : row));
         const hasSub = direct.some(isSubRow);
-        return { ...r, direct_items: direct, has_sub: hasSub, items: hasSub ? flattenRecipeItems(direct, recipeById, itemsOf) : direct };
+        const all = hasSub ? flattenRecipeItems(direct, recipeById, itemsOf) : direct;
+        // רכיבים שנוספו בלי מחיר: לא נספרים בעלות עד שמזינים מחיר, והמתכון מסומן כחלקי
+        const waiting = [...new Set(all.map((i) => pantryById.get(i.pantry_item_id)).filter((p) => p && p.price_missing).map((p) => p.name))];
+        return { ...r, direct_items: direct, has_sub: hasSub, items: all, price_missing_names: waiting };
     });
 }
 

@@ -7,6 +7,8 @@ import { getSetting, setSetting } from "../repo/settingsRepo.js";
 import { renderProcessingPage, collapseAll, expandProduct } from "./processingPage.js";
 import { renderInventoryPage } from "./inventoryPage.js";
 import { renderWastePage } from "./wastePage.js";
+import { findDuplicatePairs, buildUsageCounts } from "../pantryDuplicates.js";
+import { mergePantryItems } from "../repo/pantryMerge.js";
 import { isStaffMode } from "../staff.js";
 import { EGG_SIZES, isEggName, guessEggSize } from "../eggs.js";
 import { textToGrams, gramsToKgText, describeQty, qtyWarning, isGramMode } from "../qty.js";
@@ -84,7 +86,7 @@ export async function renderPantryProducts(container) {
     container.innerHTML = `
         <div class="px-top"><input type="search" id="px-q" placeholder="חיפוש מוצר..." autocomplete="off">
             <div class="seg px-view"><button type="button" data-v="cats" class="${view === "cats" ? "active" : ""}">קטגוריות</button><button type="button" data-v="list" class="${view === "list" ? "active" : ""}">רשימה</button></div></div>
-        <div class="btn-row" style="margin:6px 0;"><button type="button" class="btn btn-secondary btn-small" id="px-sel">☑ בחירה</button><button type="button" class="btn btn-secondary btn-small" id="px-all" style="display:none;">בחר את כל המוצגים</button></div>
+        <div class="btn-row" style="margin:6px 0;"><button type="button" class="btn btn-secondary btn-small" id="px-sel">☑ בחירה</button><button type="button" class="btn btn-secondary btn-small" id="px-dups">כפילויות</button><button type="button" class="btn btn-secondary btn-small" id="px-all" style="display:none;">בחר את כל המוצגים</button></div>
         <div id="px-chips"></div>
         <div id="pantry-list"></div>
         <div class="px-bulk" id="px-bulk" style="display:none;"><b id="px-bulk-n"></b><button type="button" class="btn btn-danger btn-small" id="px-bulk-del">מחק</button><button type="button" class="btn btn-secondary btn-small" id="px-bulk-cancel">ביטול</button></div>
@@ -166,6 +168,7 @@ export async function renderPantryProducts(container) {
     qEl.oninput = () => { q = qEl.value; draw(); };
     container.querySelectorAll(".px-view [data-v]").forEach((b) => { b.onclick = async () => { view = b.dataset.v; await setSetting("pantry_view", view); renderPantryProducts(container); }; });
     container.querySelector("#btn-add").onclick = () => openPantryModal(null, container);
+    container.querySelector("#px-dups").onclick = () => openDuplicatesModal(() => renderPantryProducts(container));
     container.querySelector("#px-sel").onclick = () => { selMode = true; sel.clear(); syncBulk(); };
     container.querySelector("#px-bulk-cancel").onclick = () => { selMode = false; sel.clear(); syncBulk(); };
     container.querySelector("#px-all").onclick = () => { list.querySelectorAll(".px-row").forEach((r) => sel.add(Number(r.dataset.id))); syncBulk(); };
@@ -181,6 +184,57 @@ export async function renderPantryProducts(container) {
         renderPantryProducts(container);
     };
     draw();
+}
+
+// כפילויות במזווה: כל זוג מוצג בנפרד, ושום דבר לא מתאחד בלי לחיצה על הזוג עצמו
+const dupSwapped = new Set(); // זוגות שבהם המשתמש החליף מי נשאר
+async function openDuplicatesModal(onChange) {
+    const [pantry, recipeItems, dishItems, invoiceItems, inventoryCounts, dismissedRaw] = await Promise.all([
+        dbGetAll("pantryItems"), dbGetAll("recipeItems"), dbGetAll("dishItems"), dbGetAll("invoiceItems"), dbGetAll("inventoryCounts"), getSetting("merge_dismissed", []),
+    ]);
+    const dismissed = new Set(Array.isArray(dismissedRaw) ? dismissedRaw : []);
+    const pairs = findDuplicatePairs(pantry, buildUsageCounts({ recipeItems, dishItems, invoiceItems, inventoryCounts }), dismissed);
+    const overlay = openModal("");
+    const box = overlay.querySelector(".modal");
+    if (!pairs.length) {
+        box.innerHTML = `<h2>כפילויות</h2><div class="empty-state">לא נמצאו כפילויות</div><div class="modal-actions"><button type="button" class="btn btn-secondary" id="dp-close">סגור</button></div>`;
+        box.querySelector("#dp-close").onclick = () => closeModal();
+        return;
+    }
+    const card = (pr) => {
+        const swap = dupSwapped.has(pr.key);
+        const keepId = swap ? pr.dropId : pr.keepId;
+        const dropId = swap ? pr.keepId : pr.dropId;
+        const it = (id) => (id === pr.a.id ? pr.a : pr.b);
+        const line = (id) => `<div class="card-row"><b>${escapeHtml(it(id).name)}</b><span class="muted">שימושים ${pr.usage[id]}${Number(it(id).price) > 0 ? "" : " בלי מחיר"}</span></div>`;
+        return `<div class="card" data-k="${pr.key}" data-keep="${keepId}" data-drop="${dropId}" style="margin:8px 0;padding:8px;border:1px solid var(--border,#0002);border-radius:8px;">
+            <div class="muted">יישאר</div>${line(keepId)}<div class="muted">יימחק</div>${line(dropId)}
+            <div class="btn-row" style="margin-top:6px;"><button type="button" class="btn btn-primary btn-small" data-a="merge">אחד</button>
+            <button type="button" class="btn btn-secondary btn-small" data-a="swap">החלף מי נשאר</button>
+            <button type="button" class="btn btn-secondary btn-small" data-a="diff">אלה מוצרים שונים</button></div></div>`;
+    };
+    box.innerHTML = `<h2>כפילויות</h2><div class="muted">אין איחוד בלי לחיצה על אחד</div>${pairs.map(card).join("")}<div class="modal-actions"><button type="button" class="btn btn-secondary" id="dp-close">סגור</button></div>`;
+    box.querySelector("#dp-close").onclick = () => closeModal();
+    box.querySelectorAll("button[data-a]").forEach((b) => {
+        b.onclick = async () => {
+            const cardEl = b.closest("[data-k]");
+            const key = cardEl.dataset.k;
+            const action = b.dataset.a;
+            if (action === "swap") { if (dupSwapped.has(key)) dupSwapped.delete(key); else dupSwapped.add(key); return openDuplicatesModal(onChange); }
+            if (action === "diff") {
+                dismissed.add(key);
+                await setSetting("merge_dismissed", [...dismissed]);
+                return openDuplicatesModal(onChange);
+            }
+            const keepId = Number(cardEl.dataset.keep), dropId = Number(cardEl.dataset.drop);
+            const nm = (id) => escapeHtml((id === pairs.find((x) => x.key === key).a.id ? pairs.find((x) => x.key === key).a : pairs.find((x) => x.key === key).b).name);
+            const ok = await confirmDialog(`לאחד את ${nm(dropId)} אל ${nm(keepId)}? ${nm(dropId)} יימחק וכל השימושים בו יעברו אל ${nm(keepId)}.`); // מסך האישור סוגר את החלון, ולכן פותחים אותו מחדש
+            if (ok) {
+                try { await mergePantryItems(keepId, dropId); toast("אוחד"); if (onChange) onChange(); } catch (e) { toast(e.message); }
+            }
+            openDuplicatesModal(onChange);
+        };
+    });
 }
 
 // כרטיס מוצר: פרטים ופעולות (עריכה, עיבוד, מחיקה) - במקום כפתורים בכל שורה

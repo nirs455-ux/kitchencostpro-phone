@@ -173,8 +173,8 @@ export async function scanRecipeFile(file, container) {
 function renderRecipeRow(r, container) {
     const missing = (r.draft_ingredients || []).length;
     const isDraft = r.status === "draft";
-    const meta = `${r.direct_items.length} מרכיבים${missing ? ` · <span class="tag tag-warn">טיוטה, חסרים ${missing}</span>` : ""}${r.source_file ? " · 📎" : ""}${r.final_weight > 0 ? " · " + r.final_weight.toFixed(0) + " גרם" : ""}`;
-    const end = `<span class="cost-only">${isDraft ? "חלקי " : ""}${money(r.total_cost)}<small>עלות מתכון</small></span>`;
+    const meta = `${r.direct_items.length} מרכיבים${missing ? ` · <span class="tag tag-warn">טיוטה, חסרים ${missing}</span>` : ""}${(r.price_missing_names || []).length ? ' · <span class="tag tag-warn">ממתין למחיר</span>' : ""}${r.source_file ? " · 📎" : ""}${r.final_weight > 0 ? " · " + r.final_weight.toFixed(0) + " גרם" : ""}`;
+    const end = `<span class="cost-only">${isDraft || (r.price_missing_names || []).length ? "חלקי " : ""}${money(r.total_cost)}<small>עלות מתכון</small></span>`;
     return listRow({ id: r.id, ic: isDraft ? "📝" : "📖", tint: isDraft ? "var(--warn-soft)" : "var(--brand-soft)", name: r.name, meta, end, onClick: () => openRecipeDetails(r, container) });
 }
 
@@ -364,7 +364,8 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
                 ${missing.map((m) => `<tr style="color:var(--danger);"><td>⚠ ${escapeHtml(m.name)}</td><td colspan="2">${originalHtml(m) || "—"} · לא בחומרי הגלם</td></tr>`).join("")}
             </tbody></table>
             ${r.status === "draft" ? `<div class="hint-warn">העלות חלקית - מחושבת רק מהרכיבים שבחומרי הגלם. לחץ "השלם" כדי להוסיף את החסרים.</div>`
-                : `<div class="card-row cost-only" style="font-weight:700;margin:8px 0;"><span>עלות מתכון ${money(r.total_cost)}</span></div>
+                : `<div class="card-row cost-only" style="font-weight:700;margin:8px 0;"><span>עלות מתכון ${(r.price_missing_names || []).length ? "חלקית " : ""}${money(r.total_cost)}</span></div>
+                ${(r.price_missing_names || []).length ? `<div class="hint-warn">ממתין למחיר: ${r.price_missing_names.map(escapeHtml).join(", ")}. הרכיבים האלה עדיין לא נספרים בעלות. מזינים מחיר בחומרי הגלם.</div>` : ""}
                 <div class="hint" style="margin:-4px 0 8px;">${r.final_weight > 0 && !r.is_auto_weight ? `משקל גולמי ${Math.round(r.direct_items.reduce((n, i) => n + (i.unit_count ? 0 : Number(i.quantity_g) || 0), 0))} גרם · <b>משקל סופי ${Math.round(r.final_weight)} גרם</b>. העלות לגרם מחושבת על המשקל הסופי.` : "המשקל הוא סכום הרכיבים הגולמיים. אם יש ירידה בבישול או בסינון, מזינים משקל סופי בעריכת המתכון."}</div>`}
             ${r.direct_items.some((i) => !exists(i)) ? `<div class="hint-warn mgr-only">רכיב נמחק. העלות שלו נשארת כפי שהייתה בפעם האחרונה ואינה מתעדכנת. ערוך את המתכון והחלף אותו.</div>` : ""}
             ${eggNotes.map((e) => `<div class="hint-warn" style="background:var(--brand-soft);color:var(--text);">${escapeHtml(eggSummaryText(e))}</div>`).join("")}

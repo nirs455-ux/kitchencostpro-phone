@@ -322,7 +322,7 @@ export async function openScanModal({ supplierAware, onDone, initialFile = null 
                 flags.push("השם מופיע יותר מפעם אחת בקבלה - ייתכן שצריך לאחד שורות");
             }
             // שורה "תקינה" = מוכרת בחומרי הגלם, בלי חריגות ובלי שינוי מחיר מעל 5% - מוסתרת, ורק מה שדורש תשומת לב מוצג
-            const needsAttention = !it.matched_pantry_item_id || nameEmpty || flags.length > 0 || relChange >= 0.05 || !!it.suggested_pantry_item_id;
+            const needsAttention = !it.matched_pantry_item_id || nameEmpty || flags.length > 0 || relChange >= 0.05;
             if (needsAttention) attentionCount++; else okCount++;
             const row = h(`
                 <div class="item-row-inputs" data-ok="${needsAttention ? 0 : 1}" style="${needsAttention ? "" : "display:none;"}${priceChanged ? "border-color:var(--danger);background:#fdecea;" : ""}">
@@ -339,14 +339,6 @@ export async function openScanModal({ supplierAware, onDone, initialFile = null 
                     <div class="field"><label>שם מוצר</label><input type="text" id="scan-name-${idx}" value="${escapeHtml(it.name)}"></div>
                     ${it.auto_matched ? `<div class="hint">זוהה כ-"${escapeHtml(it.auto_matched)}" שבחומרי הגלם</div>` : ""}
                     <div class="field"><label>כמות</label><input type="number" step="any" id="scan-qty-${idx}" value="${it.quantity}"></div>
-                    ${it.suggested_pantry_item_id && !it.matched_pantry_item_id ? `
-                    <div class="hint-warn">
-                        האם התכוונת ל-"${escapeHtml(it.suggested_name)}" הקיים בחומרי הגלם?
-                        <div class="btn-row">
-                            <button type="button" class="btn btn-primary btn-small" data-accept="${idx}">כן, זה אותו מוצר</button>
-                            <button type="button" class="btn btn-secondary btn-small" data-reject="${idx}">לא, זה מוצר חדש</button>
-                        </div>
-                    </div>` : ""}
                     <div class="field">
                         <label>מחיר יחידה${priceChanged ? " - שונה מהמחיר הקיים!" : ""}</label>
                         <input type="number" step="any" id="scan-price-${idx}" value="${it.unit_price}" style="${priceChanged ? "border-color:var(--danger);color:var(--danger);font-weight:700;" : ""}">
@@ -447,26 +439,6 @@ export async function openScanModal({ supplierAware, onDone, initialFile = null 
                 unitSel.addEventListener("change", () => { captureInputs(); renderResults(); });
                 syncUnit();
             }
-
-            const acceptBtn = row.querySelector("[data-accept]");
-            if (acceptBtn) {
-                acceptBtn.onclick = () => {
-                    captureInputs();
-                    it.matched_pantry_item_id = it.suggested_pantry_item_id;
-                    it.matched_category = it.suggested_category;
-                    it.matched_price = it.suggested_price;
-                    it.matched_unit_type = it.suggested_unit_type;
-                    renderResults();
-                };
-            }
-            const rejectBtn = row.querySelector("[data-reject]");
-            if (rejectBtn) {
-                rejectBtn.onclick = () => {
-                    captureInputs();
-                    it.suggested_pantry_item_id = null;
-                    renderResults();
-                };
-            }
         });
         updateTotal();
 
@@ -474,21 +446,6 @@ export async function openScanModal({ supplierAware, onDone, initialFile = null 
         const sum = overlay.querySelector("#scan-summary");
         sum.innerHTML = `${okCount ? `<div class="card-row"><span>✓ ${okCount} שורות זוהו ותקינות</span><button type="button" class="btn btn-secondary btn-small" id="btn-show-ok">הצג</button></div>` : ""}
             ${attentionCount ? `<div class="hint-warn">⚠ ${attentionCount} שורות דורשות תשומת לב (מוצגות למטה)</div>` : '<div class="hint" style="color:#2e7d32;font-weight:700;">✓ הכול זוהה - אפשר לאשר ולשמור</div>'}`;
-        // כמה שורות מחכות ל"האם התכוונת": כפתור אחד לאשר את כולן
-        const pending = scannedItems.filter((x) => x.suggested_pantry_item_id && !x.matched_pantry_item_id);
-        if (pending.length >= 2) {
-            sum.insertAdjacentHTML("beforeend", `<button type="button" class="btn btn-primary btn-block" id="btn-accept-all" style="margin-top:6px;">✓ אשר את כל ההתאמות המוצעות (${pending.length})</button>`);
-            sum.querySelector("#btn-accept-all").onclick = () => {
-                captureInputs();
-                for (const x of pending) {
-                    x.matched_pantry_item_id = x.suggested_pantry_item_id;
-                    x.matched_category = x.suggested_category;
-                    x.matched_price = x.suggested_price;
-                    x.matched_unit_type = x.suggested_unit_type;
-                }
-                renderResults();
-            };
-        }
         const showOk = sum.querySelector("#btn-show-ok");
         if (showOk) showOk.onclick = () => {
             const hidden = box.querySelectorAll('[data-ok="1"]');

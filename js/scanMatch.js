@@ -10,6 +10,8 @@ export function normName(s) {
         .replace(/[״“”„]/g, '"')
         .replace(/[׳‘’‚]/g, "'")
         .replace(/\s+/g, " ")
+        .replace(/[!?]+/g, " ")
+        .replace(/\s+/g, " ")
         .replace(/\s*([,.;:])\s*/g, "$1")
         .trim()
         .toLowerCase();
@@ -22,7 +24,10 @@ export function stemWord(w) {
     else if (s.length > 3 && /[היתו]$/.test(s)) s = s.slice(0, -1);
     return s;
 }
-const stemsOf = (s) => normName(s).split(/[\s,.;:\-\/()"'%]+/).filter((w) => w && !/^\d/.test(w)).map(stemWord);
+// אותיות סופיות לאות רגילה, כדי ש"מלפפון" ו"מלפפונים" יהיו אותו שורש
+const FINALS = { "ך": "כ", "ם": "מ", "ן": "נ", "ף": "פ", "ץ": "צ" };
+const unfinal = (s) => s.replace(/[ךםןףץ]/g, (c) => FINALS[c]);
+const stemsOf = (s) => normName(s).split(/[\s,.;:\-\/()"'%!?]+/).filter((w) => w && !/^\d/.test(w)).map((w) => unfinal(stemWord(w)));
 const oneLetterApart = (a, b) => {
     if (a.length !== b.length || a.length < 3) return false;
     let d = 0;
@@ -30,7 +35,13 @@ const oneLetterApart = (a, b) => {
     return d === 1;
 };
 // אותן מילים (בלי סדר, ריבוי ויחיד זהים)
-const digitsOf = (s) => (normName(s).match(/\d+(?:[.,]\d+)?/g) || []).join("|");
+// קבוצת המספרים בשם (3.0 = 3, בלי סדר): חלב 3% ו-חלב 2% הם מוצרים שונים
+const digitsOf = (s) => [...new Set((normName(s).match(/\d+(?:[.,]\d+)?/g) || []).map((n) => String(parseFloat(n.replace(",", ".")))))].sort().join("|");
+export const sameDigits = (a, b) => digitsOf(a) === digitsOf(b);
+// אחוזים בשם (3%): חייבים להיות זהים. מספרים אחרים (גודל אריזה) נבדקים רק כששני הצדדים מכילים מספרים
+const pctOf = (s) => [...new Set((normName(s).match(/\d+(?:[.,]\d+)?\s*%/g) || []).map((n) => String(parseFloat(n.replace(",", ".")))))].sort().join("|");
+// התאמה בטוחה בין שני שמות (כינוי או בחירת AI): אותם אחוזים, ובלי מילים שנבדלות באות אחת
+export const safePair = (a, b) => pctOf(a) === pctOf(b) && (!digitsOf(a) || !digitsOf(b) || sameDigits(a, b)) && !conflicts(a, b);
 export function sameWords(a, b) {
     if (digitsOf(a) !== digitsOf(b)) return false;
     const x = [...new Set(stemsOf(a))].sort().join(" "), y = [...new Set(stemsOf(b))].sort().join(" ");
@@ -55,10 +66,16 @@ export function matchPantryName(name, pantryRows, aliases = {}, aiName = null) {
     if (exact) return { ...out, match: exact, score: 1 };
     const aliasId = aliases[raw.toLowerCase()] ?? aliases[key];
     const aliased = aliasId != null ? pantryRows.find((r) => r.id === aliasId) : null;
-    if (aliased && !conflicts(raw, aliased.name)) return { ...out, match: aliased, score: 1 };
+    if (aliased && safePair(raw, aliased.name)) return { ...out, match: aliased, score: 1 };
     const ai = aiName ? byKey.get(normName(aiName)) : null;
-    if (ai && !conflicts(raw, ai.name)) return { ...out, match: ai, auto: true, score: 0.9 };
-    const same = pantryRows.find((r) => sameWords(raw, r.name));
+    if (ai && safePair(raw, ai.name)) return { ...out, match: ai, auto: true, score: 0.9 };
+    const same = pantryRows.find((r) => sameWords(raw, r.name) && !conflicts(raw, r.name));
     if (same) return { ...out, match: same, auto: true, score: 0.9 };
     return out;
+}
+
+// מוצר חדש שנוצר כבר באותה סריקה ושם זהה או אותן מילים: list = [{ name, id }]
+export function findSameNew(name, list) {
+    const k = normName(name);
+    return list.find((e) => normName(e.name) === k) || list.find((e) => sameWords(e.name, name) && !conflicts(e.name, name)) || null;
 }

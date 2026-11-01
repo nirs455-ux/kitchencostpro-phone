@@ -2,7 +2,7 @@
 // תרגום מדויק של /api/scan-invoice ו-/api/scan-invoice/apply מ-main.py.
 import { dbGetAll, dbGet, dbPut } from "../db.js";
 import { geminiFetch } from "./gemini.js";
-import { matchPantryName, sameWords } from "../scanMatch.js";
+import { matchPantryName, sameWords, conflicts, safePair, findSameNew, normName } from "../scanMatch.js";
 import { CATEGORY_GROUPS, UNIT_TYPES } from "../constants.js";
 import { saveInvoice, validateInvoicePayload } from "./suppliersRepo.js";
 import { getSetting, setSetting } from "./settingsRepo.js";
@@ -109,7 +109,7 @@ export async function scanInvoiceImage(apiKey, file, onRetry) {
         // שורה בלי שם נשארת (המשתמש ימלא שם או יסיר אותה במסך הבדיקה)
 
         // שם זהה (בלי הבדלי רווחים/סימנים נסתרים) או דומה מאוד = מותאם לבד; רק דמיון בינוני נשאל
-        const { match, suggested, auto } = matchPantryName(name, pantryRows, aliases, it.pantry_match);
+        const { match, auto } = matchPantryName(name, pantryRows, aliases, it.pantry_match);
 
         enrichedItems.push({
             name, orig_name: name, quantity, unit_price: unitPrice,
@@ -121,11 +121,6 @@ export async function scanInvoiceImage(apiKey, file, onRetry) {
             matched_category: match ? match.category : null,
             matched_price: match ? match.price : null,
             matched_unit_type: match ? match.unit_type : null,
-            suggested_pantry_item_id: suggested ? suggested.id : null,
-            suggested_name: suggested ? suggested.name : null,
-            suggested_category: suggested ? suggested.category : null,
-            suggested_price: suggested ? suggested.price : null,
-            suggested_unit_type: suggested ? suggested.unit_type : null,
         });
     }
 
@@ -155,7 +150,7 @@ export async function applyScannedInvoice({ items, supplierId, invoiceDate, imag
         let linkedId = it.pantry_item_id;
         if (!linkedId) {
             // שם שהמשתמש תיקן לשם של מוצר שכבר קיים = אותו מוצר (לא יוצרים כפילות)
-            const same = (await dbGetAll("pantryItems")).find((r) => !r.parent_id && (r.name.trim().toLowerCase() === name.toLowerCase() || sameWords(r.name, name)));
+            const same = (await dbGetAll("pantryItems")).find((r) => !r.parent_id && (normName(r.name) === normName(name) || (sameWords(r.name, name) && !conflicts(r.name, name))));
             if (same) linkedId = same.id;
         }
         if (linkedId) {
@@ -201,7 +196,7 @@ export async function applyScannedInvoice({ items, supplierId, invoiceDate, imag
     }
 
     // שלב 2: כתיבה
-    const createdByName = new Map(); // שני מוצרים חדשים באותו שם בסריקה אחת = מוצר אחד
+    const createdNew = []; // שני מוצרים חדשים באותו שם (או אותן מילים) בסריקה אחת = מוצר אחד
     const resolvedPantryIds = [];
     const invoiceLineItems = [];
     const aliasPairs = [];
@@ -226,19 +221,19 @@ export async function applyScannedInvoice({ items, supplierId, invoiceDate, imag
             else Object.assign(p.existing, { price, is_frozen: isFrozen });
             await dbPut("pantryItems", p.existing);
             pantryItemId = p.existing.id;
-        } else if (createdByName.has(p.name.toLowerCase())) {
-            pantryItemId = createdByName.get(p.name.toLowerCase());
+        } else if (findSameNew(p.name, createdNew)) {
+            pantryItemId = findSameNew(p.name, createdNew).id;
         } else {
             pantryItemId = await dbPut("pantryItems", {
                 name: p.name, category: p.category, subcategory: null, unit_type: p.unitType, unit_amount: p.unitAmount,
                 price: p.pantryPrice, yield_pct: 100, weight_before: null, weight_after: null,
                 is_frozen: isFrozen, parent_id: null,
             });
-            createdByName.set(p.name.toLowerCase(), pantryItemId);
+            createdNew.push({ name: p.name, id: pantryItemId });
         }
         resolvedPantryIds.push(pantryItemId);
         const finalName = p.existing ? p.existing.name : p.name;
-        if (p.orig && p.orig.toLowerCase() !== finalName.trim().toLowerCase()) aliasPairs.push([p.orig.toLowerCase(), pantryItemId]);
+        if (p.orig && normName(p.orig) !== normName(finalName) && safePair(p.orig, finalName)) aliasPairs.push([p.orig.toLowerCase(), pantryItemId]);
         invoiceLineItems.push({ product_name: p.name, quantity: p.quantity, unit_price: p.unitPrice, pantry_item_id: pantryItemId, stock_factor: p.stockFactor });
     }
 
