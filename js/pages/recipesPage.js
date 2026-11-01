@@ -446,7 +446,6 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
             <div class="btn-row">
                 <button type="button" class="btn btn-secondary btn-small" id="g-copy">📋 העתק</button>
                 <button type="button" class="btn btn-secondary btn-small" id="g-print">🖨 הדפס</button>
-                <button type="button" class="btn btn-primary btn-small mgr-only" id="g-save">💾 שמור כמתכון חדש</button>
             </div>` : '<div class="hint-warn">הזן מקדם או משקל גדולים מ-0.</div>'}`;
         } else {
             body = `
@@ -588,18 +587,6 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
             const genText = () => [`${r.name} (פי ${+f.toFixed(3)})`, ...[...sc.rows].sort((a, b) => b.grams - a.grams).map((o) => `${nameOf(o)}${o.egg_part && o.egg_part !== "whole" ? " (" + EGG_PART_UI[o.egg_part] + ")" : ""}: ${o.unit_count ? o.grams + " יחידות" : fmtQty(o.grams)}`), `סה"כ: ${fmtQty(sc.totalGrams)}`, ...sc.eggs.map(eggSummaryText)].join("\n");
             bind("#g-copy", "onclick", async () => { try { await navigator.clipboard.writeText(genText()); toast("הועתק"); } catch (e) { toast("לא הצלחתי להעתיק"); } });
             bind("#g-print", "onclick", () => printLabel(r.name + " - מוגדל", genText()));
-            bind("#g-save", "onclick", busy(async () => {
-                const name = window.prompt("שם המתכון החדש:", `${r.name} (פי ${+f.toFixed(2)})`);
-                if (!name || !name.trim()) return;
-                await saveRecipe(null, {
-                    name: name.trim(), category: r.category,
-                    items: sc.rows.map((o) => ({ pantry_item_id: o.pantry_item_id, quantity_g: o.grams, ...(o.egg_part ? { egg_part: o.egg_part } : {}) })),
-                    draft_ingredients: r.draft_ingredients || [], method: r.method || "",
-                });
-                closeModal();
-                toast("נשמר כמתכון חדש");
-                renderRecipesPage(container);
-            }));
         }
 
         // ---- לשונית רכיבים ואלרגנים ----
