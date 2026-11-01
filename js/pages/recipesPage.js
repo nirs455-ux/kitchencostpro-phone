@@ -8,7 +8,7 @@ import { openStickerModal, openNutritionStickerModal } from "./stickerModal.js";
 import { ALLERGENS, allergenLabels } from "../allergens.js";
 import { RECIPE_CATEGORIES, NON_FOOD_CATEGORIES, CATEGORY_GROUPS, UNIT_TYPES, UNIT_TYPE_LABELS } from "../constants.js";
 import { pricePerGram, itemCost as calcItemCost, effectivePrice, isCountItem } from "../formulas.js";
-import { h, openModal, closeModal, confirmDialog, toast, escapeHtml, money, busy, attemptClose, info, cur, curLabel, takeFlag } from "../ui.js";
+import { h, openModal, closeModal, confirmDialog, toast, escapeHtml, money, busy, attemptClose, info, cur, curLabel, takeFlag, layerOpened, layerClosed } from "../ui.js";
 import { openImagePicker } from "../imagePicker.js";
 import { scanRecipeImage, suggestRecipeBase } from "../repo/scanRepo.js";
 import { getSetting, setSetting } from "../repo/settingsRepo.js";
@@ -77,7 +77,7 @@ export async function renderRecipesPage(container) {
     let q = "";
 
     container.innerHTML = `
-        <div class="btn-row mgr-only"><button class="btn btn-accent" id="btn-scan-recipe">📷 סרוק מתכון (תמונה / קובץ)</button>${recipes.length ? '<button class="btn btn-secondary" id="btn-share-cat">💬 שתף קטגוריה</button>' : ""}<button class="btn btn-secondary" id="btn-manage-cats">🗂 קטגוריות</button></div>
+        <div class="btn-row mgr-only"><button class="btn btn-accent" id="btn-scan-recipe">📷 סרוק מתכון (תמונה / קובץ)</button><button class="btn btn-secondary" id="btn-write-recipe">✍️ כתוב מתכון</button>${recipes.length ? '<button class="btn btn-secondary" id="btn-share-cat">💬 שתף קטגוריה</button>' : ""}<button class="btn btn-secondary" id="btn-manage-cats">🗂 קטגוריות</button></div>
         ${recipes.length ? `<div class="px-top"><input type="search" id="rc-q" placeholder="חיפוש מתכון..." autocomplete="off"></div>` : ""}
         ${recipes.length ? `<div class="fchips mgr-only">
             <button type="button" class="chip ${recipeFilter === "all" ? "active" : ""}" data-rf="all">הכול (${recipes.length})</button>
@@ -145,6 +145,21 @@ export async function renderRecipesPage(container) {
         ov.querySelectorAll("[data-sc]").forEach((b) => { b.onclick = () => { const c = b.dataset.sc; window.open(whatsappUrl(categoryShareText(c, recipes.filter((r) => r.status !== "draft" && r.category === c))), "_blank", "noopener"); }; });
     };
     if (takeFlag("recipe-new") && !isStaffMode()) openRecipeModal(null, container); // נלחץ "מתכון חדש" בבית
+    // כתיבת מתכון בטקסט חופשי: אותה קריאה של המערכת כמו בסריקה, על טקסט שהוקלד
+    container.querySelector("#btn-write-recipe").onclick = () => {
+        const ov = openModal(`<h2>כתוב מתכון</h2>
+            <div class="hint" style="margin-bottom:8px;">כתוב או הדבק מתכון בטקסט חופשי: שם, רכיבים וכמויות, ואם רוצה גם הוראות הכנה. המערכת תפרק אותו לרכיבים ותתאים לחומרי הגלם, ואתה בודק לפני שמירה.</div>
+            <div class="field"><textarea id="wr-text" rows="8" style="width:100%;" placeholder="מרק עגבניות, 100 גרם בצל, 50 גרם שום, 2 קילו עגבניות"></textarea></div>
+            <div class="modal-actions"><button type="button" class="btn btn-secondary" id="wr-cancel">ביטול</button><button type="button" class="btn btn-primary" id="wr-go">צור מתכון</button></div>`);
+        ov.querySelector("#wr-cancel").onclick = closeModal;
+        ov.querySelector("#wr-go").onclick = () => {
+            const text = ov.querySelector("#wr-text").value.trim();
+            if (text.length < 3) { toast("כתוב את המתכון"); return; }
+            closeModal();
+            scanRecipeFile(new File([text], "recipe.txt", { type: "text/plain" }), container);
+        };
+        setTimeout(() => { const t = ov.querySelector("#wr-text"); if (t) t.focus(); }, 50);
+    };
     container.querySelector("#btn-scan-recipe").onclick = () => openImagePicker({
         title: "סריקת מתכון",
         hint: "צלם או העלה מתכון בכל פורמט: תמונה, PDF, Word, Excel, טקסט ועוד. נזהה שם, מרכיבים וכמויות, ותוכל לבדוק ולתקן לפני שמירה. המסמך המקורי נשמר עם המתכון.",
@@ -680,6 +695,41 @@ function scanNoticeHtml(draft) {
     return `<div class="hint-warn">${html || "כל המרכיבים זוהו. בדוק את הכמויות לפני שמירה."}</div>`;
 }
 
+// שלב אחד לכל הרכיבים שלא נמצאו בחומרי הגלם: שם, קטגוריה, נמדד ב- ומחיר (לא חובה). מחזיר Map לפי מזהה שורה, או null אם ביטל
+function askMissingIngredients(todo) {
+    return new Promise((resolve) => {
+        const unitOf = (um) => (um.unit === "ml" || um.unit === "l" ? "liter" : um.unit === "unit" ? "unit" : "weight");
+        const cats = Object.keys(CATEGORY_GROUPS);
+        // שכבה נפרדת מעל מסך בניית המתכון (חלון רגיל היה סוגר אותו)
+        const ov = document.createElement("div");
+        ov.className = "picker";
+        document.body.appendChild(ov);
+        layerOpened();
+        const shut = () => { ov.remove(); layerClosed(); };
+        ov.innerHTML = `<div class="pk-top"><div class="pk-title">רכיבים שלא נמצאו בחומרי הגלם</div></div>
+            <div style="padding:0 16px;overflow:auto;flex:1;"><div class="hint" style="margin-bottom:8px;">בדוק את הקטגוריה והיחידה, והוסף מחיר אם אתה יודע. בלי מחיר הרכיב נכנס למתכון ומסומן ממתין למחיר.</div>
+            ${todo.map((x, i) => `<div class="card" style="margin:0 0 8px;" data-i="${i}">
+                <div class="field" style="margin:0 0 6px;"><input type="text" data-f="name" value="${escapeHtml(x.um.name)}"></div>
+                <div class="form-row">
+                    <div class="field"><label>קטגוריה</label><select data-f="cat">${cats.map((c) => `<option value="${escapeHtml(c)}"${c === guessCategory(x.um.name) ? " selected" : ""}>${escapeHtml(c)}</option>`).join("")}</select></div>
+                    <div class="field"><label>נמדד ב-</label><select data-f="unit">${UNIT_TYPES.map((u) => `<option value="${u}"${u === unitOf(x.um) ? " selected" : ""}>${escapeHtml(UNIT_TYPE_LABELS[u])}</option>`).join("")}</select></div>
+                </div>
+                <div class="field" style="margin:0;"><input type="text" inputmode="decimal" data-f="price" placeholder="מחיר, לא חובה"></div></div>`).join("")}</div>
+            <div style="padding:10px 16px calc(10px + env(safe-area-inset-bottom,0px));display:flex;gap:8px;"><button type="button" class="btn btn-secondary" id="mi-skip">דלג</button><button type="button" class="btn btn-primary" id="mi-ok" style="flex:1;">הוסף הכול</button></div>`;
+        ov.querySelector("#mi-skip").onclick = () => { shut(); resolve(null); };
+        ov.querySelector("#mi-ok").onclick = () => {
+            const out = new Map();
+            ov.querySelectorAll("[data-i]").forEach((card) => {
+                const x = todo[Number(card.dataset.i)];
+                const f = (k) => card.querySelector(`[data-f="${k}"]`).value;
+                out.set(x.id, { name: f("name").trim() || x.um.name, category: f("cat"), unit_type: f("unit"), price: f("price").trim() });
+            });
+            shut();
+            resolve(out);
+        };
+    });
+}
+
 async function openRecipeModal(existing, container, draft = null) {
     resetPickerMemory();
     setLearnedDensities(await getSetting("unit_density", {})); // כוס/כף של מוצר שנקבע בממיר
@@ -1117,6 +1167,7 @@ async function openRecipeModal(existing, container, draft = null) {
         addRow();
     }
     recalc();
+    if (!existing && draft && draft.ingredients && draft.ingredients.some((g) => !g.blank && !g.pantry_item_id)) setTimeout(() => { const b = overlay.querySelector("#btn-add-missing"); if (b && b.style.display !== "none") b.click(); }, 350);
     overlay.querySelector("#f-category").addEventListener("change", (e) => {
         const nc = overlay.querySelector("#f-newcat");
         nc.style.display = e.target.value === "__new__" ? "block" : "none";
@@ -1133,16 +1184,18 @@ async function openRecipeModal(existing, container, draft = null) {
             if (meta && meta.um && !sel.value && String(meta.um.name || "").trim()) todo.push({ id, um: meta.um });
         });
         if (!todo.length) return;
-        if (!window.confirm(`להוסיף ${todo.length} מוצרים לחומרי הגלם, בלי מחיר? את המחירים אפשר להשלים אחר כך בחומרי הגלם (הם יסומנו כחסר מחיר). הקטגוריה מנוחשת לפי השם ואפשר לתקן.`)) return;
+        const chosen = await askMissingIngredients(todo);
+        if (!chosen) return;
+        for (const x of todo) Object.assign(x, chosen.get(x.id) || {});
         let added = 0, reused = 0;
         const failed = [];
         for (const x of todo) {
-            const name = String(x.um.name).trim();
+            const name = String(x.name || x.um.name).trim();
             let item = (sources.find((src) => String(src.item.name || "").trim().toLowerCase() === name.toLowerCase()) || {}).item;
             if (!item) {
                 try {
-                    const unitType = x.um.unit === "ml" || x.um.unit === "l" ? "liter" : x.um.unit === "unit" ? "unit" : "weight";
-                    const newId = await addPantryItem({ name, category: guessCategory(name), unit_type: unitType, unit_amount: "", price: "", allow_no_price: true });
+                    const unitType = x.unit_type || (x.um.unit === "ml" || x.um.unit === "l" ? "liter" : x.um.unit === "unit" ? "unit" : "weight");
+                    const newId = await addPantryItem({ name, category: x.category || guessCategory(name), unit_type: unitType, unit_amount: "", price: x.price ?? "", allow_no_price: true });
                     item = await dbGet("pantryItems", newId);
                     sources.push({ id: newId, name: item.name, indent: false, item });
                     overlay.querySelectorAll('[id^="ing-source-"]').forEach((sel2) => {
