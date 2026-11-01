@@ -3,7 +3,9 @@
 // ורשימת הכנות, עם סימון "בוצע". התוכניות נשמרות (prepPlansRepo.js). החישוב ב-prepPlan.js (טהור).
 import { toast, escapeHtml, info, confirmDialog, openModal, closeModal } from "../ui.js";
 import { enhanceSelect } from "../picker.js";
-import { dbGetAll } from "../db.js";
+import { dbGetAll, dbGet } from "../db.js";
+import { openIngredientPicker } from "./ingredientPicker.js";
+import { addPantryItem } from "../repo/pantryRepo.js";
 import { loadSalesCtx } from "../repo/salesRepo.js";
 import { planPrep, groupBySupplier, entryQuantity, allergenCheck, DEFAULT_MARGIN_PCT } from "../prepPlan.js";
 import { ALLERGENS } from "../allergens.js";
@@ -104,48 +106,45 @@ export async function renderPrepTab(container) {
         currentId = plan.id; loadFields(); draw();
     };
 
-    // בחירת פריטים מהמערכת: חלון אחד עם חיפוש וסימון של כמה פריטים יחד. מנה נפתחת לרכיביה, ולכל רכיב כמות משלו
+    // בחירת פריטים מהמערכת: אותו בורר של שאר האפליקציה (חיפוש וקטגוריות), עם סימון של כמה פריטים יחד ואפשרות להקים חומר גלם חדש בלי מחיר.
+    // מנה נפתחת לרכיביה, ולכל רכיב כמות משלו
     q("#pp-pick").onclick = () => {
-        const byName = (a, b) => a.name.localeCompare(b.name, "he");
-        const dishes = [...ctx.dishes.values()].sort(byName);
-        const recipes = [...ctx.recipes.values()].sort(byName);
-        const products = [...ctx.pantry.values()].filter((p) => !p.parent_id).sort(byName);
-        const sections = [["מנות", "dish", dishes], ["מתכונים", "recipe", recipes], ["חומרי גלם", "pantry", products]].filter((s) => s[2].length);
-        const picked = new Set();
-        const ovl = openModal(`<h2>הוספת פריטים</h2>
-            <div class="field"><input type="search" id="pk2-q" placeholder="חיפוש"></div>
-            <div id="pk2-list" style="max-height:52vh;overflow:auto;">${sections.map(([title, type, list]) => `<div class="pk2-sec"><div class="card-title" style="margin:10px 4px 4px;">${title}</div>${list.map((it) => `<label class="card-row pk2-row" data-n="${escapeHtml(it.name.toLowerCase())}" style="gap:8px;align-items:center;padding:8px 4px;cursor:pointer;"><input type="checkbox" data-k="${type}:${it.id}" style="width:22px;height:22px;flex:none;"><span style="flex:1;">${escapeHtml(it.name)}</span></label>`).join("")}</div>`).join("") || '<div class="empty-state">אין עדיין מנות, מתכונים או חומרי גלם במערכת. אפשר להוסיף פריט ידני.</div>'}</div>
-            <div class="modal-actions"><button type="button" class="btn btn-secondary" id="pk2-cancel">ביטול</button><button type="button" class="btn btn-primary" id="pk2-ok" disabled>הוסף</button></div>`);
-        const okBtn = ovl.querySelector("#pk2-ok");
-        const sync = () => { okBtn.disabled = !picked.size; okBtn.textContent = picked.size ? `הוסף ${picked.size}` : "הוסף"; };
-        ovl.querySelectorAll("input[data-k]").forEach((c) => { c.onchange = () => { if (c.checked) picked.add(c.dataset.k); else picked.delete(c.dataset.k); sync(); }; });
-        ovl.querySelector("#pk2-q").oninput = (e) => {
-            const t = e.target.value.trim().toLowerCase();
-            ovl.querySelectorAll(".pk2-row").forEach((r) => { r.style.display = !t || r.dataset.n.includes(t) ? "" : "none"; });
-            ovl.querySelectorAll(".pk2-sec").forEach((s) => { s.style.display = [...s.querySelectorAll(".pk2-row")].some((r) => r.style.display !== "none") ? "" : "none"; });
-        };
-        ovl.querySelector("#pk2-cancel").onclick = closeModal;
-        okBtn.onclick = async () => {
-            const has = (t, id, g) => plan.rows.some((r) => r.source_type === t && r.source_id === id && (r.group || "") === g);
-            const add = (t, id, name, g) => { if (name && !has(t, id, g)) plan.rows.push({ source_type: t, source_id: id, name, per: "", share: "100", group: g }); };
-            let empty = 0;
-            for (const key of picked) {
-                const [type, idStr] = key.split(":"); const id = Number(idStr);
-                if (type === "dish") {
-                    const d = ctx.dishes.get(id);
-                    const parts = ctx.dishItems.get(id) || [];
-                    if (!parts.length) empty++;
-                    for (const it of parts) {
-                        const src = it.source_type === "recipe" ? ctx.recipes.get(it.source_id) : ctx.pantry.get(it.source_id);
-                        add(it.source_type === "recipe" ? "recipe" : "pantry", it.source_id, src ? src.name : "", d ? d.name : "");
-                    }
-                } else if (type === "recipe") { const r = ctx.recipes.get(id); add("recipe", id, r ? r.name : "", ""); }
-                else { const p = ctx.pantry.get(id); add("pantry", id, p ? p.name : "", ""); }
-            }
-            closeModal();
-            if (empty) toast("מנה בלי רכיבים לא נוספה. אפשר להוסיף רכיבים ידנית.");
-            draw(); await persist();
-        };
+        const mkItems = (type, list) => list.map((it) => ({ key: `${type}:${it.id}`, id: it.id, tab: type, name: it.name, category: it.category || (type === "dish" ? "מנות" : type === "recipe" ? "מתכונים" : "אחר"), subcategory: "", hint: "" }));
+        const items = [
+            ...mkItems("dish", [...ctx.dishes.values()]),
+            ...mkItems("recipe", [...ctx.recipes.values()]),
+            ...mkItems("pantry", [...ctx.pantry.values()].filter((p) => !p.parent_id)),
+        ];
+        openIngredientPicker({
+            title: "הוספת פריטים", items, multi: true,
+            tabs: [{ key: "dish", label: "מנות" }, { key: "recipe", label: "מתכונים" }, { key: "pantry", label: "חומרי גלם" }],
+            onCreate: async (d) => {
+                const newId = await addPantryItem({ name: d.name, category: d.category, unit_type: d.unit_type, unit_amount: "", price: d.price, allow_no_price: true });
+                const item = await dbGet("pantryItems", newId);
+                ctx.pantry.set(newId, item);
+                return { key: `pantry:${newId}`, id: newId, tab: "pantry", name: item.name, category: item.category, subcategory: "", hint: "" };
+            },
+            onPick: async (picked) => {
+                const has = (t, id, g) => plan.rows.some((r) => r.source_type === t && r.source_id === id && (r.group || "") === g);
+                const add = (t, id, name, g) => { if (name && !has(t, id, g)) plan.rows.push({ source_type: t, source_id: id, name, per: "", share: "100", group: g }); };
+                let empty = 0;
+                for (const it of picked) {
+                    const type = it.tab, id = it.id;
+                    if (type === "dish") {
+                        const d = ctx.dishes.get(id);
+                        const parts = ctx.dishItems.get(id) || [];
+                        if (!parts.length) empty++;
+                        for (const part of parts) {
+                            const src = part.source_type === "recipe" ? ctx.recipes.get(part.source_id) : ctx.pantry.get(part.source_id);
+                            add(part.source_type === "recipe" ? "recipe" : "pantry", part.source_id, src ? src.name : "", d ? d.name : "");
+                        }
+                    } else if (type === "recipe") { const r = ctx.recipes.get(id); add("recipe", id, r ? r.name : "", ""); }
+                    else { const pr = ctx.pantry.get(id); add("pantry", id, pr ? pr.name : "", ""); }
+                }
+                if (empty) toast("מנה בלי רכיבים לא נוספה. אפשר להוסיף רכיבים ידנית.");
+                draw(); await persist();
+            },
+        });
     };
 
     q("#pc-kind").onchange = () => { q("#pc-sup-wrap").style.display = q("#pc-kind").value === "order" ? "" : "none"; };

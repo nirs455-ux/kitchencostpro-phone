@@ -4,6 +4,7 @@ import { CATEGORY_GROUPS, UNIT_TYPES, UNIT_TYPE_LABELS } from "../constants.js";
 import { escapeHtml, layerOpened, layerClosed } from "../ui.js";
 import { getSetting, setSetting } from "../repo/settingsRepo.js";
 import { nameCovers } from "../nameMatch.js";
+import { guessCategory } from "../guessCategory.js";
 
 const RECENT_KEY = "picker_recent";
 const RECENT_MAX = 12;
@@ -62,7 +63,8 @@ let memory = null;
 export function resetPickerMemory() { memory = null; }
 
 // onCreate: מאפשר להוסיף מוצר חדש תוך כדי עבודה. מקבל { name, category, unit_type, price } ומחזיר את הפריט החדש (או זורק שגיאה)
-export async function openIngredientPicker({ title = "בחר מרכיב", items, tabs = null, onPick, onCreate = null }) {
+// multi: בחירה של כמה פריטים יחד (מסמנים ולוחצים "הוסף"), onPick מקבל מערך. מוצר חדש שנוצר מצטרף לסימון.
+export async function openIngredientPicker({ title = "בחר מרכיב", items, tabs = null, onPick, onCreate = null, multi = false }) {
     const layer = document.createElement("div");
     layer.className = "picker";
     document.body.appendChild(layer);
@@ -75,7 +77,8 @@ export async function openIngredientPicker({ title = "בחר מרכיב", items,
     }
     let lastScroll = restoreScroll;
     const remember = () => { memory = { tab: st.tab, q: st.q, cat: st.cat, sub: st.sub, scroll: lastScroll }; };
-    const flat = items.flatMap((i) => [i, ...(i.children || [])]);
+    let flat = items.flatMap((i) => [i, ...(i.children || [])]);
+    const sel = new Map(); // בחירה מרובה: key -> פריט
 
     layerOpened();
     const close = () => { layer.remove(); layerClosed(); };
@@ -106,9 +109,9 @@ export async function openIngredientPicker({ title = "בחר מרכיב", items,
             <div class="pk-top"><button type="button" class="pk-close" id="pk-back" aria-label="חזרה">→</button><div class="pk-title">מוצר חדש בחומרי הגלם</div></div>
             <div style="padding:0 16px 16px;overflow:auto;flex:1;">
                 <div class="field"><label>שם המוצר</label><input type="text" id="pk-n-name" value="${escapeHtml(name)}"></div>
-                <div class="field"><label>קטגוריה</label><select id="pk-n-cat"><option value="">בחר...</option>${Object.keys(CATEGORY_GROUPS).map((c) => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join("")}</select></div>
+                <div class="field"><label>קטגוריה</label><select id="pk-n-cat">${Object.keys(CATEGORY_GROUPS).map((c) => `<option value="${escapeHtml(c)}"${c === guessCategory(name) ? " selected" : ""}>${escapeHtml(c)}</option>`).join("")}</select></div>
                 <div class="field"><label>נמדד ב-</label><select id="pk-n-unit">${UNIT_TYPES.map((u) => `<option value="${u}">${escapeHtml(UNIT_TYPE_LABELS[u])}</option>`).join("")}</select></div>
-                <div class="field"><label>מחיר</label><input type="text" inputmode="decimal" id="pk-n-price" placeholder="אפשר להשלים אחר כך"><div class="hint">בלי מחיר, העלות של המרכיב הזה תהיה אפס עד שתשלים אותו בחומרי הגלם.</div></div>
+                <div class="field"><label>מחיר</label><input type="text" inputmode="decimal" id="pk-n-price" placeholder="אפשר להשלים אחר כך"><div class="hint">אפשר לשמור בלי מחיר. המרכיב ייכנס למתכון, ולא יתרום לעלות עד שתזין מחיר בחומרי הגלם.</div></div>
                 <div class="error-msg" id="pk-n-err"></div>
                 <button type="button" class="btn btn-primary" id="pk-n-save">הוסף ובחר</button>
             </div>`;
@@ -121,6 +124,13 @@ export async function openIngredientPicker({ title = "בחר מרכיב", items,
             btn.disabled = true;
             try {
                 const item = await onCreate(data);
+                if (multi) {
+                    const full = { ...item, tab: st.tab || item.tab };
+                    items.push(full); flat = items.flatMap((i) => [i, ...(i.children || [])]);
+                    sel.set(full.key, full); st.q = ""; st.cat = ""; st.sub = "";
+                    draw();
+                    return;
+                }
                 remember();
                 close();
                 onPick(item);
@@ -143,7 +153,8 @@ export async function openIngredientPicker({ title = "בחר מרכיב", items,
             <div class="pk-search"><input type="search" id="pk-q" placeholder="חיפוש לפי שם..." value="${escapeHtml(st.q)}" autocomplete="off"></div>
             <div class="pk-chips" id="pk-cats"><button type="button" class="chip ${st.cat ? "" : "active"}" data-cat="">הכול</button>${cats.map((c) => `<button type="button" class="chip ${st.cat === c ? "active" : ""}" data-cat="${escapeHtml(c)}">${escapeHtml(c)}</button>`).join("")}</div>
             ${subs.length ? `<div class="pk-chips" id="pk-subs"><button type="button" class="chip ${st.sub ? "" : "active"}" data-sub="">כל ${escapeHtml(st.cat)}</button>${subs.map((c) => `<button type="button" class="chip ${st.sub === c ? "active" : ""}" data-sub="${escapeHtml(c)}">${escapeHtml(c)}</button>`).join("")}</div>` : ""}
-            <div class="pk-list" id="pk-list"></div>`;
+            <div class="pk-list" id="pk-list"></div>
+            ${multi ? `<div style="padding:10px 16px calc(10px + env(safe-area-inset-bottom,0px));"><button type="button" class="btn btn-primary btn-block" id="pk-ok"${sel.size ? "" : " disabled"}>${sel.size ? `הוסף ${sel.size}` : "סמן פריטים להוספה"}</button></div>` : ""}`;
         const list = layer.querySelector("#pk-list");
         list.addEventListener("scroll", () => { lastScroll = list.scrollTop; });
 
@@ -153,7 +164,8 @@ export async function openIngredientPicker({ title = "בחר מרכיב", items,
         if (!shown.length && st.q.trim()) shown = base.filter((i) => inScope(i) && (nameCovers(st.q, i.name) || (i.children || []).some((c) => nameCovers(st.q, c.name))));
         const mk = (i) => {
             const n = (i.children || []).length;
-            return `<div class="pk-row" data-key="${escapeHtml(i.key)}"><div class="pk-name">${escapeHtml(i.name)}</div><div class="pk-hint">${escapeHtml(i.hint || "")}${n ? ` · ${n + 1} אפשרויות ›` : ""}</div></div>`;
+            const on = multi && sel.has(i.key);
+            return `<div class="pk-row" data-key="${escapeHtml(i.key)}"${on ? ' style="background:var(--accent-soft);"' : ""}><div class="pk-name">${multi ? (on ? "☑ " : "☐ ") : ""}${escapeHtml(i.name)}</div><div class="pk-hint">${escapeHtml(i.hint || "")}${n ? ` · ${n + 1} אפשרויות ›` : ""}</div></div>`;
         };
 
         const createBtn = onCreate && st.q.trim() ? `<button type="button" class="btn btn-secondary" id="pk-new" style="margin:10px 0;width:100%;">＋ <span>הוסף כמוצר חדש:</span> <b>${escapeHtml(st.q.trim())}</b></button>` : "";
@@ -184,6 +196,8 @@ export async function openIngredientPicker({ title = "בחר מרכיב", items,
         }
 
         layer.querySelector("#pk-close").onclick = close;
+        const okBtn = layer.querySelector("#pk-ok");
+        if (okBtn) okBtn.onclick = () => { const picked = [...sel.values()]; remember(); close(); onPick(picked); };
         list.querySelectorAll(".pk-acc").forEach((h) => {
             h.onclick = () => {
                 const g = h.dataset.grp;
@@ -212,6 +226,14 @@ export async function openIngredientPicker({ title = "בחר מרכיב", items,
             r.onclick = async () => {
                 const item = flat.find((i) => i.key === r.dataset.key);
                 if (!item) return;
+                if (multi) {
+                    if (sel.has(item.key)) sel.delete(item.key); else sel.set(item.key, item);
+                    const keep = list.scrollTop;
+                    draw();
+                    const l2 = layer.querySelector("#pk-list");
+                    if (l2) l2.scrollTop = keep;
+                    return;
+                }
                 if ((item.children || []).length) { st.open = item.key; draw(); return; }
                 remember();
                 close();
@@ -236,6 +258,6 @@ export function bindPickerButton({ button, select, getItems, tabs, title, keyOf,
 export function refreshPickerButton(button, select) {
     const opt = select.selectedOptions && select.selectedOptions[0];
     const has = opt && opt.value !== "";
-    button.textContent = has ? opt.textContent.replace(/^↳\s*/, "") : "בחר מרכיב...";
+    button.textContent = has ? opt.textContent.replace(/^↳\s*/, "") : button.dataset.ph || "בחר מרכיב...";
     button.classList.toggle("pk-empty", !has);
 }

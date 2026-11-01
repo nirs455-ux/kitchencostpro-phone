@@ -1,6 +1,7 @@
 // דף יצרן: פרטי העסק, המוצרים לשיווק (כל מוצר מבוסס על מתכון) והדפסת מדבקות עם רכיבים, אלרגנים, תאריכים וערכים תזונתיים.
 import { h, openModal, closeModal, toast, escapeHtml, busy, attemptClose, info, confirmDialog, money, curLabel } from "../ui.js";
 import { dbGetAll } from "../db.js";
+import { bindPickerButton } from "./ingredientPicker.js";
 import { listRecipesWithItems } from "../repo/recipesRepo.js";
 import { getBusiness, saveBusiness, listProducts, saveProduct, deleteProduct, NUTRITION_FIELDS, DEFAULT_STORAGE } from "../repo/producerRepo.js";
 import { buildLabel } from "../recipeLabel.js";
@@ -79,7 +80,7 @@ function openProductModal(existing, recipes, onSaved, presetRecipeId = null, pan
     const ov = openModal(`
         <h2>${existing ? "עריכת מוצר" : "מוצר חדש"}</h2>
         <div class="field"><label>שם המוצר (כפי שיופיע על המדבקה)</label><input type="text" id="p-name" value="${escapeHtml(existing ? existing.name : preset ? preset.name : "")}"></div>
-        <div class="field"><label>מתכון</label><select id="p-recipe"><option value="">בחר מתכון...</option>${recipes.map((r) => `<option value="${r.id}" ${(existing && existing.recipe_id === r.id) || (preset && preset.id === r.id) ? "selected" : ""}>${escapeHtml(r.name)}</option>`).join("")}</select></div>
+        <div class="field"><label>מתכון</label><button type="button" class="pick-btn" id="p-recipe-pick" data-ph="בחר מתכון..." style="width:100%;">בחר מתכון...</button><select id="p-recipe" style="display:none;"><option value="">בחר מתכון...</option>${recipes.map((r) => `<option value="${r.id}" ${(existing && existing.recipe_id === r.id) || (preset && preset.id === r.id) ? "selected" : ""}>${escapeHtml(r.name)}</option>`).join("")}</select></div>
         <div class="form-row">
             <div class="field"><label>${isGramMode() ? "משקל נטו (גרם)" : 'משקל נטו (ק"ג)'}</label><input type="text" inputmode="decimal" id="p-net" placeholder="${isGramMode() ? "למשל 350" : "למשל 0.350"}" value="${existing && existing.net_g ? gramsToKgText(existing.net_g) : ""}"></div>
             <div class="field"><label>חיי מדף בימים</label><input type="text" inputmode="numeric" id="p-shelf" value="${existing && existing.shelf_days ? existing.shelf_days : ""}"></div>
@@ -124,6 +125,10 @@ function openProductModal(existing, recipes, onSaved, presetRecipeId = null, pan
     };
     ov.querySelector("#p-pack-add").onclick = () => { packRows.push({ pack_id: 0, qty: 1 }); drawPack(); };
     drawPack();
+    bindPickerButton({
+        button: ov.querySelector("#p-recipe-pick"), select: ov.querySelector("#p-recipe"), title: "בחר מתכון", keyOf: (it) => String(it.id),
+        getItems: () => recipes.map((r) => ({ key: `r${r.id}`, id: r.id, name: r.name, category: r.category || "מתכונים", subcategory: "", hint: "" })),
+    });
     ov.querySelector("#p-recipe").onchange = (e) => { const r = recipes.find((x) => String(x.id) === e.target.value); if (r && !nameEl.value.trim()) nameEl.value = r.name; };
     ov.querySelector("#p-cancel").onclick = () => attemptClose(ov);
     ov.querySelector("#p-save").onclick = busy(async () => {

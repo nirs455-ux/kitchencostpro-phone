@@ -782,10 +782,10 @@ async function openRecipeModal(existing, container, draft = null) {
                     </div>
                     <div class="hint" id="ing-egg-hint-${id}"></div>
                 </div>
-                ${um ? `<button type="button" class="btn btn-secondary btn-small" id="ing-qa-btn-${id}" style="margin-top:6px;">${um.manual ? "➕ הוסף לחומרי הגלם (עם מחיר)" : `➕ הוסף "${escapeHtml(um.name)}" לחומרי הגלם`}</button>
+                ${um ? `<button type="button" class="btn btn-secondary btn-small" id="ing-qa-btn-${id}" style="margin-top:6px;">${um.manual ? "➕ הוסף לחומרי הגלם, מחיר לא חובה" : `➕ הוסף "${escapeHtml(um.name)}" לחומרי הגלם`}</button>
                 <div id="ing-qa-${id}" style="display:none;background:var(--accent-soft);color:var(--text);border-radius:8px;padding:8px;margin-top:6px;">
                     <div class="form-row">
-                        <div class="field"><label>קטגוריה</label><select id="qa-cat-${id}"><option value="">בחר...</option>${Object.keys(CATEGORY_GROUPS).map((c) => `<option value="${c}">${c}</option>`).join("")}</select></div>
+                        <div class="field"><label>קטגוריה</label><select id="qa-cat-${id}">${Object.keys(CATEGORY_GROUPS).map((c) => `<option value="${c}"${c === guessCategory(um.name) ? " selected" : ""}>${c}</option>`).join("")}</select></div>
                         <div class="field"><label>נמדד ב-</label><select id="qa-ut-${id}">${UNIT_TYPES.map((u) => `<option value="${u}">${UNIT_TYPE_LABELS[u]}</option>`).join("")}</select></div>
                     </div>
                     <div class="form-row">
@@ -895,7 +895,7 @@ async function openRecipeModal(existing, container, draft = null) {
                 try {
                     const newId = await addPantryItem({
                         name: um.name, category: row.querySelector(`#qa-cat-${id}`).value, unit_type: ut.value,
-                        unit_amount: row.querySelector(`#qa-ua-${id}`).value, price: row.querySelector(`#qa-price-${id}`).value,
+                        unit_amount: row.querySelector(`#qa-ua-${id}`).value, price: row.querySelector(`#qa-price-${id}`).value, allow_no_price: true,
                     });
                     const item = await dbGet("pantryItems", newId);
                     sources.push({ id: newId, name: item.name, indent: false, item });
