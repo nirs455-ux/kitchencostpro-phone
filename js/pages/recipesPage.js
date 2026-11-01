@@ -16,6 +16,7 @@ import { getAgentKey } from "../agent.js";
 import { dbGetAll, dbGet } from "../db.js";
 import { buildLabel } from "../recipeLabel.js";
 import { suggestBaseHeuristic, computePercentages, scaleToBase, fmtPct } from "../bakers.js";
+import { sameWords, conflicts } from "../scanMatch.js";
 import { RECIPE_UNIT_GRAMS } from "../recipeParse.js";
 import { textToGrams, gramsToKgText, describeQty, qtyWarning, textToCount, countToText, describeCount, countWarning, isGramMode } from "../qty.js";
 import { bindPickerButton, refreshPickerButton, resetPickerMemory } from "./ingredientPicker.js";
@@ -865,6 +866,9 @@ async function openRecipeModal(existing, container, draft = null) {
                 sum.style.display = done ? "" : "none";
                 const nm = (row.querySelector(`#ing-name-${id}`) || {}).value || um.name || "";
                 sum.textContent = `מהמסמך: ${nm} ${originalText(um)}`.trim();
+                const qaBtn = row.querySelector(`#ing-qa-btn-${id}`), qaBox = row.querySelector(`#ing-qa-${id}`);
+                if (qaBtn) qaBtn.style.display = done ? "none" : "";
+                if (done && qaBox) qaBox.style.display = "none";
             };
             src.addEventListener("change", row._syncUm);
             row._syncUm();
@@ -1197,6 +1201,24 @@ async function openRecipeModal(existing, container, draft = null) {
     } else {
         addRow();
     }
+    // רכיב שלא נמצא בחומרי הגלם אבל קיים כמתכון מוכן באותו שם (ציר ירקות): מתחבר אוטומטית כתת-מתכון, והכמות מומרת לגרמים
+    const linked = [];
+    box.querySelectorAll(".item-row-inputs").forEach((row) => {
+        const id = row.id.replace("ing-row-", "");
+        const meta = rowMeta.get(Number(id));
+        const sel = overlay.querySelector(`#ing-source-${id}`);
+        const nm = meta && meta.um ? String(((row.querySelector(`#ing-name-${id}`) || {}).value) || meta.um.name || "").trim() : "";
+        if (!nm || sel.value) return;
+        const hit = subOpts.find((o) => sameWords(nm, o.name) && !conflicts(nm, o.name));
+        if (!hit) return;
+        sel.value = "r" + hit.id;
+        const qtyEl = overlay.querySelector(`#ing-qty-${id}`);
+        if (!qtyEl.value && meta.um.unit in RECIPE_UNIT_GRAMS && Number(meta.um.quantity) > 0) qtyEl.value = gramsToKgText(Math.round(meta.um.quantity * RECIPE_UNIT_GRAMS[meta.um.unit] * 100) / 100);
+        refreshPickerButton(overlay.querySelector(`#ing-pick-${id}`), sel);
+        if (row._syncUm) row._syncUm();
+        linked.push(hit.name);
+    });
+    if (linked.length) toast(`חובר מתכון קיים: ${linked.join(", ")}`);
     recalc();
     if (!existing && draft && draft.ingredients && draft.ingredients.some((g) => !g.blank && !g.pantry_item_id)) setTimeout(() => { const b = overlay.querySelector("#btn-add-missing"); if (b && b.style.display !== "none") b.click(); }, 350);
     overlay.querySelector("#f-category").addEventListener("change", (e) => {
