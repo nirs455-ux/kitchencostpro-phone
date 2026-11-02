@@ -4,6 +4,7 @@
 import { ICE_GLAZE_DEDUCTION } from "./formulas.js";
 import { flattenRecipeItems } from "./repo/subRecipes.js";
 import { isEggProduct, eggSizeOf, partGrams } from "./eggs.js";
+import { rowForLine } from "./yieldKb.js";
 
 export const SALES_LINE_TYPES = ["sold", "staff_meal", "cancelled_returned", "cancelled_consumed"];
 export const SALES_LINE_LABELS = { sold: "נמכר", staff_meal: "ארוחת צוות", cancelled_returned: "בוטל - חזר למלאי", cancelled_consumed: "בוטל - נצרך/נזרק" };
@@ -50,7 +51,7 @@ function explodeRecipe(ctx, recipeId, grams, pantryOut) {
             eggs.set(row.id, acc);
             continue;
         }
-        addUnits(pantryOut, topId(row), gramsToPurchaseUnits(it.prep === "raw" ? { ...row, yield_pct: 100 } : row, g));
+        addUnits(pantryOut, topId(row), gramsToPurchaseUnits(rowForLine(row, it.prep), g));
     }
     for (const acc of eggs.values()) {
         const size = eggSizeOf(acc.row);

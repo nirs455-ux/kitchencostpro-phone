@@ -8,6 +8,7 @@ import { openStickerModal, openNutritionStickerModal } from "./stickerModal.js";
 import { ALLERGENS, allergenLabels } from "../allergens.js";
 import { RECIPE_CATEGORIES, NON_FOOD_CATEGORIES, CATEGORY_GROUPS, UNIT_TYPES, UNIT_TYPE_LABELS } from "../constants.js";
 import { pricePerGram, itemCost as calcItemCost, effectivePrice, isCountItem } from "../formulas.js";
+import { rowForLine, yieldApplies } from "../yieldKb.js";
 import { h, openModal, closeModal, confirmDialog, toast, escapeHtml, money, busy, attemptClose, info, cur, curLabel, takeFlag, layerOpened, layerClosed } from "../ui.js";
 import { openImagePicker } from "../imagePicker.js";
 import { scanRecipeImage, suggestRecipeBase } from "../repo/scanRepo.js";
@@ -796,7 +797,7 @@ async function openRecipeModal(existing, container, draft = null) {
     function addRow(prefill) {
         const id = rowCounter++;
         const um = prefill && prefill.um ? prefill.um : null;
-        rowMeta.set(id, { um, eggPart: (prefill && prefill.egg_part) || "whole", eggSize: null, eggUnit: "g", pct: (prefill && (prefill.pct_mode || prefill.est_mode)) || null, prep: prefill && prefill.prep === "raw" ? "raw" : null });
+        rowMeta.set(id, { um, eggPart: (prefill && prefill.egg_part) || "whole", eggSize: null, eggUnit: "g", pct: (prefill && (prefill.pct_mode || prefill.est_mode)) || null, prep: prefill && (prefill.prep === "raw" || prefill.prep === "proc") ? prefill.prep : null });
         const row = h(`
             <div class="item-row-inputs" id="ing-row-${id}">
                 ${um && um.manual ? `<div class="field" style="margin:0 0 6px;"><input type="text" id="ing-name-${id}" placeholder="שם הרכיב, לא במערכת" value="${escapeHtml(um.name || "")}"></div>` : um ? `<div class="hint-warn" id="ing-um-${id}" style="margin-top:0;">
@@ -852,7 +853,7 @@ async function openRecipeModal(existing, container, draft = null) {
                 });
             }
         }
-        row.querySelector(`#ing-prep-${id}`).addEventListener("click", () => { const m = rowMeta.get(id); m.prep = m.prep === "raw" ? null : "raw"; recalc(); });
+        row.querySelector(`#ing-prep-${id}`).addEventListener("click", () => { const m = rowMeta.get(id); const sel = sources.find((x) => String(x.id) === row.querySelector(`#ing-source-${id}`).value); if (sel) { const now = yieldApplies(sel.item, m.prep); m.prep = now ? "raw" : "proc"; if (yieldApplies(sel.item, null) === !now) m.prep = null; } recalc(); });
         if (um) rowMeta.get(id).autoQty = row.querySelector(`#ing-qty-${id}`).value; // מולא מהמסמך, לא הוקלד
         // אחרי שנבחר מוצר מחומרי הגלם, הבלוק הצהוב של המסמך מצטמצם לשורה אפורה קטנה (אחרת נראה שעוד חסר משהו)
         if (um && !um.manual) {
@@ -1114,7 +1115,7 @@ async function openRecipeModal(existing, container, draft = null) {
                 const y = s && !subRec && !egg && !count ? Number(s.item.yield_pct) : 0;
                 const show = y > 0 && y !== 100;
                 prepEl.style.display = show ? "" : "none";
-                if (show) prepEl.textContent = meta.prep === "raw" ? "גולמי · מחיר קנייה" : `מעובד · ניצולת ${Math.round(y)}%${s.item.yield_est ? " מוערכת" : ""}`;
+                if (show) prepEl.textContent = yieldApplies(s.item, meta.prep) ? `מעובד · ניצולת ${Math.round(y)}%${s.item.yield_est ? " מוערכת" : ""}` : s.item.yield_est ? "ללא עיבוד" : "גולמי · מחיר קנייה";
             }
             { // משקל יחידה: מוצג כשבוחרים "יחידות לפי משקל יחידה", ממולא ממה ששמור במוצר או מהטבלה, ונשמר במוצר כשמשנים
                 const pwEl = overlay.querySelector(`#ing-pw-${id}`);
@@ -1153,7 +1154,7 @@ async function openRecipeModal(existing, container, draft = null) {
                     eggGroups.set(s.id, g);
                     lineEl.textContent = "";
                 } else {
-                    const cost = calcItemCost(pricePerGram(meta.prep === "raw" ? { ...s.item, yield_pct: 100 } : s.item), qty);
+                    const cost = calcItemCost(pricePerGram(rowForLine(s.item, meta.prep)), qty);
                     lineEl.innerHTML = money(cost) + (s.item.price_missing ? ' <span class="muted">אין מחיר</span>' : "");
                     total += cost;
                 }
@@ -1309,7 +1310,7 @@ async function openRecipeModal(existing, container, draft = null) {
             const meta = rowMeta.get(Number(id));
             if (egg && meta.eggSize) eggSizeChanges.set(egg.s.id, meta.eggSize);
             const techEl = overlay.querySelector(`#ing-tech-${id}`), technique = techEl ? techEl.value.trim() : "";
-            const rawPrep = meta && meta.prep === "raw" && ss && !egg && !countRow && Number(ss.item.yield_pct) !== 100 ? { prep: "raw" } : {};
+            const rawPrep = meta && meta.prep && ss && !egg && !countRow && Number(ss.item.yield_pct) !== 100 ? { prep: meta.prep } : {};
             if (pantry_item_id.startsWith("r") && quantity_g) items.push({ sub_recipe_id: Number(pantry_item_id.slice(1)), quantity_g, ...pctPart, ...(technique ? { technique } : {}) });
             else if (pantry_item_id && quantity_g) items.push({ pantry_item_id, quantity_g, ...(egg ? { egg_part: egg.part } : {}), ...rawPrep, ...pctPart, ...(technique ? { technique } : {}) });
             else if (meta && meta.um && meta.um.manual) {

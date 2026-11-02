@@ -3,6 +3,7 @@ import { dbGetAll, dbGet, dbPut, dbDelete, dbGetByIndex, dbDeleteWhere, dbAtomic
 import { ensureRecipeCategory } from "./recipeCategories.js";
 import { pricePerGram, itemCost as calcItemCost, recipeCostPerGram, effectivePrice, isCountItem } from "../formulas.js";
 import { ensureEggDefaults } from "./pantryRepo.js";
+import { rowForLine } from "../yieldKb.js";
 import { isEggProduct, eggSizeOf, allocateEggCosts } from "../eggs.js";
 import { isSubRow, includesRecipe, expandToParents, flattenRecipeItems } from "./subRecipes.js";
 
@@ -52,8 +53,8 @@ const pctFields = (it) => ({
 });
 
 // טכניקה חופשית לשורה ("שרוף", "קצוץ"): טקסט בלבד, לא משפיע על חישובים
-// עיבוד: ברירת מחדל מעובד (ניצולת המוצר). "raw" = שורה בגולמי, במחיר הקנייה
-const prepField = (it) => (it.prep === "raw" ? { prep: "raw" } : {});
+// עיבוד בשורה: "proc" = מעובד (חל ניצולת המוצר), "raw" = בלי עיבוד (מחיר קנייה). בלי ערך: ניצולת שנשקלה חלה, ניצולת מוערכת לא
+const prepField = (it) => (it.prep === "raw" || it.prep === "proc" ? { prep: it.prep } : {});
 const techField = (it) => (it.technique && String(it.technique).trim() ? { technique: String(it.technique).trim().slice(0, 60) } : {});
 
 export async function resolveRecipeItems(items, { selfId = null, cache = null } = {}) {
@@ -94,7 +95,7 @@ export async function resolveRecipeItems(items, { selfId = null, cache = null } 
         if (eggPart) row = await ensureEggDefaults(row); // גודל ומשקל ללא קליפה אוטומטיים אם חסרים
         if (isCountItem(row) && isEggProduct(row)) throw new Error(`'${row.name}' חסר משקל ליחידה - השלם אותו בחומרי הגלם לפני השימוש במתכון`);
         const count = isCountItem(row);
-        const ppg = pricePerGram(it.prep === "raw" ? { ...row, yield_pct: 100 } : row);
+        const ppg = pricePerGram(rowForLine(row, it.prep));
         const cost = calcItemCost(ppg, qty);
         totalCost += cost;
         if (!count) rawWeight += qty; // מוצר ספירה (יחידות בלי משקל): הכמות היא יחידות ולא גרמים

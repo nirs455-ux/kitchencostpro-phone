@@ -84,3 +84,8 @@ export function planYieldFill(pantry) {
 
 // מוצרים שהניצולת שלהם עדיין הערכה (לא נשקלה בעיבוד): אפשר להחזיר ל-100
 export const estimatedYieldItems = (pantry) => (pantry || []).filter((r) => r.yield_est && !r.parent_id);
+
+// האם ניצולת המוצר חלה על שורת מתכון. prep: "proc" = מעובד (קילוף וניקוי), "raw" = בלי עיבוד, בלי ערך = ברירת מחדל:
+// ניצולת שנשקלה בעיבוד חלה תמיד (כמו תמיד), ניצולת מוערכת חלה רק כשסימנו "מעובד"
+export const yieldApplies = (row, prep) => prep === "proc" || (prep !== "raw" && !row.yield_est);
+export const rowForLine = (row, prep) => (yieldApplies(row, prep) ? row : { ...row, yield_pct: 100 });
