@@ -110,8 +110,7 @@ export async function addPantryItem(data) {
         is_frozen: isFrozen ? 1 : 0, parent_id: null, ...(yieldEst ? { yield_est: true } : {}), ...(noPrice ? { price_missing: true } : {}), ...(isFree ? { free: true } : {}),
         ...(data.unit_type !== "unit" && pieceGrams(data.piece_g) ? { piece_g: pieceGrams(data.piece_g) } : {}),
         ...(data.unit_type === "unit" && EGG_SIZES[data.egg_size] ? { egg_size: data.egg_size } : {}),
-        ...(data.unit_type === "unit" && numIn(data.unit_vol_ml) > 0 ? { unit_vol_ml: numIn(data.unit_vol_ml) } : {}), // נפח ליחידה במ"ל (בקבוק), לצד משקל ליחידה
-        // אלרגנים: רק אם הוגדרו במפורש. אחרת השדה לא קיים = "לא ידוע" (המאגר מכריע בזמן התצוגה). אין ניחוש לפי שם.
+                // אלרגנים: רק אם הוגדרו במפורש. אחרת השדה לא קיים = "לא ידוע" (המאגר מכריע בזמן התצוגה). אין ניחוש לפי שם.
         ...(Array.isArray(data.allergens) ? { allergens: data.allergens, allergens_auto: false } : {}),
     };
     const id = await dbPut("pantryItems", row);
@@ -204,7 +203,6 @@ export async function updatePantryItem(id, data) {
     if (isFree) existing.free = true; else delete existing.free;
     if ("piece_g" in data) { const pg = data.unit_type !== "unit" ? pieceGrams(data.piece_g) : null; if (pg) existing.piece_g = pg; else delete existing.piece_g; }
     if (data.unit_type === "unit" && EGG_SIZES[data.egg_size]) existing.egg_size = data.egg_size;
-    if (data.unit_type === "unit" && numIn(data.unit_vol_ml) > 0) existing.unit_vol_ml = numIn(data.unit_vol_ml); else delete existing.unit_vol_ml;
     existing.pkg_size = data.unit_type !== "unit" && parseFloat(data.pkg_size) > 0 ? parseFloat(data.pkg_size) : null;
     if (Array.isArray(data.allergens)) { existing.allergens = data.allergens; existing.allergens_auto = false; }
     await dbPut("pantryItems", existing);

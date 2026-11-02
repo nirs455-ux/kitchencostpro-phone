@@ -121,7 +121,7 @@ export async function renderPrepTab(container) {
             title: "הוספת פריטים", items, multi: true,
             tabs: [{ key: "dish", label: "מנות" }, { key: "recipe", label: "מתכונים" }, { key: "pantry", label: "חומרי גלם" }],
             onCreate: async (d) => {
-                const newId = await addPantryItem({ name: d.name, category: d.category, unit_type: d.unit_type, unit_amount: d.unit_amount || "", unit_vol_ml: d.unit_vol_ml, price: d.price, allow_no_price: true, yield_pct: d.yield_pct, no_yield_est: d.no_yield_est, free: d.free });
+                const newId = await addPantryItem({ name: d.name, category: d.category, unit_type: d.unit_type, unit_amount: d.unit_amount || "", price: d.price, allow_no_price: true, yield_pct: d.yield_pct, no_yield_est: d.no_yield_est, free: d.free });
                 const item = await dbGet("pantryItems", newId);
                 ctx.pantry.set(newId, item);
                 return { key: `pantry:${newId}`, id: newId, tab: "pantry", name: item.name, category: item.category, subcategory: "", hint: "" };
