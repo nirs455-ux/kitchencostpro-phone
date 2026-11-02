@@ -719,7 +719,7 @@ function askMissingIngredients(todo) {
                     <div class="field"><label>קטגוריה</label><select data-f="cat">${cats.map((c) => `<option value="${escapeHtml(c)}"${c === guessCategory(x.um.name) ? " selected" : ""}>${escapeHtml(c)}</option>`).join("")}</select></div>
                     <div class="field"><label>נמדד ב-</label><select data-f="unit">${UNIT_TYPES.map((u) => `<option value="${u}"${u === unitOf(x.um) ? " selected" : ""}>${escapeHtml(UNIT_TYPE_LABELS[u])}</option>`).join("")}</select></div>
                 </div>
-                <div class="field" data-f-ua style="margin:0 0 6px;${unitOf(x.um) === "unit" ? "" : "display:none;"}"><div class="cv-row"><input type="text" inputmode="decimal" data-f="ua" placeholder="גודל ליחידה, לא חובה"><select data-f="uau"><option value="g">גרם</option><option value="ml">מ"ל</option></select></div></div>
+                <div class="field" data-f-ua style="margin:0 0 6px;${unitOf(x.um) === "unit" ? "" : "display:none;"}"><input type="text" inputmode="decimal" data-f="ua" placeholder="משקל ליחידה בגרמים, לא חובה"><input type="text" inputmode="decimal" data-f="uv" placeholder='נפח ליחידה במ"ל, לא חובה' style="margin-top:6px;"></div>
                 <div class="field" style="margin:0;display:flex;gap:10px;align-items:center;"><input type="text" inputmode="decimal" data-f="price" placeholder="מחיר, לא חובה" style="flex:1;"${isWaterName(x.um.name) ? " disabled" : ""}><label class="checkbox-field"><input type="checkbox" data-f="free"${isWaterName(x.um.name) ? " checked" : ""}><span>ללא עלות</span></label></div></div>`; }).join("")}</div>
             <div style="padding:10px 16px calc(10px + env(safe-area-inset-bottom,0px));display:flex;gap:8px;"><button type="button" class="btn btn-secondary" id="mi-skip">דלג</button><button type="button" class="btn btn-primary" id="mi-ok" style="flex:1;">הוסף הכול</button></div>`;
         ov.querySelectorAll('[data-f="unit"]').forEach((u) => u.addEventListener("change", () => { u.closest(".card").querySelector("[data-f-ua]").style.display = u.value === "unit" ? "" : "none"; }));
@@ -730,7 +730,7 @@ function askMissingIngredients(todo) {
             ov.querySelectorAll("[data-i]").forEach((card) => {
                 const x = todo[Number(card.dataset.i)];
                 const f = (k) => card.querySelector(`[data-f="${k}"]`).value;
-                const rec = { name: f("name").trim() || x.um.name, category: f("cat"), unit_type: f("unit"), price: f("price").trim(), free: card.querySelector('[data-f="free"]').checked, unit_amount: f("unit") === "unit" ? f("ua").trim() : "", unit_ml: f("uau") === "ml" };
+                const rec = { name: f("name").trim() || x.um.name, category: f("cat"), unit_type: f("unit"), price: f("price").trim(), free: card.querySelector('[data-f="free"]').checked, unit_amount: f("unit") === "unit" ? f("ua").trim() : "", unit_vol_ml: f("unit") === "unit" ? f("uv").trim() : "" };
                 groups.find((g) => g[0] === x).forEach((y) => out.set(y.id, rec));
             });
             shut();
@@ -887,7 +887,7 @@ async function openRecipeModal(existing, container, draft = null) {
             tabs: subOpts.length ? [{ key: "pantry", label: "מוצרים" }, { key: "recipe", label: "מתכונים (תת-מתכון)" }] : null,
             // מוצר חדש תוך כדי בניית המתכון (בלי לעצור ולצאת לחומרי הגלם). מחיר לא חובה.
             onCreate: async (d) => {
-                const newId = await addPantryItem({ name: d.name, category: d.category, unit_type: d.unit_type, unit_amount: d.unit_amount || "", unit_ml: d.unit_ml, price: d.price, allow_no_price: true, yield_pct: d.yield_pct, no_yield_est: d.no_yield_est, free: d.free });
+                const newId = await addPantryItem({ name: d.name, category: d.category, unit_type: d.unit_type, unit_amount: d.unit_amount || "", unit_vol_ml: d.unit_vol_ml, price: d.price, allow_no_price: true, yield_pct: d.yield_pct, no_yield_est: d.no_yield_est, free: d.free });
                 const item = await dbGet("pantryItems", newId);
                 sources.push({ id: newId, name: item.name, indent: false, item });
                 overlay.querySelectorAll('[id^="ing-source-"]').forEach((sel) => {
@@ -1269,7 +1269,7 @@ async function openRecipeModal(existing, container, draft = null) {
             if (!item) {
                 try {
                     const unitType = x.unit_type || (x.um.unit === "ml" || x.um.unit === "l" ? "liter" : x.um.unit === "unit" ? "unit" : "weight");
-                    const newId = await addPantryItem({ name, category: x.category || guessCategory(name), unit_type: unitType, unit_amount: x.unit_amount || "", unit_ml: x.unit_ml, price: x.price ?? "", allow_no_price: true, free: x.free });
+                    const newId = await addPantryItem({ name, category: x.category || guessCategory(name), unit_type: unitType, unit_amount: x.unit_amount || "", unit_vol_ml: x.unit_vol_ml, price: x.price ?? "", allow_no_price: true, free: x.free });
                     item = await dbGet("pantryItems", newId);
                     sources.push({ id: newId, name: item.name, indent: false, item });
                     overlay.querySelectorAll('[id^="ing-source-"]').forEach((sel2) => {
