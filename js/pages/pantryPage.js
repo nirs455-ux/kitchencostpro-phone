@@ -9,6 +9,8 @@ import { renderInventoryPage } from "./inventoryPage.js";
 import { renderWastePage } from "./wastePage.js";
 import { findDuplicatePairs, buildUsageCounts } from "../pantryDuplicates.js";
 import { mergePantryItems } from "../repo/pantryMerge.js";
+import { applyYieldEstimates, undoYieldEstimates } from "../repo/pantryRepo.js";
+import { planYieldFill, estimatedYieldItems } from "../yieldKb.js";
 import { isStaffMode } from "../staff.js";
 import { EGG_SIZES, isEggName, guessEggSize } from "../eggs.js";
 import { textToGrams, gramsToKgText, describeQty, qtyWarning, isGramMode } from "../qty.js";
@@ -86,7 +88,7 @@ export async function renderPantryProducts(container) {
     container.innerHTML = `
         <div class="px-top"><input type="search" id="px-q" placeholder="חיפוש מוצר..." autocomplete="off">
             <div class="seg px-view"><button type="button" data-v="cats" class="${view === "cats" ? "active" : ""}">קטגוריות</button><button type="button" data-v="list" class="${view === "list" ? "active" : ""}">רשימה</button></div></div>
-        <div class="btn-row" style="margin:6px 0;"><button type="button" class="btn btn-secondary btn-small" id="px-sel">☑ בחירה</button><button type="button" class="btn btn-secondary btn-small" id="px-dups">כפילויות</button><button type="button" class="btn btn-secondary btn-small" id="px-all" style="display:none;">בחר את כל המוצגים</button></div>
+        <div class="btn-row" style="margin:6px 0;"><button type="button" class="btn btn-secondary btn-small" id="px-sel">☑ בחירה</button><button type="button" class="btn btn-secondary btn-small" id="px-dups">כפילויות</button><button type="button" class="btn btn-secondary btn-small" id="px-yield">ניצולת מוערכת</button><button type="button" class="btn btn-secondary btn-small" id="px-all" style="display:none;">בחר את כל המוצגים</button></div>
         <div id="px-chips"></div>
         <div id="pantry-list"></div>
         <div class="px-bulk" id="px-bulk" style="display:none;"><b id="px-bulk-n"></b><button type="button" class="btn btn-danger btn-small" id="px-bulk-del">מחק</button><button type="button" class="btn btn-secondary btn-small" id="px-bulk-cancel">ביטול</button></div>
@@ -169,6 +171,7 @@ export async function renderPantryProducts(container) {
     container.querySelectorAll(".px-view [data-v]").forEach((b) => { b.onclick = async () => { view = b.dataset.v; await setSetting("pantry_view", view); renderPantryProducts(container); }; });
     container.querySelector("#btn-add").onclick = () => openPantryModal(null, container);
     container.querySelector("#px-dups").onclick = () => openDuplicatesModal(() => renderPantryProducts(container));
+    container.querySelector("#px-yield").onclick = () => openYieldModal(() => renderPantryProducts(container));
     container.querySelector("#px-sel").onclick = () => { selMode = true; sel.clear(); syncBulk(); };
     container.querySelector("#px-bulk-cancel").onclick = () => { selMode = false; sel.clear(); syncBulk(); };
     container.querySelector("#px-all").onclick = () => { list.querySelectorAll(".px-row").forEach((r) => sel.add(Number(r.dataset.id))); syncBulk(); };
@@ -184,6 +187,32 @@ export async function renderPantryProducts(container) {
         renderPantryProducts(container);
     };
     draw();
+}
+
+// ניצולת מוערכת למוצרים קיימים: רשימה לפני החלה, ואפשר להוריד סימון. הערכה קיימת אפשר להחזיר ל-100
+async function openYieldModal(onChange) {
+    const pantry = await dbGetAll("pantryItems");
+    const plan = planYieldFill(pantry);
+    const est = estimatedYieldItems(pantry);
+    const overlay = openModal("");
+    const box = overlay.querySelector(".modal");
+    box.innerHTML = `<h2>ניצולת מוערכת</h2>
+        <div class="muted">${plan.length ? "מוצרים שאין להם ניצולת. הערכה לפי טבלה מקצועית, ועיבוד אמיתי יחליף אותה. עלויות המתכונים והמנות יתעדכנו." : "אין מוצרים שאפשר למלא להם ניצולת."}</div>
+        ${plan.map((p) => `<label class="card-row" style="display:flex;gap:8px;align-items:center;margin:6px 0;"><input type="checkbox" data-id="${p.id}" data-to="${p.to}" checked><span style="flex:1;">${escapeHtml(p.name)}</span><b>${p.to}%</b></label>`).join("")}
+        ${est.length ? `<div class="muted" style="margin-top:10px;">${est.length} מוצרים עם ניצולת מוערכת</div>` : ""}
+        <div class="modal-actions">${plan.length ? '<button type="button" class="btn btn-primary" id="yf-apply">החל על המסומנים</button>' : ""}${est.length ? '<button type="button" class="btn btn-secondary" id="yf-undo">בטל הערכות</button>' : ""}<button type="button" class="btn btn-secondary" id="yf-close">סגור</button></div>`;
+    box.querySelector("#yf-close").onclick = () => closeModal();
+    const apply = box.querySelector("#yf-apply");
+    if (apply) apply.onclick = async () => {
+        const rows = [...box.querySelectorAll("input[data-id]:checked")].map((c) => ({ id: Number(c.dataset.id), to: Number(c.dataset.to) }));
+        const n = await applyYieldEstimates(rows);
+        closeModal(); toast(`עודכנה ניצולת ל-${n} מוצרים`); if (onChange) onChange();
+    };
+    const undo = box.querySelector("#yf-undo");
+    if (undo) undo.onclick = async () => {
+        const n = await undoYieldEstimates();
+        closeModal(); toast(`הוחזרו ${n} מוצרים ל-100%`); if (onChange) onChange();
+    };
 }
 
 // כפילויות במזווה: כל זוג מוצג בנפרד, ושום דבר לא מתאחד בלי לחיצה על הזוג עצמו

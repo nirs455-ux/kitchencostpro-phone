@@ -115,6 +115,29 @@ export async function addPantryItem(data) {
     return id;
 }
 
+// מילוי ניצולת מוערכת למוצרים קיימים (rows: [{ id, to }]); ביטול מחזיר ל-100 רק את מה שסומן כהערכה. עלויות מתעדכנות אוטומטית
+export async function applyYieldEstimates(rows) {
+    let n = 0;
+    for (const r of rows) {
+        const row = await dbGet("pantryItems", r.id);
+        if (!row || row.parent_id || row.yield_est || Number(row.yield_pct || 100) !== 100 || !(r.to > 0)) continue;
+        row.yield_pct = r.to; row.yield_est = true;
+        await dbPut("pantryItems", row);
+        n++;
+    }
+    return n;
+}
+export async function undoYieldEstimates() {
+    let n = 0;
+    for (const row of await dbGetAll("pantryItems")) {
+        if (!row.yield_est) continue;
+        row.yield_pct = 100; delete row.yield_est;
+        await dbPut("pantryItems", row);
+        n++;
+    }
+    return n;
+}
+
 // מוסיף תוצר מפורק שנגזר מחומר גלם קיים (מקביל ל-_validate_payload עם parent_id, נקרא מ-processing.js).
 export async function addBreakdownProduct(parentId, data) {
     const parent = await dbGet("pantryItems", parentId);

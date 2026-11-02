@@ -69,3 +69,18 @@ export function estimateYield(name) {
     }
     return null;
 }
+
+// מוצרים קיימים שאפשר למלא להם ניצולת מוערכת: ראשי, במשקל, לא קפוא, בלי ניצולת ובלי משקלי עיבוד, והשם בטבלה
+export function planYieldFill(pantry) {
+    const out = [];
+    for (const r of pantry || []) {
+        if (r.parent_id || r.unit_type !== "weight" || r.is_frozen || r.yield_est) continue;
+        if (Number(r.yield_pct || 100) !== 100 || r.weight_before != null || r.weight_after != null) continue;
+        const to = estimateYield(r.name);
+        if (to) out.push({ id: r.id, name: r.name, from: 100, to });
+    }
+    return out.sort((a, b) => a.name.localeCompare(b.name, "he"));
+}
+
+// מוצרים שהניצולת שלהם עדיין הערכה (לא נשקלה בעיבוד): אפשר להחזיר ל-100
+export const estimatedYieldItems = (pantry) => (pantry || []).filter((r) => r.yield_est && !r.parent_id);
