@@ -250,7 +250,7 @@ async function openProductSheet(it, children, container, root) {
     const overlay = openModal(`
         <div class="sh-head"><span class="px-ic" style="background:${tint};">${ic}</span><div><div class="sh-name">${escapeHtml(it.name)}</div><div class="muted">${escapeHtml(it.category)}${subOf(it) ? " / " + escapeHtml(subOf(it)) : ""}${it.is_frozen ? " · ❄ קפוא" : ""}</div></div></div>
         ${row("מחיר קנייה", `${cur()}${Number(it.price).toFixed(2)} / ${unitWord(it)}`)}
-        ${Math.abs(eff - Number(it.price)) > 0.004 ? row("מחיר אמיתי (אחרי ניצולת)", `${cur()}${eff.toFixed(2)} (${Number(it.yield_pct).toFixed(0)}%)`) : ""}
+        ${Math.abs(eff - Number(it.price)) > 0.004 ? row("מחיר אמיתי (אחרי ניצולת)", `${cur()}${eff.toFixed(2)} (${Number(it.yield_pct).toFixed(0)}%${it.yield_est ? " מוערכת" : ""})`) : ""}
         ${it.unit_type === "unit" ? row("משקל ליחידה", it.unit_amount ? `${gramsToKgText(it.unit_amount)} ${isGramMode() ? "גרם" : 'ק"ג'}` : '<span class="muted">לא הוגדר (בסדר, אפשר לעבוד ביחידות)</span>') : ""}
         ${it.unit_type !== "unit" && it.piece_g ? row("משקל ליחידה", `${it.piece_g} גרם`) : ""}
         ${stock ? row("מלאי תיאורטי", `${+Number(stock.theoretical_quantity).toFixed(3)} ${unitWord(it)}`) : ""}

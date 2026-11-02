@@ -2,6 +2,7 @@
 // תרגום מדויק של /api/scan-invoice ו-/api/scan-invoice/apply מ-main.py.
 import { dbGetAll, dbGet, dbPut } from "../db.js";
 import { geminiFetch } from "./gemini.js";
+import { estimateYield } from "../yieldKb.js";
 import { matchPantryName, sameWords, conflicts, safePair, findSameNew, normName } from "../scanMatch.js";
 import { CATEGORY_GROUPS, UNIT_TYPES } from "../constants.js";
 import { saveInvoice, validateInvoicePayload } from "./suppliersRepo.js";
@@ -37,6 +38,12 @@ function unreadableMessage(e) {
     if (e instanceof TypeError) return "עוזר AI לא החזיר תשובה (ייתכן שהתמונה לא ברורה או נחסמה). נסה לצלם שוב.";
     return "לא הצלחתי לקרוא את התוכן. נסה לצלם שוב, ישר ובאור טוב.";
 }
+
+// ניצולת מוערכת לפי שם (גזר, אבטיח...) למוצר חדש שנוצר מחשבונית. נשמר yield_est; עיבוד אמיתי דורס
+const estYieldFields = (name, unitType, frozen) => {
+    const est = unitType === "weight" && !frozen ? estimateYield(name) : null;
+    return est ? { yield_pct: est, yield_est: true } : {};
+};
 
 export async function scanInvoiceImage(apiKey, file, onRetry) {
     if (!apiKey) throw new Error("עוזר AI לא זמין כרגע.");
@@ -227,7 +234,7 @@ export async function applyScannedInvoice({ items, supplierId, invoiceDate, imag
             pantryItemId = await dbPut("pantryItems", {
                 name: p.name, category: p.category, subcategory: null, unit_type: p.unitType, unit_amount: p.unitAmount,
                 price: p.pantryPrice, yield_pct: 100, weight_before: null, weight_after: null,
-                is_frozen: isFrozen, parent_id: null,
+                is_frozen: isFrozen, parent_id: null, ...estYieldFields(p.name, p.unitType, isFrozen),
             });
             createdNew.push({ name: p.name, id: pantryItemId });
         }
@@ -376,7 +383,7 @@ export async function createPantryItemFromInvoice({ name, category, unitType, un
     }
     return dbPut("pantryItems", {
         name, category, subcategory: null, unit_type: unitType, unit_amount: amount,
-        price, yield_pct: 100, weight_before: null, weight_after: null, is_frozen: 0, parent_id: null,
+        price, yield_pct: 100, weight_before: null, weight_after: null, is_frozen: 0, parent_id: null, ...estYieldFields(name, unitType, false),
     });
 }
 

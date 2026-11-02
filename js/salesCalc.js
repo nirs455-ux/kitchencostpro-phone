@@ -50,7 +50,7 @@ function explodeRecipe(ctx, recipeId, grams, pantryOut) {
             eggs.set(row.id, acc);
             continue;
         }
-        addUnits(pantryOut, topId(row), gramsToPurchaseUnits(row, g));
+        addUnits(pantryOut, topId(row), gramsToPurchaseUnits(it.prep === "raw" ? { ...row, yield_pct: 100 } : row, g));
     }
     for (const acc of eggs.values()) {
         const size = eggSizeOf(acc.row);

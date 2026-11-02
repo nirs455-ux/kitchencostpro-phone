@@ -29,7 +29,7 @@ export async function renderProcessingPage(container) {
         const processed = isProcessed(it);
         const kids = it.children ? it.children.length : 0;
         const [ic, tint] = catIcon(it.category);
-        const meta = `${processed ? `ניצולת ${Number(it.yield_pct).toFixed(0)}%` : "ללא עיבוד"}${it.is_frozen ? " · ❄" : ""}${kids ? ` · <span class="px-kids" data-kids="${it.id}">${expanded.has(it.id) ? "▾" : "◂"} ${kids} תוצרים</span>` : ""}`;
+        const meta = `${processed ? `ניצולת ${Number(it.yield_pct).toFixed(0)}%${it.yield_est ? " מוערכת" : ""}` : "ללא עיבוד"}${it.is_frozen ? " · ❄" : ""}${kids ? ` · <span class="px-kids" data-kids="${it.id}">${expanded.has(it.id) ? "▾" : "◂"} ${kids} תוצרים</span>` : ""}`;
         const end = `${cur()}${eff.toFixed(2)}<small>${processed || it.is_frozen ? `מ-${cur()}${Number(it.price).toFixed(2)}` : "/ ק\"ג"}</small>`;
         const row = listRow({ ic: indent ? "↳" : ic, tint: indent ? "var(--surface-2)" : tint, name: it.name, meta, end, onClick: () => openProcSheet(it, container) });
         if (indent) row.classList.add("px-indent");

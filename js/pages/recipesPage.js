@@ -796,7 +796,7 @@ async function openRecipeModal(existing, container, draft = null) {
     function addRow(prefill) {
         const id = rowCounter++;
         const um = prefill && prefill.um ? prefill.um : null;
-        rowMeta.set(id, { um, eggPart: (prefill && prefill.egg_part) || "whole", eggSize: null, eggUnit: "g", pct: (prefill && (prefill.pct_mode || prefill.est_mode)) || null });
+        rowMeta.set(id, { um, eggPart: (prefill && prefill.egg_part) || "whole", eggSize: null, eggUnit: "g", pct: (prefill && (prefill.pct_mode || prefill.est_mode)) || null, prep: prefill && prefill.prep === "raw" ? "raw" : null });
         const row = h(`
             <div class="item-row-inputs" id="ing-row-${id}">
                 ${um && um.manual ? `<div class="field" style="margin:0 0 6px;"><input type="text" id="ing-name-${id}" placeholder="שם הרכיב, לא במערכת" value="${escapeHtml(um.name || "")}"></div>` : um ? `<div class="hint-warn" id="ing-um-${id}" style="margin-top:0;">
@@ -814,6 +814,7 @@ async function openRecipeModal(existing, container, draft = null) {
                 </div>
                 ${um ? "" : `<select id="ing-mode-${id}" style="width:auto;font-size:12px;padding:2px 6px;margin:2px 0;">${modeOptionsHtml((prefill && (prefill.pct_mode || prefill.est_mode)) || "", (sources.find((x) => String(x.id) === String(prefill && prefill.pantry_item_id)) || {}).item)}</select><input type="text" inputmode="decimal" id="ing-pw-${id}" placeholder="גרם ליחידה" style="display:none;width:100px;font-size:12px;margin:2px 4px;">`}
                 <div class="line-total" id="ing-line-${id}"></div>
+                <button type="button" class="chip" id="ing-prep-${id}" style="display:none;margin:2px 0;"></button>
                 <div class="hint" id="ing-echo-${id}" style="margin:2px 0;"></div>
                 <div id="ing-egg-${id}" style="display:none;margin:6px 0;">
                     <div class="seg" id="ing-part-${id}">${EGG_PARTS.map(([k]) => `<button type="button" data-part="${k}">${EGG_PART_UI[k]}</button>`).join("")}</div>
@@ -851,6 +852,7 @@ async function openRecipeModal(existing, container, draft = null) {
                 });
             }
         }
+        row.querySelector(`#ing-prep-${id}`).addEventListener("click", () => { const m = rowMeta.get(id); m.prep = m.prep === "raw" ? null : "raw"; recalc(); });
         if (um) rowMeta.get(id).autoQty = row.querySelector(`#ing-qty-${id}`).value; // מולא מהמסמך, לא הוקלד
         // אחרי שנבחר מוצר מחומרי הגלם, הבלוק הצהוב של המסמך מצטמצם לשורה אפורה קטנה (אחרת נראה שעוד חסר משהו)
         if (um && !um.manual) {
@@ -877,7 +879,7 @@ async function openRecipeModal(existing, container, draft = null) {
             tabs: subOpts.length ? [{ key: "pantry", label: "מוצרים" }, { key: "recipe", label: "מתכונים (תת-מתכון)" }] : null,
             // מוצר חדש תוך כדי בניית המתכון (בלי לעצור ולצאת לחומרי הגלם). מחיר לא חובה.
             onCreate: async (d) => {
-                const newId = await addPantryItem({ name: d.name, category: d.category, unit_type: d.unit_type, unit_amount: "", price: d.price, allow_no_price: true });
+                const newId = await addPantryItem({ name: d.name, category: d.category, unit_type: d.unit_type, unit_amount: "", price: d.price, allow_no_price: true, yield_pct: d.yield_pct, no_yield_est: d.no_yield_est });
                 const item = await dbGet("pantryItems", newId);
                 sources.push({ id: newId, name: item.name, indent: false, item });
                 overlay.querySelectorAll('[id^="ing-source-"]').forEach((sel) => {
@@ -1107,6 +1109,13 @@ async function openRecipeModal(existing, container, draft = null) {
             if (modeSelEl && meta.modeFor !== rawSel) { meta.modeFor = rawSel; modeSelEl.innerHTML = modeOptionsHtml(meta.pct || "", s && s.item); meta.pct = modeSelEl.value || null; }
             const pm = !egg && !count ? rowPct(id) : null;
             const em = !egg && !count && !pm ? rowEst(id) : null;
+            { // מצב עיבוד: מעובד (ניצולת המוצר) או גולמי (מחיר קנייה). מוצג רק למוצר שיש לו ניצולת
+                const prepEl = overlay.querySelector(`#ing-prep-${id}`);
+                const y = s && !subRec && !egg && !count ? Number(s.item.yield_pct) : 0;
+                const show = y > 0 && y !== 100;
+                prepEl.style.display = show ? "" : "none";
+                if (show) prepEl.textContent = meta.prep === "raw" ? "גולמי · מחיר קנייה" : `מעובד · ניצולת ${Math.round(y)}%${s.item.yield_est ? " מוערכת" : ""}`;
+            }
             { // משקל יחידה: מוצג כשבוחרים "יחידות לפי משקל יחידה", ממולא ממה ששמור במוצר או מהטבלה, ונשמר במוצר כשמשנים
                 const pwEl = overlay.querySelector(`#ing-pw-${id}`);
                 if (pwEl) {
@@ -1144,7 +1153,7 @@ async function openRecipeModal(existing, container, draft = null) {
                     eggGroups.set(s.id, g);
                     lineEl.textContent = "";
                 } else {
-                    const cost = calcItemCost(pricePerGram(s.item), qty);
+                    const cost = calcItemCost(pricePerGram(meta.prep === "raw" ? { ...s.item, yield_pct: 100 } : s.item), qty);
                     lineEl.innerHTML = money(cost) + (s.item.price_missing ? ' <span class="muted">אין מחיר</span>' : "");
                     total += cost;
                 }
@@ -1300,8 +1309,9 @@ async function openRecipeModal(existing, container, draft = null) {
             const meta = rowMeta.get(Number(id));
             if (egg && meta.eggSize) eggSizeChanges.set(egg.s.id, meta.eggSize);
             const techEl = overlay.querySelector(`#ing-tech-${id}`), technique = techEl ? techEl.value.trim() : "";
+            const rawPrep = meta && meta.prep === "raw" && ss && !egg && !countRow && Number(ss.item.yield_pct) !== 100 ? { prep: "raw" } : {};
             if (pantry_item_id.startsWith("r") && quantity_g) items.push({ sub_recipe_id: Number(pantry_item_id.slice(1)), quantity_g, ...pctPart, ...(technique ? { technique } : {}) });
-            else if (pantry_item_id && quantity_g) items.push({ pantry_item_id, quantity_g, ...(egg ? { egg_part: egg.part } : {}), ...pctPart, ...(technique ? { technique } : {}) });
+            else if (pantry_item_id && quantity_g) items.push({ pantry_item_id, quantity_g, ...(egg ? { egg_part: egg.part } : {}), ...rawPrep, ...pctPart, ...(technique ? { technique } : {}) });
             else if (meta && meta.um && meta.um.manual) {
                 // רכיב שהוקלד ידנית ועדיין לא בחומרי הגלם: נשמר בטיוטה עם הכמות בגרמים (אם הוזנה)
                 const nm = String(meta.um.name || "").trim();

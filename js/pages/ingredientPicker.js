@@ -5,6 +5,7 @@ import { escapeHtml, layerOpened, layerClosed } from "../ui.js";
 import { getSetting, setSetting } from "../repo/settingsRepo.js";
 import { nameCovers } from "../nameMatch.js";
 import { guessCategory } from "../guessCategory.js";
+import { estimateYield } from "../yieldKb.js";
 
 const RECENT_KEY = "picker_recent";
 const RECENT_MAX = 12;
@@ -114,15 +115,31 @@ export async function openIngredientPicker({ title = "בחר מרכיב", items,
                 <div class="field"><label>שם המוצר</label><input type="text" id="pk-n-name" value="${escapeHtml(name)}"></div>
                 <div class="field"><label>קטגוריה</label><select id="pk-n-cat">${Object.keys(CATEGORY_GROUPS).map((c) => `<option value="${escapeHtml(c)}"${c === guessCategory(name) ? " selected" : ""}>${escapeHtml(c)}</option>`).join("")}</select></div>
                 <div class="field"><label>נמדד ב-</label><select id="pk-n-unit">${UNIT_TYPES.map((u) => `<option value="${u}">${escapeHtml(UNIT_TYPE_LABELS[u])}</option>`).join("")}</select></div>
+                <div class="field" id="pk-n-yield-wrap" style="display:none;"><label>ניצולת מוערכת, באחוזים</label><input type="text" inputmode="decimal" id="pk-n-yield"><div class="hint">אחרי קילוף וניקוי. אפשר לשנות, ועיבוד אמיתי בחומרי הגלם יחליף אותה.</div></div>
                 <div class="field"><label>מחיר</label><input type="text" inputmode="decimal" id="pk-n-price" placeholder="אפשר להשלים אחר כך"><div class="hint">אפשר לשמור בלי מחיר. המרכיב ייכנס למתכון, ולא יתרום לעלות עד שתזין מחיר בחומרי הגלם.</div></div>
                 <div class="error-msg" id="pk-n-err"></div>
                 <button type="button" class="btn btn-primary" id="pk-n-save">הוסף ובחר</button>
             </div>`;
         layer.querySelector("#pk-back").onclick = () => draw();
+        // ניצולת מוערכת לפי השם (גזר, אבטיח...): מוצגת רק כשיש הערכה, ורק למוצר שנמדד במשקל
+        const yWrap = layer.querySelector("#pk-n-yield-wrap"), yIn = layer.querySelector("#pk-n-yield"), nameIn = layer.querySelector("#pk-n-name"), unitSel = layer.querySelector("#pk-n-unit");
+        let yEst = null;
+        const syncYield = () => {
+            const est = unitSel.value === "weight" ? estimateYield(nameIn.value) : null;
+            if (est !== yEst) { yEst = est; yIn.value = est || ""; }
+            yWrap.style.display = est ? "" : "none";
+        };
+        nameIn.addEventListener("input", syncYield);
+        unitSel.addEventListener("change", syncYield);
+        syncYield();
         layer.querySelector("#pk-n-save").onclick = async () => {
             const err = layer.querySelector("#pk-n-err");
             const btn = layer.querySelector("#pk-n-save");
             const data = { name: layer.querySelector("#pk-n-name").value, category: layer.querySelector("#pk-n-cat").value, unit_type: layer.querySelector("#pk-n-unit").value, price: layer.querySelector("#pk-n-price").value };
+            if (yEst) { // ההערכה נשמרת כהערכה; ערך ששונה (או רוקן) נשמר כערך של המשתמש
+                const typed = String(yIn.value).trim().replace(",", ".");
+                if (typed !== String(yEst)) { data.yield_pct = typed; if (typed === "") data.no_yield_est = true; }
+            }
             if (!data.category) { err.textContent = "בחר קטגוריה"; err.style.display = "block"; return; }
             btn.disabled = true;
             try {

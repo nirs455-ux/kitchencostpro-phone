@@ -2,6 +2,7 @@
 import { dbGetAll, dbGet, dbPut, dbDelete, dbGetByIndex } from "../db.js";
 import { CATEGORY_GROUPS, UNIT_TYPES } from "../constants.js";
 import { computeYieldPct, isCountItem } from "../formulas.js";
+import { estimateYield } from "../yieldKb.js";
 import { EGG_SIZES, guessEggSize } from "../eggs.js";
 import { expandToParents } from "./subRecipes.js";
 
@@ -72,7 +73,15 @@ export async function setPieceWeight(id, grams) {
 
 export async function addPantryItem(data) {
     const name = (data.name || "").trim();
-    const { weightBefore, weightAfter, yieldPct, isFrozen } = validateBase(data);
+    const base = validateBase(data);
+    const { weightBefore, weightAfter, isFrozen } = base;
+    let { yieldPct } = base;
+    // ניצולת מוערכת לפי שם המוצר (גזר, אבטיח...) כשלא הוזנה ניצולת או משקלים. עיבוד אמיתי דורס אותה
+    let yieldEst = false;
+    if (data.unit_type === "weight" && !isFrozen && weightBefore == null && weightAfter == null && yieldPct === 100 && !data.no_yield_est) {
+        const est = estimateYield(name);
+        if (est) { yieldPct = est; yieldEst = true; }
+    }
 
     if (!name || !(data.category in CATEGORY_GROUPS) || !UNIT_TYPES.includes(data.unit_type)) {
         throw new Error("נתונים חסרים או שגויים");
@@ -96,7 +105,7 @@ export async function addPantryItem(data) {
         name, category: data.category, subcategory, unit_type: data.unit_type, unit_amount: unitAmount,
         pkg_size: data.unit_type !== "unit" && parseFloat(data.pkg_size) > 0 ? parseFloat(data.pkg_size) : null, // גודל אריזה (ק"ג/ליטר) לספירה באריזות
         price, yield_pct: yieldPct, weight_before: weightBefore, weight_after: weightAfter,
-        is_frozen: isFrozen ? 1 : 0, parent_id: null, ...(noPrice ? { price_missing: true } : {}),
+        is_frozen: isFrozen ? 1 : 0, parent_id: null, ...(yieldEst ? { yield_est: true } : {}), ...(noPrice ? { price_missing: true } : {}),
         ...(data.unit_type !== "unit" && pieceGrams(data.piece_g) ? { piece_g: pieceGrams(data.piece_g) } : {}),
         ...(data.unit_type === "unit" && EGG_SIZES[data.egg_size] ? { egg_size: data.egg_size } : {}),
         // אלרגנים: רק אם הוגדרו במפורש. אחרת השדה לא קיים = "לא ידוע" (המאגר מכריע בזמן התצוגה). אין ניחוש לפי שם.
@@ -191,6 +200,7 @@ export async function updatePantryItemYield(id, data) {
         name, yield_pct: yieldPct, weight_before: weightBefore, weight_after: weightAfter,
         is_frozen: isFrozen ? 1 : 0, subcategory,
     });
+    delete existing.yield_est; // הוזנה ניצולת או משקל בעיבוד: כבר לא הערכה
     await dbPut("pantryItems", existing);
 }
 

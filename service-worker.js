@@ -1,4 +1,4 @@
-const CACHE_NAME = "kcp-v131";
+const CACHE_NAME = "kcp-v132";
 const NET_TIMEOUT_MS = 4000;
 const ASSETS = [
     "./",
@@ -19,6 +19,7 @@ const ASSETS = [
     "./js/prepPlan.js",
     "./js/unitKbDry.js",
     "./js/unitKbOther.js",
+    "./js/yieldKb.js",
     "./js/pantryDuplicates.js",
     "./js/repo/pantryMerge.js",
     "./js/eventDoc.js",
