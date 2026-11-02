@@ -486,3 +486,4 @@ html, body { overscroll-behavior-y: none; }
 /* בלי בחירת טקסט בלחיצה על רשימות וכפתורים: מונע את כרטיס המילון/חיפוש של אנדרואיד. שדות הקלדה וטקסט להעתקה נשארים נבחרים */
 body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 input, textarea, select, pre, code, .selectable, [contenteditable] { -webkit-user-select: text; user-select: text; }
+.uc-wrap { display: flex; flex-direction: column; gap: 6px; }

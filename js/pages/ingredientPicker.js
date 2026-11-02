@@ -1,3 +1,4 @@
+import { bindUnitChoice } from "../unitChoice.js";
 // בורר מרכיבים: חיפוש + קטגוריות + תתי-קטגוריות + "אחרונים". משמש לבניית מתכון ולבניית מנה (ועובד גם עם מאות מוצרים).
 // נפתח כשכבה נפרדת מעל החלון הפתוח (בלי לסגור אותו). מחזיר את הבחירה דרך onPick.
 import { isWaterName } from "../freeItems.js";
@@ -125,6 +126,7 @@ export async function openIngredientPicker({ title = "בחר מרכיב", items,
         layer.querySelector("#pk-back").onclick = () => draw();
         // ניצולת מוערכת לפי השם (גזר, אבטיח...): מוצגת רק כשיש הערכה, ורק למוצר שנמדד במשקל
         const yWrap = layer.querySelector("#pk-n-yield-wrap"), yIn = layer.querySelector("#pk-n-yield"), nameIn = layer.querySelector("#pk-n-name"), unitSel = layer.querySelector("#pk-n-unit");
+        bindUnitChoice(unitSel);
         let yEst = null;
         const syncYield = () => {
             const est = unitSel.value === "weight" ? estimateYield(nameIn.value) : null;

@@ -1,3 +1,4 @@
+import { bindUnitChoice } from "../unitChoice.js";
 import { listTopLevelPantryItems, addPantryItem, updatePantryItem, deletePantryItem, getDeleteInfo, deleteConfirmText } from "../repo/pantryRepo.js";
 import { CATEGORY_GROUPS, UNIT_TYPES, UNIT_TYPE_LABELS } from "../constants.js";
 import { h, openModal, closeModal, confirmDialog, toast, escapeHtml, busy, attemptClose, info, cur, curLabel } from "../ui.js";
@@ -374,6 +375,7 @@ function openPantryModal(existing, container) {
     const catSelect = overlay.querySelector("#f-category");
     const subWrap = overlay.querySelector("#f-subcategory-wrap");
     const unitTypeSelect = overlay.querySelector("#f-unit-type");
+    bindUnitChoice(unitTypeSelect);
     const unitAmountWrap = overlay.querySelector("#f-unit-amount-wrap");
 
     function syncSubcategory() {

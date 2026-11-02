@@ -1,3 +1,4 @@
+import { bindUnitChoice } from "../unitChoice.js";
 // ספר מתכונים: מתכון נשמר גם כשחסרים רכיבים (טיוטה שאפשר להשלים אחר כך), המסמך המקורי נשמר איתו,
 // ויש תצוגת פרטים עם רשימת רכיבים לתווית והצהרת אלרגנים.
 import { isWaterName } from "../freeItems.js";
@@ -722,6 +723,7 @@ function askMissingIngredients(todo) {
                 <div class="field" data-f-ua style="margin:0 0 6px;${unitOf(x.um) === "unit" ? "" : "display:none;"}"><input type="text" inputmode="decimal" data-f="ua" placeholder="משקל ליחידה בגרמים, לא חובה"></div>
                 <div class="field" style="margin:0;display:flex;gap:10px;align-items:center;"><input type="text" inputmode="decimal" data-f="price" placeholder="מחיר, לא חובה" style="flex:1;"${isWaterName(x.um.name) ? " disabled" : ""}><label class="checkbox-field"><input type="checkbox" data-f="free"${isWaterName(x.um.name) ? " checked" : ""}><span>ללא עלות</span></label></div></div>`; }).join("")}</div>
             <div style="padding:10px 16px calc(10px + env(safe-area-inset-bottom,0px));display:flex;gap:8px;"><button type="button" class="btn btn-secondary" id="mi-skip">דלג</button><button type="button" class="btn btn-primary" id="mi-ok" style="flex:1;">הוסף הכול</button></div>`;
+        ov.querySelectorAll('[data-f="unit"]').forEach(bindUnitChoice);
         ov.querySelectorAll('[data-f="unit"]').forEach((u) => u.addEventListener("change", () => { u.closest(".card").querySelector("[data-f-ua]").style.display = u.value === "unit" ? "" : "none"; }));
         ov.querySelectorAll('[data-f="free"]').forEach((cb) => cb.addEventListener("change", () => { const pr = cb.closest(".card").querySelector('[data-f="price"]'); pr.disabled = cb.checked; if (cb.checked) pr.value = ""; }));
         ov.querySelector("#mi-skip").onclick = () => { shut(); resolve(null); };
@@ -967,6 +969,7 @@ async function openRecipeModal(existing, container, draft = null) {
             const qa = row.querySelector(`#ing-qa-${id}`);
             row.querySelector(`#ing-qa-btn-${id}`).onclick = () => { qa.style.display = qa.style.display === "none" ? "block" : "none"; };
             const ut = row.querySelector(`#qa-ut-${id}`);
+            bindUnitChoice(ut);
             const syncQa = () => {
                 row.querySelector(`#qa-price-label-${id}`).textContent = ut.value === "liter" ? `מחיר לליטר (${curLabel()})` : ut.value === "unit" ? `מחיר ליחידה (${curLabel()})` : `מחיר לק"ג (${curLabel()})`;
                 row.querySelector(`#qa-ua-wrap-${id}`).style.display = ut.value === "unit" ? "block" : "none";
