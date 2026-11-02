@@ -88,7 +88,7 @@ export async function renderPantryProducts(container) {
     container.innerHTML = `
         <div class="px-top"><input type="search" id="px-q" placeholder="חיפוש מוצר..." autocomplete="off">
             <div class="seg px-view"><button type="button" data-v="cats" class="${view === "cats" ? "active" : ""}">קטגוריות</button><button type="button" data-v="list" class="${view === "list" ? "active" : ""}">רשימה</button></div></div>
-        <div class="btn-row" style="margin:6px 0;"><button type="button" class="btn btn-secondary btn-small" id="px-sel">☑ בחירה</button><button type="button" class="btn btn-secondary btn-small" id="px-dups">כפילויות</button><button type="button" class="btn btn-secondary btn-small" id="px-yield">ניצולת מוערכת</button><button type="button" class="btn btn-secondary btn-small" id="px-all" style="display:none;">בחר את כל המוצגים</button></div>
+        <div class="btn-row" style="margin:6px 0;"><button type="button" class="btn btn-secondary btn-small" id="px-sel">מחיקה מרובה</button><button type="button" class="btn btn-secondary btn-small" id="px-dups">כפילויות</button><button type="button" class="btn btn-secondary btn-small" id="px-all" style="display:none;">בחר את כל המוצגים</button></div>
         <div id="px-chips"></div>
         <div id="pantry-list"></div>
         <div class="px-bulk" id="px-bulk" style="display:none;"><b id="px-bulk-n"></b><button type="button" class="btn btn-danger btn-small" id="px-bulk-del">מחק</button><button type="button" class="btn btn-secondary btn-small" id="px-bulk-cancel">ביטול</button></div>
@@ -108,6 +108,7 @@ export async function renderPantryProducts(container) {
         container.querySelector("#px-bulk-n").textContent = sel.size ? `נבחרו ${sel.size}` : "בחר מוצרים";
         container.querySelector("#px-bulk-del").disabled = !sel.size;
         list.classList.toggle("px-selecting", selMode);
+        container.querySelector("#btn-add").style.display = selMode ? "none" : "";
         list.querySelectorAll(".px-row").forEach((r) => r.classList.toggle("sel", selMode && sel.has(Number(r.dataset.id))));
     };
     const wireRows = () => {
@@ -138,7 +139,7 @@ export async function renderPantryProducts(container) {
             if (!shown.length) list.innerHTML = `<div class="empty-state">${q ? "לא נמצא מוצר תואם." : "אין מוצרים בקטגוריה הזו."}</div>`;
             for (const it of shown) list.appendChild(pxRow(it));
         } else {
-            const searching = !!normalize(q);
+            const searching = !!normalize(q) || selMode; // במחיקה מרובה הכול פתוח
             if (!rows.length) { list.innerHTML = '<div class="empty-state">לא נמצא מוצר תואם.</div>'; return; }
             for (const cat of orderCategories(rows.map((r) => r.category))) {
                 const inCat = rows.filter((r) => r.category === cat);
@@ -172,9 +173,8 @@ export async function renderPantryProducts(container) {
     container.querySelectorAll(".px-view [data-v]").forEach((b) => { b.onclick = async () => { view = b.dataset.v; await setSetting("pantry_view", view); renderPantryProducts(container); }; });
     container.querySelector("#btn-add").onclick = () => openPantryModal(null, container);
     container.querySelector("#px-dups").onclick = () => openDuplicatesModal(() => renderPantryProducts(container));
-    container.querySelector("#px-yield").onclick = () => openYieldModal(() => renderPantryProducts(container));
-    container.querySelector("#px-sel").onclick = () => { selMode = true; sel.clear(); syncBulk(); };
-    container.querySelector("#px-bulk-cancel").onclick = () => { selMode = false; sel.clear(); syncBulk(); };
+    container.querySelector("#px-sel").onclick = () => { selMode = true; sel.clear(); draw(); };
+    container.querySelector("#px-bulk-cancel").onclick = () => { selMode = false; sel.clear(); draw(); };
     container.querySelector("#px-all").onclick = () => { list.querySelectorAll(".px-row").forEach((r) => sel.add(Number(r.dataset.id))); syncBulk(); };
     container.querySelector("#px-bulk-del").onclick = async () => {
         if (!sel.size) return;
@@ -191,7 +191,7 @@ export async function renderPantryProducts(container) {
 }
 
 // ניצולת מוערכת למוצרים קיימים: רשימה לפני החלה, ואפשר להוריד סימון. הערכה קיימת אפשר להחזיר ל-100
-async function openYieldModal(onChange) {
+export async function openYieldModal(onChange) {
     const pantry = await dbGetAll("pantryItems");
     const plan = planYieldFill(pantry);
     const est = estimatedYieldItems(pantry);

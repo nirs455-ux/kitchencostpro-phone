@@ -37,6 +37,7 @@ export async function renderSettingsPage(container) {
             <div class="set-body" ${setOpen.has("addons") ? "" : "hidden"}>
                 <div class="hint" style="margin-bottom:6px;">בוחרים אילו Add-ons פועלים אצלך. הבסיס תמיד פעיל: חומרי גלם, מתכונים, מנות, פחת, ספקים והזמנות. Add-on כבוי נעלם מהמסכים ולא מוחק נתונים, והפעלה מחדש מחזירה הכול.</div>
                 ${ADDONS.map((a) => `<div class="card"><div class="checkbox-field"><input type="checkbox" id="ad-${a.key}" data-addon="${a.key}" ${addonOn(a.key) ? "checked" : ""}><label for="ad-${a.key}"><b>${a.icon} ${a.label}</b><br><span class="muted">${a.desc}</span></label></div></div>`).join("")}
+                ${addonOn("adv") ? '<div class="card"><b>ניצולת מוערכת למוצרים קיימים</b><div class="muted" style="margin:4px 0 8px;">ממלא ניצולת לפי שם המוצר, עם תצוגה מקדימה וביטול בלחיצה.</div><button type="button" class="btn btn-secondary btn-small" id="set-yield">פתיחה</button></div>' : ""}
             </div>
         </div>
         <div class="px-sec set-sec" data-sec="backup">
@@ -148,6 +149,8 @@ export async function renderSettingsPage(container) {
     const cloudCard = container.querySelector("#cloud-card");
     if (cloudCard) renderCloudCard(cloudCard);
     // תוספות: מתג לכל יכולת. הפעלה/כיבוי מעדכנים את התפריט והמסכים
+    const yb = container.querySelector("#set-yield");
+    if (yb) yb.onclick = async () => (await import("./pantryPage.js")).openYieldModal(() => {});
     container.querySelectorAll("input[data-addon]").forEach((c) => {
         c.onchange = async () => { await setAddon(c.dataset.addon, c.checked); toast(c.checked ? "Add-on הופעל" : "Add-on כובה"); renderSettingsPage(container); };
     });
