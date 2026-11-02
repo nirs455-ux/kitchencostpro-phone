@@ -1108,12 +1108,15 @@ async function openRecipeModal(existing, container, draft = null) {
             const qtyInput = overlay.querySelector(`#ing-qty-${id}`);
             const modeSelEl = overlay.querySelector(`#ing-mode-${id}`);
             if (modeSelEl && meta.modeFor !== rawSel) { meta.modeFor = rawSel; modeSelEl.innerHTML = modeOptionsHtml(meta.pct || "", s && s.item); meta.pct = modeSelEl.value || null; }
+            // בסיסי (תוספת "מתכונים מתקדמים" כבויה): מוצר וכמות בלבד. שורה שכבר משתמשת באחוזים, ביחידות או בעיבוד ממשיכה להיראות
+            const advRow = addonOn("adv") || !!meta.pct || !!meta.prep;
+            if (modeSelEl) modeSelEl.style.display = advRow ? "" : "none";
             const pm = !egg && !count ? rowPct(id) : null;
             const em = !egg && !count && !pm ? rowEst(id) : null;
             { // מצב עיבוד: מעובד (ניצולת המוצר) או גולמי (מחיר קנייה). מוצג רק למוצר שיש לו ניצולת
                 const prepEl = overlay.querySelector(`#ing-prep-${id}`);
                 const y = s && !subRec && !egg && !count ? Number(s.item.yield_pct) : 0;
-                const show = y > 0 && y !== 100;
+                const show = y > 0 && y !== 100 && advRow;
                 prepEl.style.display = show ? "" : "none";
                 if (show) prepEl.textContent = yieldApplies(s.item, meta.prep) ? `מעובד · ניצולת ${Math.round(y)}%${s.item.yield_est ? " מוערכת" : ""}` : s.item.yield_est ? "ללא עיבוד" : "גולמי · מחיר קנייה";
             }

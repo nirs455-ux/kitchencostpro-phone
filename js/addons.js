@@ -10,6 +10,7 @@ export const ADDONS = [
     { key: "scan", icon: "🧾", label: "סריקת חשבוניות והנהלת חשבונות", desc: "צילום חשבונית שנקראת אוטומטית, וייצוא לאקסל." },
     { key: "nutrition", icon: "🥗", label: "תזונה ואלרגנים", desc: "אלרגנים וערכים תזונתיים למתכונים (USDA, ברקוד, צילום תווית)." },
     { key: "producer", icon: "🏭", label: "יצרן ומדבקות", desc: "מוצרים באריזה ומדבקות להדפסה." },
+    { key: "adv", icon: "🧮", label: "מתכונים מתקדמים", desc: "אחוזים, יחידות לפי משקל ממוצע, ומעובד או לא בשורת מתכון. כבוי: רק מוצר וכמות." },
     { key: "cloud", icon: "☁️", label: "גיבוי לענן", desc: "גיבוי אוטומטי ל-Google Drive וסנכרון בין מכשירים." },
 ];
 export const ADDON_KEYS = ADDONS.map((a) => a.key);
@@ -34,11 +35,19 @@ export const enabledAddons = () => (enabled ? [...enabled] : [...ADDON_KEYS]);
 
 export async function loadAddons() {
     const stored = parseAddons(await getSetting(SETTING, null));
-    if (stored) { enabled = stored; return enabled; }
+    if (stored) {
+        // תוספת חדשה (מתכונים מתקדמים) למשתמש קיים: נשארת פעילה כדי שלא יאבד יכולות שהיו גלויות. נבחרת פעם אחת בלבד
+        if (!(await getSetting("addon_adv_seen", false))) {
+            await setSetting("addon_adv_seen", true);
+            if (!stored.has("adv")) { stored.add("adv"); await setSetting(SETTING, [...stored]); }
+        }
+        enabled = stored; return enabled;
+    }
     let hasData = false;
     try { hasData = (await dbGetAll("pantryItems")).length + (await dbGetAll("recipes")).length + (await dbGetAll("invoices")).length > 0; } catch (e) { hasData = true; }
     enabled = initialAddons({ hasData, producerMode: !!(await getSetting("producer_mode")) });
     await setSetting(SETTING, [...enabled]);
+    await setSetting("addon_adv_seen", true);
     return enabled;
 }
 
