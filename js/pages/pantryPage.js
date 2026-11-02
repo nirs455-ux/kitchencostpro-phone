@@ -60,10 +60,10 @@ const unitWord = (it) => (it.unit_type === "unit" ? "יחידה" : it.unit_type 
 
 function pxRow(it) {
     const [ic, tint] = catStyle(it.category);
-    const tags = [it.is_frozen ? '<span class="tag tag-frozen">❄ קפוא</span>' : "", it.price_missing ? '<span class="tag tag-danger">חסר מחיר</span>' : ""].filter(Boolean).join(" ");
-    return h(`<div class="px-row" data-id="${it.id}"><span class="px-ic" style="background:${tint};">${ic}</span>
+    const tags = [it.is_frozen ? '<span class="tag tag-frozen">❄ קפוא</span>' : "", it.price_missing ? '<span class="tag tag-danger">חסר מחיר</span>' : "", it.free ? '<span class="tag tag-ok">ללא עלות</span>' : ""].filter(Boolean).join(" ");
+    return h(`<div class="px-row" data-id="${it.id}"><span class="px-chk" aria-hidden="true"></span><span class="px-ic" style="background:${tint};">${ic}</span>
         <div class="px-main"><div class="px-name">${escapeHtml(it.name)}</div><div class="px-meta">${escapeHtml(subOf(it) || it.category)}${tags ? " · " : ""}${tags}</div></div>
-        <div class="px-price">${cur()}${Number(it.price).toFixed(2)}<small>/ ${unitWord(it)}</small></div></div>`);
+        <div class="px-price">${it.free ? "ללא עלות" : `${cur()}${Number(it.price).toFixed(2)}<small>/ ${unitWord(it)}</small>`}</div></div>`);
 }
 
 export async function renderPantryProducts(container) {
@@ -107,6 +107,7 @@ export async function renderPantryProducts(container) {
         bulkEl.style.display = selMode ? "flex" : "none";
         container.querySelector("#px-bulk-n").textContent = sel.size ? `נבחרו ${sel.size}` : "בחר מוצרים";
         container.querySelector("#px-bulk-del").disabled = !sel.size;
+        list.classList.toggle("px-selecting", selMode);
         list.querySelectorAll(".px-row").forEach((r) => r.classList.toggle("sel", selMode && sel.has(Number(r.dataset.id))));
     };
     const wireRows = () => {
@@ -342,6 +343,7 @@ function openPantryModal(existing, container) {
                 <label>גודל הביצה ${info("קובע את משקל הביצה ללא קליפה ואת כמות החלבון והחלמון, כדי שהמתכונים יחשבו כמה ביצים לשבור ומה העלות.")}</label>
                 <select id="f-egg-size">${Object.keys(EGG_SIZES).map((k) => `<option value="${k}">${k}</option>`).join("")}</select>
             </div>
+            <button type="button" class="btn btn-secondary" id="f-piece-open" style="display:none;align-self:flex-end;">＋ משקל לחתיכה</button>
             <div class="field" id="f-piece-wrap">
                 <label>משקל ליחידה בגרמים, לעלה, פרוסה או חתיכה ${info("מוצר שקונים בקילו או בליטר אבל במתכון סופרים ביחידות, למשל עלי דפנה. כותבים כמה גרם שוקלת יחידה אחת, ובמתכון אפשר לכתוב 5 יחידות והמערכת תחשב. לא חובה.")}</label>
                 <input type="text" inputmode="decimal" id="f-piece" value="${existing && existing.piece_g ? existing.piece_g : ""}" placeholder="למשל 0.3">
@@ -358,10 +360,10 @@ function openPantryModal(existing, container) {
         </div>
         <div class="field" id="f-bulk-wrap" style="display:none;">
             <label>גודל האריזה ${info('אם האריזה היא לא קילו או ליטר: בקבוק שמן 370 מ"ל, שקית קמח 800 גרם, ארגז 10 ק"ג. כותבים את הגודל ובשדה המחיר את מחיר האריזה, והמערכת מחשבת לבד מחיר לק"ג או לליטר. אם המחיר שלך כבר לק"ג או לליטר, משאירים ריק. כשמוגדר גודל אריזה, בספירת מלאי סופרים אריזות (בקבוקים, שקיות) והמערכת ממירה לבד לליטר או ק"ג.')}</label>
-            <div class="cv-row"><input type="text" inputmode="decimal" id="f-buy-qty" value="" placeholder="למשל 370"><select id="f-buy-unit"></select></div>
+            <div class="cv-row"><input type="text" inputmode="decimal" id="f-buy-qty" value=""><select id="f-buy-unit"></select></div>
             <input type="hidden" id="f-bulk" value="">
         </div>
-        <div class="field"><label id="f-price-label">מחיר קנייה (${curLabel()})</label><input type="number" step="any" id="f-price" value="${existing ? existing.price : ""}"><div class="hint" id="f-price-echo"></div></div>
+        <div class="field"><label id="f-price-label">מחיר קנייה (${curLabel()})</label><input type="number" step="any" id="f-price" value="${existing && !existing.free ? existing.price : ""}"><div class="hint" id="f-price-echo"></div><label class="checkbox-field" style="margin-top:8px;"><input type="checkbox" id="f-free"${existing && existing.free ? " checked" : ""}><span>ללא עלות</span></label></div>
         <div class="error-msg"></div>
         <div class="modal-actions">
             <button class="btn btn-secondary" id="btn-cancel">ביטול</button>
@@ -433,9 +435,16 @@ function openPantryModal(existing, container) {
     priceInput.addEventListener("input", syncPrice);
     bulkInput.addEventListener("input", syncPrice);
     unitAmountInput.addEventListener("input", syncPrice);
+    let pieceOpen = false;
+    overlay.querySelector("#f-piece-open").onclick = () => { pieceOpen = true; syncUnitAmount(); };
+    const freeBox = overlay.querySelector("#f-free");
+    freeBox.addEventListener("change", () => { priceInput.disabled = freeBox.checked; if (freeBox.checked) priceInput.value = ""; });
+    priceInput.disabled = freeBox.checked;
     function syncUnitAmount() {
         unitAmountWrap.style.display = unitTypeSelect.value === "unit" ? "block" : "none";
-        overlay.querySelector("#f-piece-wrap").style.display = unitTypeSelect.value === "unit" ? "none" : "block";
+        const showPiece = unitTypeSelect.value !== "unit" && (pieceOpen || !!overlay.querySelector("#f-piece").value);
+        overlay.querySelector("#f-piece-wrap").style.display = showPiece ? "block" : "none";
+        overlay.querySelector("#f-piece-open").style.display = unitTypeSelect.value !== "unit" && !showPiece ? "" : "none";
     }
     catSelect.onchange = syncSubcategory;
     packInput.addEventListener("input", () => { packInput.dataset.touched = "1"; });
@@ -486,6 +495,7 @@ function openPantryModal(existing, container) {
             is_frozen: existing ? !!existing.is_frozen : false, // קפוא נקבע בעיבוד וניצולת
         };
         if (isEggForm()) data.egg_size = eggSizeSel.value;
+        if (freeBox.checked) data.free = true;
         // אלרגנים לא מוצגים כאן: מוצר חדש מקבל הצעה אוטומטית לפי השם, ועריכה/אישור נעשים במתכון
         try {
             if (isEdit) {

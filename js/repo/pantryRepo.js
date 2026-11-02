@@ -1,4 +1,5 @@
 // לוגיקת חומרי גלם - תרגום מדויק של _validate_payload / add_item / update_item / update_item_yield / delete_item מ-main.py.
+import { isWaterName } from "../freeItems.js";
 import { dbGetAll, dbGet, dbPut, dbDelete, dbGetByIndex } from "../db.js";
 import { CATEGORY_GROUPS, UNIT_TYPES } from "../constants.js";
 import { computeYieldPct, isCountItem } from "../formulas.js";
@@ -95,8 +96,9 @@ export async function addPantryItem(data) {
     if (!allowedSubs.length || !subcategory) subcategory = null;
 
     // הוספה תוך כדי עבודה (למשל מתוך מתכון): אפשר בלי מחיר. נשמר עם סימון "חסר מחיר" עד שמשלימים
-    const noPrice = !!data.allow_no_price && String(data.price ?? "").trim() === "";
-    const price = noPrice ? 0 : checkPrice(data.price);
+    const isFree = !!data.free || (!!data.allow_no_price && String(data.price ?? "").trim() === "" && isWaterName(name));
+    const noPrice = !isFree && !!data.allow_no_price && String(data.price ?? "").trim() === "";
+    const price = isFree || noPrice ? 0 : checkPrice(data.price);
 
     let unitAmount = null;
     if (data.unit_type === "unit") unitAmount = numIn(data.unit_amount) > 0 ? checkUnitAmount(data.unit_amount) : null; // משקל ליחידה לא חובה
@@ -105,7 +107,7 @@ export async function addPantryItem(data) {
         name, category: data.category, subcategory, unit_type: data.unit_type, unit_amount: unitAmount,
         pkg_size: data.unit_type !== "unit" && parseFloat(data.pkg_size) > 0 ? parseFloat(data.pkg_size) : null, // גודל אריזה (ק"ג/ליטר) לספירה באריזות
         price, yield_pct: yieldPct, weight_before: weightBefore, weight_after: weightAfter,
-        is_frozen: isFrozen ? 1 : 0, parent_id: null, ...(yieldEst ? { yield_est: true } : {}), ...(noPrice ? { price_missing: true } : {}),
+        is_frozen: isFrozen ? 1 : 0, parent_id: null, ...(yieldEst ? { yield_est: true } : {}), ...(noPrice ? { price_missing: true } : {}), ...(isFree ? { free: true } : {}),
         ...(data.unit_type !== "unit" && pieceGrams(data.piece_g) ? { piece_g: pieceGrams(data.piece_g) } : {}),
         ...(data.unit_type === "unit" && EGG_SIZES[data.egg_size] ? { egg_size: data.egg_size } : {}),
         // אלרגנים: רק אם הוגדרו במפורש. אחרת השדה לא קיים = "לא ידוע" (המאגר מכריע בזמן התצוגה). אין ניחוש לפי שם.
@@ -174,7 +176,8 @@ export async function updatePantryItem(id, data) {
         throw new Error("נתונים חסרים או שגויים");
     }
     if (name.toLowerCase() !== String(existing.name || "").trim().toLowerCase()) await assertUniqueName(name, id); // רק אם שינו שם (כפילויות ישנות לא חוסמות עריכת מחיר)
-    const price = checkPrice(data.price);
+    const isFree = !!data.free;
+    const price = isFree ? 0 : checkPrice(data.price);
 
     let unitAmount = null;
     if (data.unit_type === "unit") unitAmount = numIn(data.unit_amount) > 0 ? checkUnitAmount(data.unit_amount) : null; // משקל ליחידה לא חובה
@@ -196,7 +199,8 @@ export async function updatePantryItem(id, data) {
         name, category: data.category, subcategory: newSubcategory, unit_type: data.unit_type,
         unit_amount: unitAmount, price, is_frozen: isFrozen ? 1 : 0,
     });
-    if (price > 0) delete existing.price_missing; // הושלם מחיר
+    if (price > 0 || isFree) delete existing.price_missing; // הושלם מחיר
+    if (isFree) existing.free = true; else delete existing.free;
     if ("piece_g" in data) { const pg = data.unit_type !== "unit" ? pieceGrams(data.piece_g) : null; if (pg) existing.piece_g = pg; else delete existing.piece_g; }
     if (data.unit_type === "unit" && EGG_SIZES[data.egg_size]) existing.egg_size = data.egg_size;
     existing.pkg_size = data.unit_type !== "unit" && parseFloat(data.pkg_size) > 0 ? parseFloat(data.pkg_size) : null;

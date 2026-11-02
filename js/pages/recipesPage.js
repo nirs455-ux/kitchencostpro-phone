@@ -1,5 +1,6 @@
 // ספר מתכונים: מתכון נשמר גם כשחסרים רכיבים (טיוטה שאפשר להשלים אחר כך), המסמך המקורי נשמר איתו,
 // ויש תצוגת פרטים עם רשימת רכיבים לתווית והצהרת אלרגנים.
+import { isWaterName } from "../freeItems.js";
 import { listRecipesWithItems, saveRecipe, deleteRecipe, recipeDishCount, recipeParentCount, listSubRecipeOptions, setRecipeBase, replaceIngredientWithSubRecipe } from "../repo/recipesRepo.js";
 import { listAllPantryItems, addPantryItem, setItemAllergens, clearItemAllergens, setEggSize, setPieceWeight, pieceGrams } from "../repo/pantryRepo.js";
 import { getLabelNames, setLabelName } from "../repo/labelNamesRepo.js";
@@ -702,6 +703,8 @@ function askMissingIngredients(todo) {
     return new Promise((resolve) => {
         const unitOf = (um) => (um.unit === "ml" || um.unit === "l" ? "liter" : um.unit === "unit" ? "unit" : "weight");
         const cats = Object.keys(CATEGORY_GROUPS);
+        const keyOfName = (x) => String(x.um.name || "").trim().toLowerCase();
+        const groups = [...todo.reduce((m, x) => m.set(keyOfName(x), [...(m.get(keyOfName(x)) || []), x]), new Map()).values()]; // אותו שם פעמיים: כרטיס אחד
         // שכבה נפרדת מעל מסך בניית המתכון (חלון רגיל היה סוגר אותו)
         const ov = document.createElement("div");
         ov.className = "picker";
@@ -710,21 +713,23 @@ function askMissingIngredients(todo) {
         const shut = () => { ov.remove(); layerClosed(); };
         ov.innerHTML = `<div class="pk-top"><div class="pk-title">רכיבים שלא נמצאו בחומרי הגלם</div></div>
             <div style="padding:0 16px;overflow:auto;flex:1;"><div class="hint" style="margin-bottom:8px;">בדוק את הקטגוריה והיחידה, והוסף מחיר אם אתה יודע. בלי מחיר הרכיב נכנס למתכון ומסומן ממתין למחיר.</div>
-            ${todo.map((x, i) => `<div class="card" style="margin:0 0 8px;" data-i="${i}">
+            ${groups.map((g) => { const x = g[0], i = todo.indexOf(x); return `<div class="card" style="margin:0 0 8px;" data-i="${i}">
                 <div class="field" style="margin:0 0 6px;"><input type="text" data-f="name" value="${escapeHtml(x.um.name)}"></div>
                 <div class="form-row">
                     <div class="field"><label>קטגוריה</label><select data-f="cat">${cats.map((c) => `<option value="${escapeHtml(c)}"${c === guessCategory(x.um.name) ? " selected" : ""}>${escapeHtml(c)}</option>`).join("")}</select></div>
                     <div class="field"><label>נמדד ב-</label><select data-f="unit">${UNIT_TYPES.map((u) => `<option value="${u}"${u === unitOf(x.um) ? " selected" : ""}>${escapeHtml(UNIT_TYPE_LABELS[u])}</option>`).join("")}</select></div>
                 </div>
-                <div class="field" style="margin:0;"><input type="text" inputmode="decimal" data-f="price" placeholder="מחיר, לא חובה"></div></div>`).join("")}</div>
+                <div class="field" style="margin:0;display:flex;gap:10px;align-items:center;"><input type="text" inputmode="decimal" data-f="price" placeholder="מחיר, לא חובה" style="flex:1;"${isWaterName(x.um.name) ? " disabled" : ""}><label class="checkbox-field"><input type="checkbox" data-f="free"${isWaterName(x.um.name) ? " checked" : ""}><span>ללא עלות</span></label></div></div>`; }).join("")}</div>
             <div style="padding:10px 16px calc(10px + env(safe-area-inset-bottom,0px));display:flex;gap:8px;"><button type="button" class="btn btn-secondary" id="mi-skip">דלג</button><button type="button" class="btn btn-primary" id="mi-ok" style="flex:1;">הוסף הכול</button></div>`;
+        ov.querySelectorAll('[data-f="free"]').forEach((cb) => cb.addEventListener("change", () => { const pr = cb.closest(".card").querySelector('[data-f="price"]'); pr.disabled = cb.checked; if (cb.checked) pr.value = ""; }));
         ov.querySelector("#mi-skip").onclick = () => { shut(); resolve(null); };
         ov.querySelector("#mi-ok").onclick = () => {
             const out = new Map();
             ov.querySelectorAll("[data-i]").forEach((card) => {
                 const x = todo[Number(card.dataset.i)];
                 const f = (k) => card.querySelector(`[data-f="${k}"]`).value;
-                out.set(x.id, { name: f("name").trim() || x.um.name, category: f("cat"), unit_type: f("unit"), price: f("price").trim() });
+                const rec = { name: f("name").trim() || x.um.name, category: f("cat"), unit_type: f("unit"), price: f("price").trim(), free: card.querySelector('[data-f="free"]').checked };
+                groups.find((g) => g[0] === x).forEach((y) => out.set(y.id, rec));
             });
             shut();
             resolve(out);
@@ -880,7 +885,7 @@ async function openRecipeModal(existing, container, draft = null) {
             tabs: subOpts.length ? [{ key: "pantry", label: "מוצרים" }, { key: "recipe", label: "מתכונים (תת-מתכון)" }] : null,
             // מוצר חדש תוך כדי בניית המתכון (בלי לעצור ולצאת לחומרי הגלם). מחיר לא חובה.
             onCreate: async (d) => {
-                const newId = await addPantryItem({ name: d.name, category: d.category, unit_type: d.unit_type, unit_amount: "", price: d.price, allow_no_price: true, yield_pct: d.yield_pct, no_yield_est: d.no_yield_est });
+                const newId = await addPantryItem({ name: d.name, category: d.category, unit_type: d.unit_type, unit_amount: "", price: d.price, allow_no_price: true, yield_pct: d.yield_pct, no_yield_est: d.no_yield_est, free: d.free });
                 const item = await dbGet("pantryItems", newId);
                 sources.push({ id: newId, name: item.name, indent: false, item });
                 overlay.querySelectorAll('[id^="ing-source-"]').forEach((sel) => {
@@ -1262,7 +1267,7 @@ async function openRecipeModal(existing, container, draft = null) {
             if (!item) {
                 try {
                     const unitType = x.unit_type || (x.um.unit === "ml" || x.um.unit === "l" ? "liter" : x.um.unit === "unit" ? "unit" : "weight");
-                    const newId = await addPantryItem({ name, category: x.category || guessCategory(name), unit_type: unitType, unit_amount: "", price: x.price ?? "", allow_no_price: true });
+                    const newId = await addPantryItem({ name, category: x.category || guessCategory(name), unit_type: unitType, unit_amount: "", price: x.price ?? "", allow_no_price: true, free: x.free });
                     item = await dbGet("pantryItems", newId);
                     sources.push({ id: newId, name: item.name, indent: false, item });
                     overlay.querySelectorAll('[id^="ing-source-"]').forEach((sel2) => {
