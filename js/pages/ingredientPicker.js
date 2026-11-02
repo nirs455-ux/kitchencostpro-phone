@@ -117,6 +117,7 @@ export async function openIngredientPicker({ title = "בחר מרכיב", items,
                 <div class="field"><label>קטגוריה</label><select id="pk-n-cat">${Object.keys(CATEGORY_GROUPS).map((c) => `<option value="${escapeHtml(c)}"${c === guessCategory(name) ? " selected" : ""}>${escapeHtml(c)}</option>`).join("")}</select></div>
                 <div class="field"><label>נמדד ב-</label><select id="pk-n-unit">${UNIT_TYPES.map((u) => `<option value="${u}">${escapeHtml(UNIT_TYPE_LABELS[u])}</option>`).join("")}</select></div>
                 <div class="field" id="pk-n-yield-wrap" style="display:none;"><label>ניצולת מוערכת, באחוזים</label><input type="text" inputmode="decimal" id="pk-n-yield"><div class="hint">אחרי קילוף וניקוי. אפשר לשנות, ועיבוד אמיתי בחומרי הגלם יחליף אותה.</div></div>
+                <div class="field" id="pk-n-ua-wrap" style="display:none;"><label>גודל ליחידה, לא חובה</label><div class="cv-row"><input type="text" inputmode="decimal" id="pk-n-ua"><select id="pk-n-ua-u"><option value="g">גרם</option><option value="ml">מ"ל</option></select></div></div>
                 <div class="field"><label>מחיר</label><input type="text" inputmode="decimal" id="pk-n-price" placeholder="אפשר להשלים אחר כך"><label class="checkbox-field" style="margin:8px 0 0;"><input type="checkbox" id="pk-n-free"><span>ללא עלות</span></label><div class="hint">אפשר לשמור בלי מחיר. המרכיב ייכנס למתכון, ולא יתרום לעלות עד שתזין מחיר בחומרי הגלם.</div></div>
                 <div class="error-msg" id="pk-n-err"></div>
                 <button type="button" class="btn btn-primary" id="pk-n-save">הוסף ובחר</button>
@@ -134,14 +135,18 @@ export async function openIngredientPicker({ title = "בחר מרכיב", items,
         const syncFree = () => { priceIn.disabled = freeBox.checked; if (freeBox.checked) priceIn.value = ""; };
         freeBox.addEventListener("change", syncFree);
         nameIn.addEventListener("input", () => { syncYield(); if (isWaterName(nameIn.value) && !freeBox.checked) { freeBox.checked = true; syncFree(); } });
-        unitSel.addEventListener("change", syncYield);
+        const uaWrap = layer.querySelector("#pk-n-ua-wrap");
+        const syncUa = () => { uaWrap.style.display = unitSel.value === "unit" ? "" : "none"; };
+        unitSel.addEventListener("change", () => { syncYield(); syncUa(); });
         syncYield();
+        syncUa();
         if (isWaterName(nameIn.value)) { freeBox.checked = true; syncFree(); }
         layer.querySelector("#pk-n-save").onclick = async () => {
             const err = layer.querySelector("#pk-n-err");
             const btn = layer.querySelector("#pk-n-save");
             const data = { name: layer.querySelector("#pk-n-name").value, category: layer.querySelector("#pk-n-cat").value, unit_type: layer.querySelector("#pk-n-unit").value, price: layer.querySelector("#pk-n-price").value };
             if (freeBox.checked) data.free = true;
+            if (data.unit_type === "unit" && layer.querySelector("#pk-n-ua").value.trim()) { data.unit_amount = layer.querySelector("#pk-n-ua").value.trim(); if (layer.querySelector("#pk-n-ua-u").value === "ml") data.unit_ml = true; }
             if (yEst) { // ההערכה נשמרת כהערכה; ערך ששונה (או רוקן) נשמר כערך של המשתמש
                 const typed = String(yIn.value).trim().replace(",", ".");
                 if (typed !== String(yEst)) { data.yield_pct = typed; if (typed === "") data.no_yield_est = true; }
