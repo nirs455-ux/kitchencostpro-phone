@@ -826,7 +826,7 @@ async function openRecipeModal(existing, container, draft = null) {
                 ${um ? "" : `<select id="ing-mode-${id}" style="width:auto;font-size:12px;padding:2px 6px;margin:2px 0;">${modeOptionsHtml((prefill && (prefill.pct_mode || prefill.est_mode)) || "", (sources.find((x) => String(x.id) === String(prefill && prefill.pantry_item_id)) || {}).item)}</select><input type="text" inputmode="decimal" id="ing-pw-${id}" placeholder="גרם ליחידה" style="display:none;width:100px;font-size:12px;margin:2px 4px;">`}
                 <div class="line-total" id="ing-line-${id}"></div>
                 <button type="button" class="chip" id="ing-prep-${id}" style="display:none;margin:2px 0;"></button>
-                <div id="ing-wbox-${id}" style="display:none;background:var(--accent-soft);color:var(--text);border-radius:8px;padding:8px;margin:4px 0;"><div class="hint" style="margin:0 0 6px;">הכמות בשורה היא המשקל אחרי ניקוי. העלות מחושבת לפי מחיר הקנייה, והאחוז נשמר במוצר.</div><div class="form-row"><div class="field"><label>פחת טבעי באחוזים</label><input type="text" inputmode="decimal" id="ing-wp-${id}"></div></div><div class="hint" style="margin:0 0 4px;">או משקל המוצר לפני ואחרי ניקוי, בגרמים</div><div class="form-row"><div class="field"><label>לפני</label><input type="text" inputmode="decimal" id="ing-wb-${id}"></div><div class="field"><label>אחרי</label><input type="text" inputmode="decimal" id="ing-wa-${id}"></div></div><div class="error-msg" id="ing-we-${id}"></div><div style="display:flex;gap:6px;flex-wrap:wrap;"><button type="button" class="btn btn-primary btn-small" id="ing-ws-${id}">שמירה</button><button type="button" class="btn btn-secondary btn-small" id="ing-wn-${id}">ללא פחת טבעי בשורה זו</button></div></div>
+                <div id="ing-wbox-${id}" style="display:none;background:var(--accent-soft);color:var(--text);border-radius:8px;padding:8px;margin:4px 0;"><div class="hint" style="margin:0 0 6px;">הכמות בשורה היא המשקל אחרי ניקוי. העלות מחושבת לפי מחיר הקנייה, והאחוז נשמר במוצר.</div><div class="form-row"><div class="field"><label>ניצולת באחוזים</label><input type="text" inputmode="decimal" id="ing-wp-${id}"></div></div><div class="hint" style="margin:0 0 4px;">או משקל המוצר לפני ואחרי ניקוי, בגרמים</div><div class="form-row"><div class="field"><label>לפני</label><input type="text" inputmode="decimal" id="ing-wb-${id}"></div><div class="field"><label>אחרי</label><input type="text" inputmode="decimal" id="ing-wa-${id}"></div></div><div class="error-msg" id="ing-we-${id}"></div><div style="display:flex;gap:6px;flex-wrap:wrap;"><button type="button" class="btn btn-primary btn-small" id="ing-ws-${id}">שמירה</button><button type="button" class="btn btn-secondary btn-small" id="ing-wn-${id}">ללא ניצולת בשורה זו</button></div></div>
                 <div class="hint" id="ing-echo-${id}" style="margin:2px 0;"></div>
                 <div id="ing-egg-${id}" style="display:none;margin:6px 0;">
                     <div class="seg" id="ing-part-${id}">${EGG_PARTS.map(([k]) => `<button type="button" data-part="${k}">${EGG_PART_UI[k]}</button>`).join("")}</div>
@@ -864,7 +864,7 @@ async function openRecipeModal(existing, container, draft = null) {
                 });
             }
         }
-        { // כפתור "פחת": האחוז נשמר במוצר, ובפעם הבאה לחיצה אחת מחילה אותו. הבחירה בשורה נשמרת בנפרד (prep)
+        { // כפתור ניצולת: האחוז נשמר במוצר, ובפעם הבאה לחיצה אחת מחילה אותו. הבחירה בשורה נשמרת בנפרד (prep)
             const wbox = row.querySelector(`#ing-wbox-${id}`), werr = row.querySelector(`#ing-we-${id}`);
             const selNow = () => sources.find((x) => String(x.id) === row.querySelector(`#ing-source-${id}`).value);
             const num = (sel) => { const t = String(row.querySelector(sel).value || "").trim().replace(",", "."); return t === "" ? null : Number(t); };
@@ -874,7 +874,7 @@ async function openRecipeModal(existing, container, draft = null) {
                 if (!sel) return;
                 if (wbox.style.display !== "none") { wbox.style.display = "none"; return; }
                 const y = Number(sel.item.yield_pct);
-                row.querySelector(`#ing-wp-${id}`).value = y > 0 && y < 100 ? String(+(100 - y).toFixed(1)) : "";
+                row.querySelector(`#ing-wp-${id}`).value = y > 0 && y < 100 ? String(+y.toFixed(1)) : "";
                 const wb = Number(sel.item.weight_before), wa = Number(sel.item.weight_after);
                 row.querySelector(`#ing-wb-${id}`).value = wb > 0 && wa > 0 ? String(wb) : "";
                 row.querySelector(`#ing-wa-${id}`).value = wb > 0 && wa > 0 ? String(wa) : "";
@@ -885,15 +885,15 @@ async function openRecipeModal(existing, container, draft = null) {
             row.querySelector(`#ing-ws-${id}`).addEventListener("click", async () => {
                 const sel = selNow();
                 if (!sel) return;
-                const before = num(`#ing-wb-${id}`), after = num(`#ing-wa-${id}`), waste = num(`#ing-wp-${id}`);
+                const before = num(`#ing-wb-${id}`), after = num(`#ing-wa-${id}`), pct = num(`#ing-wp-${id}`);
                 let yieldPct;
                 if (before != null || after != null) {
                     if (!(before > 0) || !(after > 0)) return fail("יש להזין גם משקל לפני וגם משקל אחרי");
                     if (after >= before) return fail("המשקל אחרי חייב להיות קטן מהמשקל לפני");
                     yieldPct = Math.round((after / before) * 10000) / 100;
                 } else {
-                    if (!(waste > 0 && waste < 100)) return fail("יש להזין פחת טבעי באחוזים, בין 0 ל-100");
-                    yieldPct = Math.round((100 - waste) * 100) / 100;
+                    if (!(pct > 0 && pct < 100)) return fail("יש להזין ניצולת באחוזים, בין 0 ל-100");
+                    yieldPct = Math.round(pct * 100) / 100;
                 }
                 try {
                     await setLineYield(sel.id, { yieldPct, weightBefore: before != null ? before : "", weightAfter: after != null ? after : "" });
@@ -902,7 +902,7 @@ async function openRecipeModal(existing, container, draft = null) {
                 delete sel.item.yield_est;
                 rowMeta.get(id).prep = "proc";
                 wbox.style.display = "none";
-                toast("הפחת הטבעי נשמר במוצר");
+                toast("הניצולת נשמרה במוצר");
                 recalc();
             });
         }
@@ -1171,7 +1171,7 @@ async function openRecipeModal(existing, container, draft = null) {
                 const show = !!(s && !subRec && !egg && !count && !s.item.parent_id && !s.item.is_frozen);
                 prepEl.style.display = show ? "" : "none";
                 if (!show) { const wb = overlay.querySelector(`#ing-wbox-${id}`); if (wb) wb.style.display = "none"; }
-                if (show) { const y = Number(s.item.yield_pct); prepEl.textContent = y > 0 && y < 100 && yieldApplies(s.item, meta.prep) ? `פחת טבעי ${+(100 - y).toFixed(1)}%${s.item.yield_est ? " מוערך" : ""}` : "פחת טבעי"; }
+                if (show) { const y = Number(s.item.yield_pct); prepEl.textContent = y > 0 && y < 100 && yieldApplies(s.item, meta.prep) ? `ניצולת ${+y.toFixed(1)}%${s.item.yield_est ? " מוערכת" : ""}` : "ניצולת"; }
             }
             { // משקל יחידה: מוצג כשבוחרים "יחידות לפי משקל יחידה", ממולא ממה ששמור במוצר או מהטבלה, ונשמר במוצר כשמשנים
                 const pwEl = overlay.querySelector(`#ing-pw-${id}`);

@@ -236,7 +236,7 @@ export async function updatePantryItemYield(id, data) {
 export async function setLineYield(id, { yieldPct, weightBefore = "", weightAfter = "" }) {
     const existing = await dbGet("pantryItems", id);
     if (!existing) throw new Error("מוצר לא נמצא");
-    if (!(yieldPct > 0 && yieldPct < 100)) throw new Error("פחת טבעי חייב להיות בין 0 ל-100 אחוז");
+    if (!(yieldPct > 0 && yieldPct < 100)) throw new Error("ניצולת חייבת להיות בין 0 ל-100 אחוז");
     const wasActive = Number(existing.yield_pct || 100) !== 100 && !existing.yield_est;
     if (!wasActive) {
         for (const it of await dbGetAll("recipeItems")) {
