@@ -229,7 +229,7 @@ export async function renderSettingsPage(container) {
 
     container.querySelector("#btn-export").onclick = async () => {
         await downloadExport({ images: true });
-        toast("קובץ גיבוי הורד");
+        toast("גיבוי נשמר");
     };
 
     const fileInput = container.querySelector("#import-file");
