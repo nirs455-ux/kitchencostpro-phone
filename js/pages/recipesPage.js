@@ -753,9 +753,10 @@ async function openRecipeModal(existing, container, draft = null) {
     const rowMeta = new Map(); // id -> { um: {name, quantity, unit} | null }
     // אפשרויות הכמות בשורה: ק"ג, אחוז מהבסיס, ולמוצר שמכירים (עגבניה, לימון...) גם יחידות לפי משקל ממוצע ומ"ל מיץ
     const modeOptionsHtml = (selected, item) => {
-        const opts = [["", isGramMode() ? "כמות בגרם" : 'כמות בק"ג'], ["base", "אחוז מהבסיס"]];
+        const opts = [["", isGramMode() ? "כמות בגרם" : 'כמות בק"ג']];
+        if (addonOn("pct") || selected === "base" || selected === "total") opts.push(["base", "אחוז מהבסיס"]);
         if (selected === "total") opts.push(["total", "אחוז מהמסה"]);
-        if (item && !isCountItem(item) && !isEggProduct(item)) {
+        if (item && !isCountItem(item) && !isEggProduct(item) && (addonOn("est") || /^(est_|juice)/.test(selected || ""))) {
             if (unitWeightG(item.name)) opts.push(["est_s", "יחידות קטנות (הערכה)"], ["est_m", "יחידות בינוניות (הערכה)"], ["est_l", "יחידות גדולות (הערכה)"]);
             opts.push(["est_p", "יחידות לפי משקל יחידה"]);
             if (juiceInfo(item.name)) opts.push(["juice", 'מ"ל מיץ (כמה פירות)']);
@@ -1161,8 +1162,8 @@ async function openRecipeModal(existing, container, draft = null) {
             const modeSelEl = overlay.querySelector(`#ing-mode-${id}`);
             if (modeSelEl && meta.modeFor !== rawSel) { meta.modeFor = rawSel; modeSelEl.innerHTML = modeOptionsHtml(meta.pct || "", s && s.item); meta.pct = modeSelEl.value || null; }
             // בסיסי (תוספת "מתכונים מתקדמים" כבויה): מוצר וכמות בלבד. שורה שכבר משתמשת באחוזים, ביחידות או בעיבוד ממשיכה להיראות
-            const advRow = addonOn("adv") || !!meta.pct || !!meta.prep;
-            if (modeSelEl) modeSelEl.style.display = advRow ? "" : "none";
+            const advRow = addonOn("pct") || addonOn("est") || !!meta.pct;
+            if (modeSelEl) modeSelEl.style.display = advRow && modeSelEl.options.length > 1 ? "" : "none";
             const pm = !egg && !count ? rowPct(id) : null;
             const em = !egg && !count && !pm ? rowEst(id) : null;
             { // מצב עיבוד: מעובד (ניצולת המוצר) או גולמי (מחיר קנייה). מוצג רק למוצר שיש לו ניצולת

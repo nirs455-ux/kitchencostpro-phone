@@ -10,7 +10,9 @@ export const ADDONS = [
     { key: "scan", icon: "🧾", label: "סריקת חשבוניות והנהלת חשבונות", desc: "צילום חשבונית שנקראת אוטומטית, וייצוא לאקסל." },
     { key: "nutrition", icon: "🥗", label: "תזונה ואלרגנים", desc: "אלרגנים וערכים תזונתיים למתכונים (USDA, ברקוד, צילום תווית)." },
     { key: "producer", icon: "🏭", label: "יצרן ומדבקות", desc: "מוצרים באריזה ומדבקות להדפסה." },
-    { key: "adv", icon: "🧮", label: "מתכונים מתקדמים", desc: "אחוזים, יחידות לפי משקל ממוצע, ומעובד או לא בשורת מתכון. כבוי: רק מוצר וכמות." },
+    { key: "pct", icon: "％", label: "כמות באחוזים בשורת מתכון", desc: "כמות באחוז מהבסיס או מהמסה, לבצקים ולרטבים." },
+    { key: "est", icon: "🍋", label: "יחידות לפי משקל ממוצע", desc: "כמות ביחידות או במ\"ל מיץ, והמערכת מחשבת גרמים לפי משקל יחידה ממוצע." },
+    { key: "yield", icon: "🔪", label: "ניצולת ופירוק", desc: "לשונית בחומרי הגלם: ניצולת וקפוא לכל מוצר, ופירוק מוצר שלם לתוצרים. כולל מילוי ניצולת מוערכת בהגדרות. פחת בשורת מתכון זמין תמיד." },
     { key: "cloud", icon: "☁️", label: "גיבוי לענן", desc: "גיבוי אוטומטי ל-Google Drive וסנכרון בין מכשירים." },
 ];
 export const ADDON_KEYS = ADDONS.map((a) => a.key);
@@ -33,13 +35,17 @@ let enabled = null; // Set אחרי הטעינה. לפני כן הכול מוצ�
 export const addonOn = (key) => (enabled ? enabled.has(key) : true);
 export const enabledAddons = () => (enabled ? [...enabled] : [...ADDON_KEYS]);
 
+const SPLIT_FROM_ADV = ["pct", "est", "yield"];
 export async function loadAddons() {
-    const stored = parseAddons(await getSetting(SETTING, null));
+    const raw = await getSetting(SETTING, null);
+    const stored = parseAddons(raw);
     if (stored) {
-        // תוספת חדשה (מתכונים מתקדמים) למשתמש קיים: נשארת פעילה כדי שלא יאבד יכולות שהיו גלויות. נבחרת פעם אחת בלבד
-        if (!(await getSetting("addon_adv_seen", false))) {
-            await setSetting("addon_adv_seen", true);
-            if (!stored.has("adv")) { stored.add("adv"); await setSetting(SETTING, [...stored]); }
+        // "מתכונים מתקדמים" פוצלה לשלושה מתגים נפרדים. מי שהיה לו פעיל מקבל את שלושתם, ומי שכיבה אותו נשאר כבוי. נבחר פעם אחת בלבד
+        if (!(await getSetting("addon_split_seen", false))) {
+            await setSetting("addon_split_seen", true);
+            const advWasOff = (await getSetting("addon_adv_seen", false)) && !(Array.isArray(raw) && raw.includes("adv"));
+            if (!advWasOff) SPLIT_FROM_ADV.forEach((k) => stored.add(k));
+            await setSetting(SETTING, [...stored]);
         }
         enabled = stored; return enabled;
     }
@@ -48,6 +54,7 @@ export async function loadAddons() {
     enabled = initialAddons({ hasData, producerMode: !!(await getSetting("producer_mode")) });
     await setSetting(SETTING, [...enabled]);
     await setSetting("addon_adv_seen", true);
+    await setSetting("addon_split_seen", true);
     return enabled;
 }
 

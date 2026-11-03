@@ -88,9 +88,9 @@ function openProcSheet(it, container) {
     const ov = openModal(`
         <div class="sh-head"><span class="px-ic" style="background:${tint};">${it.parent_id ? "↳" : ic}</span><div><div class="sh-name">${escapeHtml(it.name)}</div><div class="muted">${escapeHtml(it.category)}${it.is_frozen ? " · ❄ קפוא" : ""}</div></div></div>
         ${row("מחיר קנייה ← מחיר אמיתי", priceLine(it))}
-        ${isProcessed(it) ? row("עיבוד", `משקל ${it.weight_before ?? "-"} ← ${it.weight_after ?? "-"}`) : ""}
+        ${isProcessed(it) ? row("משקל לפני ← אחרי", `משקל ${it.weight_before ?? "-"} ← ${it.weight_after ?? "-"}`) : ""}
         <div class="sh-actions">
-            <button type="button" class="btn btn-secondary" id="ps-yield">עיבוד</button>
+            <button type="button" class="btn btn-secondary" id="ps-yield">עריכת ניצולת</button>
             ${it.parent_id ? "" : '<button type="button" class="btn btn-secondary" id="ps-break">+ תוצר</button>'}
         </div>
         <div class="sh-actions" style="margin-top:8px;">
@@ -142,7 +142,7 @@ async function confirmAndDelete(it, container) {
 function openYieldModal(it, container) {
     const allowedSubs = CATEGORY_GROUPS[it.category] || [];
     const overlay = openModal(`
-        <h2>עיבוד - ${escapeHtml(it.name)}</h2>
+        <h2>ניצולת - ${escapeHtml(it.name)}</h2>
         ${!it.parent_id && allowedSubs.length ? `
         <div class="field">
             <label>תת-קטגוריה</label>

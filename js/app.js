@@ -34,8 +34,8 @@ import { loadAddons, addonOn } from "./addons.js";
 const PAGES = {
     home: { title: "בית", render: renderHomePage, info: "מסך הבית: סריקה מהירה, והתראות." },
     pantry: { title: "חומרי גלם", render: renderPantryPage,
-        info: "חומרי גלם ומחירים (מוצרים), ספירת מלאי, וניצולת/פירוק (עיבוד וניצולת) - בלשוניות למעלה." },
-    processing: { title: "עיבוד", render: renderProcessingPage,
+        info: "חומרי גלם ומחירים (מוצרים), ספירת מלאי, וניצולת ופירוק (בתוספת הייעודית) - בלשוניות למעלה." },
+    processing: { title: "ניצולת ופירוק", render: renderProcessingPage,
         info: "כאן קובעים ניצולת וקפוא לכל מוצר, או יוצרים ממנו תוצר מפורק (למשל: דג שלם ← פילה). המחיר האמיתי מוצג רק כאן." },
     recipes: { title: "מתכונים", render: renderRecipesPage,
         info: "מתכוני בסיס (רטבים, מרקים וכו') שמשמשים כמרכיבים במנות." },

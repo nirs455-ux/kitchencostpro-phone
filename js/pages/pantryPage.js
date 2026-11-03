@@ -26,8 +26,8 @@ import { getLabelInfo } from "../repo/nutritionRepo.js";
 import { allergenLabels } from "../allergens.js";
 import { addonOn } from "../addons.js";
 
-// חומרי גלם = שלוש לשוניות: מוצרים | ספירת מלאי | עיבוד וניצולת. מצב עובד רואה רק ספירת מלאי.
-const TABS = [["products", "מוצרים"], ["inventory", "ספירת מלאי"], ["processing", "עיבוד"], ["waste", "פחת"]];
+// חומרי גלם = לשוניות: מוצרים | ספירת מלאי | ניצולת ופירוק (בתוספת הייעודית) | פחת. מצב עובד רואה רק ספירת מלאי.
+const TABS = [["products", "מוצרים"], ["inventory", "ספירת מלאי"], ["processing", "ניצולת ופירוק"], ["waste", "פחת"]];
 const STAFF_TABS = ["inventory", "waste"]; // מצב עובד: ספירת מלאי ורישום פחת בלבד
 let currentTab = "products";
 export function setPantryTab(t) { collapseAll(); collapsePantryList(); currentTab = TABS.some((x) => x[0] === t) ? t : "products"; }
@@ -36,8 +36,9 @@ const UNIT_FORM_LABELS = { weight: 'לפי משקל (מחיר לק"ג)', liter: 
 
 export async function renderPantryPage(container) {
     if (isStaffMode() && !STAFF_TABS.includes(currentTab)) currentTab = "inventory";
+    if (currentTab === "processing" && !addonOn("yield")) currentTab = "products"; // תוספת כבויה
     if (currentTab === "inventory" && !addonOn("count")) currentTab = isStaffMode() ? "waste" : "products"; // תוספת כבויה
-    const tabs = (isStaffMode() ? TABS.filter(([k]) => STAFF_TABS.includes(k)) : TABS).filter(([k]) => k !== "inventory" || addonOn("count"));
+    const tabs = (isStaffMode() ? TABS.filter(([k]) => STAFF_TABS.includes(k)) : TABS).filter(([k]) => (k !== "inventory" || addonOn("count")) && (k !== "processing" || addonOn("yield")));
     const seg = `<div class="seg" id="pantry-seg">${tabs.map(([k, l]) => `<button type="button" data-tab="${k}" class="${k === currentTab ? "active" : ""}">${l}</button>`).join("")}</div>`;
     container.innerHTML = `${seg}<div id="pantry-tab"></div>`;
     const sub = container.querySelector("#pantry-tab");
@@ -291,7 +292,7 @@ async function openProductSheet(it, children, container, root) {
             <button type="button" class="btn btn-secondary" id="sh-hist">📈 היסטוריית מחירים</button>
             <button type="button" class="btn btn-secondary" id="sh-label">📷 צלם תווית</button>
             <button type="button" class="btn btn-secondary" id="sh-edit">עריכה</button>
-            <button type="button" class="btn btn-secondary" id="sh-proc">עיבוד</button>
+            ${addonOn("yield") ? '<button type="button" class="btn btn-secondary" id="sh-proc">ניצולת ופירוק</button>' : ""}
             <button type="button" class="btn btn-danger" id="sh-del">מחיקה</button>
         </div>
         <button type="button" class="btn btn-secondary btn-block" id="sh-close" style="margin-top:8px;">סגור</button>`);
@@ -299,7 +300,8 @@ async function openProductSheet(it, children, container, root) {
     overlay.querySelector("#sh-hist").onclick = () => { closeModal(); openPriceHistory(it); };
     overlay.querySelector("#sh-label").onclick = () => { closeModal(); openLabelScan({ item: it, onDone: () => renderPantryProducts(container) }); };
     overlay.querySelector("#sh-edit").onclick = () => { closeModal(); openPantryModal(it, container); };
-    overlay.querySelector("#sh-proc").onclick = () => { closeModal(); collapseAll(); expandProduct(it.id); const f = getFilter("processing"); f.category = it.category; f.subcategory = ""; currentTab = "processing"; renderPantryPage(root); };
+    const shProc = overlay.querySelector("#sh-proc");
+    if (shProc) shProc.onclick = () => { closeModal(); collapseAll(); expandProduct(it.id); const f = getFilter("processing"); f.category = it.category; f.subcategory = ""; currentTab = "processing"; renderPantryPage(root); };
     overlay.querySelector("#sh-del").onclick = async () => {
         try {
             closeModal();
