@@ -3,14 +3,14 @@ import { bindUnitChoice } from "../unitChoice.js";
 // ויש תצוגת פרטים עם רשימת רכיבים לתווית והצהרת אלרגנים.
 import { isWaterName } from "../freeItems.js";
 import { listRecipesWithItems, saveRecipe, deleteRecipe, recipeDishCount, recipeParentCount, listSubRecipeOptions, setRecipeBase, replaceIngredientWithSubRecipe } from "../repo/recipesRepo.js";
-import { listAllPantryItems, addPantryItem, setLineYield, setItemAllergens, clearItemAllergens, setEggSize, setPieceWeight, pieceGrams } from "../repo/pantryRepo.js";
+import { listAllPantryItems, addPantryItem, setLineYield, setEstimatedYield, setItemAllergens, clearItemAllergens, setEggSize, setPieceWeight, pieceGrams } from "../repo/pantryRepo.js";
 import { getLabelNames, setLabelName } from "../repo/labelNamesRepo.js";
 import { resolveAllergens, labelNameOf, preparedWord } from "../allergenResolve.js";
 import { openStickerModal, openNutritionStickerModal } from "./stickerModal.js";
 import { ALLERGENS, allergenLabels } from "../allergens.js";
 import { RECIPE_CATEGORIES, NON_FOOD_CATEGORIES, CATEGORY_GROUPS, UNIT_TYPES, UNIT_TYPE_LABELS } from "../constants.js";
 import { pricePerGram, itemCost as calcItemCost, effectivePrice, isCountItem } from "../formulas.js";
-import { rowForLine, yieldApplies } from "../yieldKb.js";
+import { rowForLine, yieldApplies, estimateYield } from "../yieldKb.js";
 import { h, openModal, closeModal, confirmDialog, toast, escapeHtml, money, busy, attemptClose, info, cur, curLabel, takeFlag, layerOpened, layerClosed } from "../ui.js";
 import { openImagePicker } from "../imagePicker.js";
 import { scanRecipeImage, suggestRecipeBase } from "../repo/scanRepo.js";
@@ -804,6 +804,15 @@ async function openRecipeModal(existing, container, draft = null) {
     const selectOptions = (selectedId) => sources.map((s) => `<option value="${s.id}" ${String(selectedId) === String(s.id) ? "selected" : ""}>${s.indent ? "↳ " : ""}${escapeHtml(s.name)}</option>`).join("")
         + subOpts.map((s) => `<option value="r${s.id}" ${String(selectedId) === "r" + s.id ? "selected" : ""}>📖 ${escapeHtml(s.name)}</option>`).join("");
 
+    // מוצר שנבחר ויש לו ניצולת מוכרת בטבלה: נשמרת במוצר ומיושמת מיד, בלי שהמשתמש יזין אחוז
+    async function autoYield(sel) {
+        if (!sel || !sel.item || isCountItem(sel.item) || isEggProduct(sel.item)) return;
+        const pct = estimateYield(sel.item.name);
+        if (!pct) return;
+        try { if (await setEstimatedYield(sel.id, pct)) { sel.item.yield_pct = pct; sel.item.yield_est = true; } } catch (e) { /* לא קריטי */ }
+    }
+    const weightText = (g) => (g >= 1000 ? `${+(g / 1000).toFixed(2)} ק"ג` : `${g < 100 ? +g.toFixed(1) : Math.round(g)} גרם`);
+
     function addRow(prefill) {
         const id = rowCounter++;
         const um = prefill && prefill.um ? prefill.um : null;
@@ -825,7 +834,7 @@ async function openRecipeModal(existing, container, draft = null) {
                 </div>
                 ${um ? "" : `<select id="ing-mode-${id}" style="width:auto;font-size:12px;padding:2px 6px;margin:2px 0;">${modeOptionsHtml((prefill && (prefill.pct_mode || prefill.est_mode)) || "", (sources.find((x) => String(x.id) === String(prefill && prefill.pantry_item_id)) || {}).item)}</select><input type="text" inputmode="decimal" id="ing-pw-${id}" placeholder="גרם ליחידה" style="display:none;width:100px;font-size:12px;margin:2px 4px;">`}
                 <div class="line-total" id="ing-line-${id}"></div>
-                <button type="button" class="chip" id="ing-prep-${id}" style="display:none;margin:2px 0;"></button>
+                <button type="button" class="chip" id="ing-prep-${id}" style="display:none;margin:2px 0;"></button><div class="hint" id="ing-ng-${id}" style="display:none;margin:2px 0;"></div>
                 <div id="ing-wbox-${id}" style="display:none;background:var(--accent-soft);color:var(--text);border-radius:8px;padding:8px;margin:4px 0;"><div class="hint" style="margin:0 0 6px;">הכמות בשורה היא המשקל אחרי ניקוי. העלות מחושבת לפי מחיר הקנייה, והאחוז נשמר במוצר.</div><div class="form-row"><div class="field"><label>ניצולת באחוזים</label><input type="text" inputmode="decimal" id="ing-wp-${id}"></div></div><div class="hint" style="margin:0 0 4px;">או משקל המוצר לפני ואחרי ניקוי, בגרמים</div><div class="form-row"><div class="field"><label>לפני</label><input type="text" inputmode="decimal" id="ing-wb-${id}"></div><div class="field"><label>אחרי</label><input type="text" inputmode="decimal" id="ing-wa-${id}"></div></div><div class="error-msg" id="ing-we-${id}"></div><div style="display:flex;gap:6px;flex-wrap:wrap;"><button type="button" class="btn btn-primary btn-small" id="ing-ws-${id}">שמירה</button><button type="button" class="btn btn-secondary btn-small" id="ing-wn-${id}">ללא ניצולת בשורה זו</button></div></div>
                 <div class="hint" id="ing-echo-${id}" style="margin:2px 0;"></div>
                 <div id="ing-egg-${id}" style="display:none;margin:6px 0;">
@@ -956,7 +965,8 @@ async function openRecipeModal(existing, container, draft = null) {
                 })));
             },
         });
-        row.querySelector(`#ing-source-${id}`).addEventListener("change", () => {
+        row.querySelector(`#ing-source-${id}`).addEventListener("change", async () => {
+            await autoYield(sources.find((x) => String(x.id) === row.querySelector(`#ing-source-${id}`).value));
             // שורה מהמסמך שנבחר לה מוצר: אם אין כמות בגרם - מחשבים מהכמות שכתובה במסמך
             const qtyEl = row.querySelector(`#ing-qty-${id}`);
             // (גם כמות שמולאה אוטומטית לפני שנבחר מוצר מתעדכנת: כוס קמח אחרת מכוס מים)
@@ -1191,6 +1201,12 @@ async function openRecipeModal(existing, container, draft = null) {
             }
             qtyInput.placeholder = count ? "יחידות" : pm ? "%" : em ? (em === "juice" ? 'מ"ל' : "יחידות") : isGramMode() ? "גרם" : 'ק"ג';
             const qty = egg ? egg.grams : count ? textToCount(rawText) || 0 : pm ? pctRes.map.get(id) || 0 : em ? estGrams(id).g : textToGrams(rawText) || 0;
+            { // נטו (אחרי ניקוי) וברוטו (מה שמזמינים), כשניצולת חלה בשורה
+                const ngEl = overlay.querySelector(`#ing-ng-${id}`);
+                const yy = s ? Number(s.item.yield_pct) : 0;
+                const on = !!(ngEl && s && !subRec && !egg && !count && !s.item.parent_id && !s.item.is_frozen && yy > 0 && yy < 100 && yieldApplies(s.item, meta.prep) && qty > 0);
+                if (ngEl) { ngEl.style.display = on ? "" : "none"; if (on) ngEl.textContent = `נטו ${weightText(qty)}, ברוטו ${weightText(qty / (yy / 100))}`; }
+            }
             const echoEl = overlay.querySelector(`#ing-echo-${id}`);
             if (echoEl) {
                 const liquid = !!(s && s.item.unit_type === "liter");

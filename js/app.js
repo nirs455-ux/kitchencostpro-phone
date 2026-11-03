@@ -12,7 +12,8 @@ import { renderProducerPage } from "./pages/producerPage.js";
 import { openSetupWizard } from "./pages/setupWizard.js";
 import { initLocale } from "./locale.js";
 import { initCloud, getCloudStatus } from "./cloud/cloudGlue.js";
-import { getSetting } from "./repo/settingsRepo.js";
+import { getSetting, setSetting } from "./repo/settingsRepo.js";
+import { freezeEstimatedLines } from "./repo/pantryRepo.js";
 import { dbGetAll } from "./db.js";
 import { downloadExport } from "./export.js";
 import { applyTheme } from "./theme.js";
@@ -151,6 +152,7 @@ window.addEventListener("kcp-db-blocked", () => toastAction("האפליקציה 
 await initLocale();
 await loadAddons(); // אילו תוספות פעילות (לפני שהמסכים מצוירים)
 // סמל מטבע וכו' לפני שהמסכים מצוירים
+if (!(await getSetting("est_yield_default_v139", false))) { try { await freezeEstimatedLines(); await setSetting("est_yield_default_v139", true); } catch (e) { /* נסיון חוזר בהפעלה הבאה */ } }
 await recalcAllCosts().catch(() => {}); // ריפוי: עלויות שנשארו ישנות מגרסאות קודמות מתעדכנות לפי חומרי הגלם הנוכחי
 startAutoRecalc(); // מכאן כל שינוי בחומרי הגלם מעדכן מתכונים ומנות לבד
 await initLang(); // שפת האשף והסיור

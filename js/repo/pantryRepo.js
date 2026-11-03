@@ -250,6 +250,29 @@ export async function setLineYield(id, { yieldPct, weightBefore = "", weightAfte
     await dbPut("pantryItems", existing);
 }
 
+// ניצולת מוערכת הפכה לחלה תמיד בשורת מתכון: שורות קיימות של מוצר עם ניצולת מוערכת מסומנות "בלי ניצולת"
+// פעם אחת, כדי שהעלות של מתכונים שכבר נשמרו לא תשתנה. מופעל פעם אחת בלבד (דגל בהגדרות).
+export async function freezeEstimatedLines() {
+    const pantry = new Map((await dbGetAll("pantryItems")).map((r) => [r.id, r]));
+    for (const it of await dbGetAll("recipeItems")) {
+        const row = it.pantry_item_id != null ? pantry.get(it.pantry_item_id) : null;
+        if (row && row.yield_est && !it.prep) await dbPut("recipeItems", { ...it, prep: "raw" });
+    }
+}
+
+// מוצר שנבחר בשורת מתכון ויש לו ניצולת מוכרת בטבלה: נשמרת כהערכה במוצר וחלה מעכשיו. שורות קיימות של אותו מוצר לא משתנות.
+export async function setEstimatedYield(id, pct) {
+    const row = await dbGet("pantryItems", id);
+    if (!row || row.parent_id || row.unit_type !== "weight" || row.is_frozen || row.yield_est || !(pct > 0 && pct < 100)) return false;
+    if (Number(row.yield_pct || 100) !== 100 || row.weight_before != null || row.weight_after != null) return false;
+    for (const it of await dbGetAll("recipeItems")) {
+        if (it.pantry_item_id === id && !it.prep) await dbPut("recipeItems", { ...it, prep: "raw" });
+    }
+    row.yield_pct = pct; row.yield_est = true;
+    await dbPut("pantryItems", row);
+    return true;
+}
+
 // מוחק פריט חומרי גלם אחד וכל מה שתלוי בו ישירות (ספירות מלאי), ומנתק אותו משורות חשבונית.
 // מתכונים/מנות שהשתמשו בו נשארים עם העלות ששמורה בהם (תמונת מצב) - לא נמחקים.
 async function purgePantryItem(id) {
