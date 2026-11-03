@@ -881,6 +881,9 @@ async function openRecipeModal(existing, container, draft = null) {
                 werr.style.display = "none";
                 wbox.style.display = "";
             });
+            // האחוז והמשקלים הם שתי דרכים לאותו נתון: עריכה של אחד מנקה את השני
+            row.querySelector(`#ing-wp-${id}`).addEventListener("input", () => { row.querySelector(`#ing-wb-${id}`).value = ""; row.querySelector(`#ing-wa-${id}`).value = ""; });
+            [`#ing-wb-${id}`, `#ing-wa-${id}`].forEach((sel) => row.querySelector(sel).addEventListener("input", () => { row.querySelector(`#ing-wp-${id}`).value = ""; }));
             row.querySelector(`#ing-wn-${id}`).addEventListener("click", () => { rowMeta.get(id).prep = "raw"; wbox.style.display = "none"; recalc(); });
             row.querySelector(`#ing-ws-${id}`).addEventListener("click", async () => {
                 const sel = selNow();
