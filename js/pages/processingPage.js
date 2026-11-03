@@ -19,8 +19,14 @@ export async function renderProcessingPage(container) {
     const topLevel = assignAutoSubs(all.filter((it) => !it.parent_id)).sort((a, b) => a.category.localeCompare(b.category, "he") || a.name.localeCompare(b.name, "he"));
     for (const p of topLevel) p.children = all.filter((it) => it.parent_id === p.id);
     let q = "";
+    // מצב בחירה: סימון כמה מוצרים ומחיקה שלהם יחד
+    let selMode = false;
+    const sel = new Set();
 
-    container.innerHTML = `<div class="px-top"><input type="search" id="pr-q" placeholder="חיפוש מוצר..." autocomplete="off"></div><div id="processing-list"></div>`;
+    container.innerHTML = `<div class="px-top"><input type="search" id="pr-q" placeholder="חיפוש מוצר..." autocomplete="off"></div>
+        <div class="btn-row" style="margin:6px 0;"><button type="button" class="btn btn-secondary btn-small" id="pr-sel">מחיקה מרובה</button><button type="button" class="btn btn-secondary btn-small" id="pr-all" style="display:none;">בחר את כל המוצגים</button></div>
+        <div id="processing-list"></div>
+        <div class="px-bulk" id="pr-bulk" style="display:none;"><b id="pr-bulk-n"></b><button type="button" class="btn btn-danger btn-small" id="pr-bulk-del">מחק</button><button type="button" class="btn btn-secondary btn-small" id="pr-bulk-cancel">ביטול</button></div>`;
     const list = container.querySelector("#processing-list");
     if (topLevel.length === 0) { list.innerHTML = '<div class="empty-state">אין עדיין מוצרים בחומרי הגלם.</div>'; return; }
 
@@ -29,9 +35,9 @@ export async function renderProcessingPage(container) {
         const processed = isProcessed(it);
         const kids = it.children ? it.children.length : 0;
         const [ic, tint] = catIcon(it.category);
-        const meta = `${processed ? `ניצולת ${Number(it.yield_pct).toFixed(0)}%${it.yield_est ? " מוערכת" : ""}` : "ללא עיבוד"}${it.is_frozen ? " · ❄" : ""}${kids ? ` · <span class="px-kids" data-kids="${it.id}">${expanded.has(it.id) ? "▾" : "◂"} ${kids} תוצרים</span>` : ""}`;
+        const meta = `${processed ? `ניצולת ${Number(it.yield_pct).toFixed(0)}%${it.yield_est ? " מוערכת" : ""}` : "ללא ניצולת"}${it.is_frozen ? " · ❄" : ""}${kids ? ` · <span class="px-kids" data-kids="${it.id}">${expanded.has(it.id) ? "▾" : "◂"} ${kids} תוצרים</span>` : ""}`;
         const end = `${cur()}${eff.toFixed(2)}<small>${processed || it.is_frozen ? `מ-${cur()}${Number(it.price).toFixed(2)}` : "/ ק\"ג"}</small>`;
-        const row = listRow({ ic: indent ? "↳" : ic, tint: indent ? "var(--surface-2)" : tint, name: it.name, meta, end, onClick: () => openProcSheet(it, container) });
+        const row = listRow({ ic: indent ? "↳" : ic, tint: indent ? "var(--surface-2)" : tint, name: it.name, meta, end, id: it.id, onClick: () => { if (!selMode) return openProcSheet(it, container); if (sel.has(it.id)) sel.delete(it.id); else sel.add(it.id); syncBulk(); } });
         if (indent) row.classList.add("px-indent");
         const kb = row.querySelector("[data-kids]");
         if (kb) kb.onclick = (e) => { e.stopPropagation(); if (expanded.has(it.id)) expanded.delete(it.id); else expanded.add(it.id); draw(); };
@@ -40,7 +46,7 @@ export async function renderProcessingPage(container) {
 
     function draw() {
         list.innerHTML = "";
-        const searching = !!normalize(q);
+        const searching = !!normalize(q) || selMode; // במחיקה מרובה הכול פתוח
         const shown = topLevel.filter((it) => matchesDeep({ name: it.name, category: it.category, subcategory: subOf(it), children: it.children.map((c) => ({ name: c.name })) }, q));
         if (!shown.length) { list.innerHTML = '<div class="empty-state">לא נמצא מוצר תואם.</div>'; return; }
         const groups = orderCategories(shown.map((x) => x.category)).map((cat) => {
@@ -69,7 +75,34 @@ export async function renderProcessingPage(container) {
         });
         const open = new Set([...procOpen, ...groups.filter((g) => g.forceOpen).map((g) => g.key)]);
         list.appendChild(groupsEl(groups, open, searching, (k) => { if (procOpen.has(k)) procOpen.delete(k); else procOpen.add(k); draw(); }));
+        syncBulk();
     }
+    const syncBulk = () => {
+        container.querySelector("#pr-sel").style.display = selMode ? "none" : "";
+        container.querySelector("#pr-all").style.display = selMode ? "" : "none";
+        container.querySelector("#pr-bulk").style.display = selMode ? "flex" : "none";
+        container.querySelector("#pr-bulk-n").textContent = sel.size ? `נבחרו ${sel.size}` : "בחר מוצרים";
+        container.querySelector("#pr-bulk-del").disabled = !sel.size;
+        list.classList.toggle("px-selecting", selMode);
+        list.querySelectorAll(".px-row[data-bid]").forEach((r) => r.classList.toggle("sel", selMode && sel.has(Number(r.dataset.bid))));
+    };
+    container.querySelector("#pr-sel").onclick = () => { selMode = true; sel.clear(); draw(); };
+    container.querySelector("#pr-bulk-cancel").onclick = () => { selMode = false; sel.clear(); draw(); };
+    container.querySelector("#pr-all").onclick = () => { list.querySelectorAll(".px-row[data-bid]").forEach((r) => sel.add(Number(r.dataset.bid))); syncBulk(); };
+    container.querySelector("#pr-bulk-del").onclick = async () => {
+        if (!sel.size) return;
+        const byId = new Map(all.map((i) => [i.id, i]));
+        const ids = [...sel].filter((id) => !sel.has((byId.get(id) || {}).parent_id)); // תוצר שהראשי שלו נבחר נמחק יחד איתו
+        const names = ids.map((id) => (byId.get(id) || {}).name).filter(Boolean);
+        const shown = names.slice(0, 8).map((n) => escapeHtml(n)).join(", ") + (names.length > 8 ? ` ועוד ${names.length - 8}` : "");
+        if (!(await confirmDialog(`למחוק ${names.length} מוצרים מחומרי הגלם?<br><br>${shown}<br><br>המחיקה מסירה אותם מחומרי הגלם עצמם, לא רק מהניצולת. מתכונים ומנות שהשתמשו בהם נשארים עם העלות ששמורה בהם.`))) return;
+        try {
+            for (const id of ids) await deletePantryItem(id);
+            toast(`נמחקו ${ids.length} מוצרים`);
+        } catch (e) { toast(e.message); }
+        selMode = false; sel.clear();
+        renderProcessingPage(container);
+    };
     const qEl = container.querySelector("#pr-q");
     qEl.oninput = () => { q = qEl.value; draw(); };
     draw();
@@ -94,7 +127,7 @@ function openProcSheet(it, container) {
             ${it.parent_id ? "" : '<button type="button" class="btn btn-secondary" id="ps-break">+ תוצר</button>'}
         </div>
         <div class="sh-actions" style="margin-top:8px;">
-            ${isProcessed(it) ? '<button type="button" class="btn btn-secondary" id="ps-reset">אפס עיבוד</button>' : ""}
+            ${isProcessed(it) ? '<button type="button" class="btn btn-secondary" id="ps-reset">אפס ניצולת</button>' : ""}
             ${kids ? '<button type="button" class="btn btn-secondary" id="ps-delkids">מחק תוצרים</button>' : ""}
             <button type="button" class="btn btn-danger" id="ps-del">${it.parent_id ? "מחק תוצר" : "מחק מחומרי הגלם"}</button>
         </div>
@@ -106,10 +139,10 @@ function openProcSheet(it, container) {
     const rs = ov.querySelector("#ps-reset");
     if (rs) rs.onclick = async () => {
         closeModal();
-        if (!(await confirmDialog("לאפס את העיבוד? הניצולת תחזור ל-100% והמחיר האמיתי יהיה שווה למחיר הקנייה.<br><br>המוצר יישאר בחומרי הגלם."))) return;
+        if (!(await confirmDialog("לאפס את הניצולת? הניצולת תחזור ל-100% והמחיר האמיתי יהיה שווה למחיר הקנייה.<br><br>המוצר יישאר בחומרי הגלם."))) return;
         try {
             await updatePantryItemYield(it.id, { name: it.name, yield_pct: 100, weight_before: "", weight_after: "", is_frozen: !!it.is_frozen });
-            toast("העיבוד אופס");
+            toast("הניצולת אופסה");
             renderProcessingPage(container);
         } catch (e) { toast(e.message); }
     };
