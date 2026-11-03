@@ -127,14 +127,15 @@ async function markDirty() {
     clearTimeout(timer);
     timer = setTimeout(() => runBackup({ auto: true }), DEBOUNCE_MS);
 }
-export async function runBackup({ auto = false, force = false, interactive = false } = {}) {
+export async function isCloudOrganized() { return !!(await getSetting("cloud_organized")); }
+export async function runBackup({ auto = false, force = false, interactive = false, organize = false } = {}) {
     await refreshStatus();
     if (!status.enabled) return { skipped: true };
     if (status.state === "backing") { rerun = true; return { skipped: true }; }
     rerun = false;
     setState("backing");
     try {
-        const res = await (interactive ? withInteractive(() => cloud.backup({ force })) : cloud.backup({ force }));
+        const res = await (interactive ? withInteractive(() => cloud.backup({ force, organize })) : cloud.backup({ force, organize }));
         if (res && res.skipped) { setState("idle"); return res; }
         if (!rerun) await setSetting("cloud_dirty", false);
         await refreshStatus();

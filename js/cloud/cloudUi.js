@@ -1,6 +1,6 @@
 // מסכי הענן: זרימת חיבור (כולל שאלה מה לעשות אם כבר יש גיבוי), כרטיס הגדרות, וטקסטים משותפים.
 import { openModal, closeModal, toast, escapeHtml } from "../ui.js";
-import { connectCloud, disconnectCloud, restoreFromCloud, runBackup, localHasData, getCloudStatus, isCloudAvailable, getClientId, setClientId } from "./cloudGlue.js";
+import { connectCloud, disconnectCloud, restoreFromCloud, runBackup, localHasData, getCloudStatus, isCloudAvailable, getClientId, setClientId, isCloudOrganized } from "./cloudGlue.js";
 
 export const fmtWhen = (iso) => {
     if (!iso) return "עדיין לא";
@@ -86,16 +86,26 @@ export async function renderCloudCard(container, onChange = () => {}) {
         container.querySelector("#cc-connect").onclick = async () => { await runConnectFlow(); renderCloudCard(container, onChange); onChange(); };
         return;
     }
+    const organized = await isCloudOrganized();
     container.innerHTML = `<div class="card-title">☁️ גיבוי בענן (Google Drive)</div>
         <div class="card-row"><span>${STATE_TEXT[st.state] || "מחובר ✓"}</span><span class="muted">גיבוי אחרון: ${fmtWhen(st.lastBackup)}</span></div>
         <div class="btn-row" style="margin-top:8px;">
             <button class="btn btn-primary btn-small" id="cc-now">גבה עכשיו</button>
             ${st.state === "conflict" || st.state === "needs-auth" || st.state === "error" ? '<button class="btn btn-accent btn-small" id="cc-fix">טפל בבעיה</button>' : ""}
+            ${organized ? "" : '<button class="btn btn-secondary btn-small" id="cc-organize">סדר קבצים בדרייב</button>'}
             <button class="btn btn-secondary btn-small" id="cc-restore">שחזר מהענן</button>
             <button class="btn btn-secondary btn-small" id="cc-off">התנתק</button>
-        </div>`;
+        </div>
+        ${organized ? '<div class="hint" style="margin-top:6px;">הקבצים בדרייב מסודרים: מתכונים לפי קטגוריה, וחשבוניות לפי ספק וחודש.</div>' : ""}`;
     const re = () => { renderCloudCard(container, onChange); onChange(); };
     container.querySelector("#cc-now").onclick = async () => { try { const r = await runBackup({ interactive: true }); toast(r && r.conflict ? "הענן שונה ממכשיר אחר" : "הגיבוי נשמר ✓"); } catch (e) { toast(e.message); } re(); };
+    const org = container.querySelector("#cc-organize");
+    if (org) org.onclick = async () => {
+        const go = await ask({ title: "סידור הקבצים בדרייב", text: "מתכונים יועברו לתיקיות לפי קטגוריה, וחשבוניות לתיקיות לפי ספק וחודש, עם שמות קריאים. הקבצים רק מועברים ומשנים שם. שום קובץ לא נמחק ולא מועלה מחדש, ולפני כן נשמר עותק של הנתונים.", buttons: [{ label: "סדר", cls: "btn-primary", value: "yes" }, { label: "ביטול", value: "no" }] });
+        if (go !== "yes") return;
+        try { const r = await runBackup({ interactive: true, organize: true }); toast(r && r.conflict ? "הענן שונה ממכשיר אחר, אין שינוי" : `הקבצים סודרו ✓ (${(r && r.movedFiles) || 0} הועברו)`); } catch (e) { toast(e.message); }
+        re();
+    };
     const fix = container.querySelector("#cc-fix");
     if (fix) fix.onclick = async () => { await resolveCloudIssue(); re(); };
     container.querySelector("#cc-restore").onclick = async () => {

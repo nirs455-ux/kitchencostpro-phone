@@ -83,6 +83,13 @@ export function createDrive({ getToken, fetchImpl }) {
         return putFile({ name, parentId, blob, mime, existingId: existing ? existing.id : null });
     }
 
+    // מעביר ו/או משנה שם של קובץ קיים, בלי להעלות מחדש ובלי למחוק
+    async function move({ id, name, fromParent, toParent }) {
+        const qs = `fields=id&${toParent ? `addParents=${encodeURIComponent(toParent)}&` : ""}${fromParent ? `removeParents=${encodeURIComponent(fromParent)}` : ""}`;
+        const r = await call(`${API}/files/${encodeURIComponent(id)}?${qs}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) });
+        return r.json();
+    }
+
     async function download(id) {
         return (await call(`${API}/files/${encodeURIComponent(id)}?alt=media`)).blob();
     }
@@ -95,5 +102,5 @@ export function createDrive({ getToken, fetchImpl }) {
         await call(`${API}/files/${encodeURIComponent(id)}`, { method: "DELETE" });
     }
 
-    return { findOne, ensureFolder, list, putFile, upsertByName, download, downloadText, remove };
+    return { findOne, ensureFolder, list, putFile, upsertByName, move, download, downloadText, remove };
 }
