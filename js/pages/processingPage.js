@@ -11,7 +11,7 @@ const procOpen = new Set();
 export function collapseAll() { expanded.clear(); procOpen.clear(); }
 export function expandProduct(id) { expanded.add(id); }
 
-const CAT_ICON = { "מהים": ["🐟", "var(--accent-soft)"], "קצביה": ["🥩", "var(--danger-soft)"], "ירקניה": ["🥬", "var(--ok-soft)"], "יבשים": ["📦", "var(--warn-soft)"], "מחלבה": ["🥛", "var(--brand-soft)"], "בר": ["🍷", "var(--brand-soft)"], "מחסן": ["🧰", "var(--surface-2)"] };
+const CAT_ICON = { "מהים": ["🐟", "var(--accent-soft)"], "קצביה": ["🥩", "var(--danger-soft)"], "ירקניה": ["🥬", "var(--ok-soft)"], "יבשים": ["📦", "var(--warn-soft)"], "מחלבה": ["🥛", "var(--brand-soft)"], "בר": ["🍷", "var(--brand-soft)"], "ללא עלות": ["💧", "var(--accent-soft)"], "מחסן": ["🧰", "var(--surface-2)"] };
 const catIcon = (c) => CAT_ICON[c] || ["📦", "var(--surface-2)"];
 
 export async function renderProcessingPage(container) {

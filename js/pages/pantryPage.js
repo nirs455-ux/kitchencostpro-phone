@@ -55,7 +55,7 @@ export function collapsePantryList() { pxOpen.clear(); }
 
 const CAT_STYLE = {
     "מהים": ["🐟", "var(--accent-soft)"], "קצביה": ["🥩", "var(--danger-soft)"], "ירקניה": ["🥬", "var(--ok-soft)"],
-    "יבשים": ["📦", "var(--warn-soft)"], "מחלבה": ["🥛", "var(--brand-soft)"], "בר": ["🍷", "var(--brand-soft)"], "מחסן": ["🧰", "var(--surface-2)"],
+    "יבשים": ["📦", "var(--warn-soft)"], "מחלבה": ["🥛", "var(--brand-soft)"], "בר": ["🍷", "var(--brand-soft)"], "ללא עלות": ["💧", "var(--accent-soft)"], "מחסן": ["🧰", "var(--surface-2)"],
 };
 const catStyle = (c) => CAT_STYLE[c] || ["📦", "var(--surface-2)"];
 const unitWord = (it) => (it.unit_type === "unit" ? "יחידה" : it.unit_type === "liter" ? "ליטר" : 'ק"ג');
@@ -442,7 +442,7 @@ function openPantryModal(existing, container) {
     let pieceOpen = false;
     overlay.querySelector("#f-piece-open").onclick = () => { pieceOpen = true; syncUnitAmount(); };
     const freeBox = overlay.querySelector("#f-free");
-    freeBox.addEventListener("change", () => { priceInput.disabled = freeBox.checked; if (freeBox.checked) priceInput.value = ""; });
+    freeBox.addEventListener("change", () => { priceInput.disabled = freeBox.checked; if (freeBox.checked) { priceInput.value = ""; catSelect.value = "ללא עלות"; syncSubcategory(); } });
     priceInput.disabled = freeBox.checked;
     function syncUnitAmount() {
         unitAmountWrap.style.display = unitTypeSelect.value === "unit" ? "block" : "none";

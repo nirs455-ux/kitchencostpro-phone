@@ -725,7 +725,7 @@ function askMissingIngredients(todo) {
             <div style="padding:10px 16px calc(10px + env(safe-area-inset-bottom,0px));display:flex;gap:8px;"><button type="button" class="btn btn-secondary" id="mi-skip">דלג</button><button type="button" class="btn btn-primary" id="mi-ok" style="flex:1;">הוסף הכול</button></div>`;
         ov.querySelectorAll('[data-f="unit"]').forEach(bindUnitChoice);
         ov.querySelectorAll('[data-f="unit"]').forEach((u) => u.addEventListener("change", () => { u.closest(".card").querySelector("[data-f-ua]").style.display = u.value === "unit" ? "" : "none"; }));
-        ov.querySelectorAll('[data-f="free"]').forEach((cb) => cb.addEventListener("change", () => { const pr = cb.closest(".card").querySelector('[data-f="price"]'); pr.disabled = cb.checked; if (cb.checked) pr.value = ""; }));
+        ov.querySelectorAll('[data-f="free"]').forEach((cb) => cb.addEventListener("change", () => { const card = cb.closest(".card"), pr = card.querySelector('[data-f="price"]'); pr.disabled = cb.checked; if (cb.checked) { pr.value = ""; const cs = card.querySelector('[data-f="cat"]'); if (cs && [...cs.options].some((o) => o.value === "ללא עלות")) cs.value = "ללא עלות"; } }));
         ov.querySelector("#mi-skip").onclick = () => { shut(); resolve(null); };
         ov.querySelector("#mi-ok").onclick = () => {
             const out = new Map();

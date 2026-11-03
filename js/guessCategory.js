@@ -1,4 +1,5 @@
 // ניחוש קטגוריית חומרי גלם לפי מילות מפתח בשם. לא מדויק: אפשר לתקן בחומרי הגלם. טהור (בלי DOM).
+import { isWaterName } from "./freeItems.js";
 const CATEGORY_HINTS = [
     ["מהים", /(^|s)דג(s|$)|סלמון|טונה|שרימפס|סרטן|קלמרי|דניס|לברק|אינטיאס|פירות ים/],
     ["קצביה", /בשר|עוף|הודו|בקר|כבש|נקניק|כבד|שניצל|חזה|(^|s)שוק(s|$)|אנטריקוט|בייקון|סטייק/],
@@ -6,5 +7,5 @@ const CATEGORY_HINTS = [
     ["ירקניה", /שאלוט|עגבני|מלפפון|בצל|שום|פלפל|גזר|חסה|פטרוזיליה|כוסברה|נענע|בזיליקום|לימון|תפוח|תפו"א|בטטה|קישוא|חציל|סלרי|כרוב|תירס|פטריות|צ'ילי|ג'לפניו|עשבי|ירק/],
     ["מחלבה", /חלב|גבינה|שמנת|חמאה|ביצ|יוגורט|קוטג|מסקרפונה|פרמזן|מוצרלה|לבנה/],
 ];
-export const guessCategory = (name) => { const n = String(name || ""); const hit = CATEGORY_HINTS.find(([, re]) => re.test(n)); return hit ? hit[0] : "יבשים"; };
+export const guessCategory = (name) => { const n = String(name || ""); if (isWaterName(n)) return "ללא עלות"; const hit = CATEGORY_HINTS.find(([, re]) => re.test(n)); return hit ? hit[0] : "יבשים"; };
 

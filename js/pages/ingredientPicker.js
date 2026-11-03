@@ -134,7 +134,7 @@ export async function openIngredientPicker({ title = "בחר מרכיב", items,
             yWrap.style.display = est ? "" : "none";
         };
         const freeBox = layer.querySelector("#pk-n-free"), priceIn = layer.querySelector("#pk-n-price");
-        const syncFree = () => { priceIn.disabled = freeBox.checked; if (freeBox.checked) priceIn.value = ""; };
+        const syncFree = () => { priceIn.disabled = freeBox.checked; if (freeBox.checked) { priceIn.value = ""; const catSel = layer.querySelector("#pk-n-cat"); if (catSel) catSel.value = "ללא עלות"; } };
         freeBox.addEventListener("change", syncFree);
         nameIn.addEventListener("input", () => { syncYield(); if (isWaterName(nameIn.value) && !freeBox.checked) { freeBox.checked = true; syncFree(); } });
         const uaWrap = layer.querySelector("#pk-n-ua-wrap");

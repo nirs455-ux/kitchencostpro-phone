@@ -9,7 +9,7 @@ function todayLocal() {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-const CAT_ICON = { "מהים": ["🐟", "var(--accent-soft)"], "קצביה": ["🥩", "var(--danger-soft)"], "ירקניה": ["🥬", "var(--ok-soft)"], "יבשים": ["📦", "var(--warn-soft)"], "מחלבה": ["🥛", "var(--brand-soft)"], "בר": ["🍷", "var(--brand-soft)"], "מחסן": ["🧰", "var(--surface-2)"] };
+const CAT_ICON = { "מהים": ["🐟", "var(--accent-soft)"], "קצביה": ["🥩", "var(--danger-soft)"], "ירקניה": ["🥬", "var(--ok-soft)"], "יבשים": ["📦", "var(--warn-soft)"], "מחלבה": ["🥛", "var(--brand-soft)"], "בר": ["🍷", "var(--brand-soft)"], "ללא עלות": ["💧", "var(--accent-soft)"], "מחסן": ["🧰", "var(--surface-2)"] };
 const unitWord = (u) => (u === "unit" ? "יח'" : u === "liter" ? "ל'" : 'ק"ג');
 const invOpen = new Set(); // קבוצות פתוחות (נשמר בין ציורים כדי שלא ייסגר באמצע ספירה)
 
