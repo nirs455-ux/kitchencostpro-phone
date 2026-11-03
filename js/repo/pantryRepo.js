@@ -192,6 +192,7 @@ export async function updatePantryItem(id, data) {
     }
 
     let newSubcategory = existing.subcategory;
+    if ("subcategory" in data) newSubcategory = String(data.subcategory || "").trim() || null; // הטופס שולח את הבחירה, וריק = בלי תת-קטגוריה
     const allowedSubs = CATEGORY_GROUPS[data.category];
     if (newSubcategory && !allowedSubs.includes(newSubcategory)) newSubcategory = null;
 
