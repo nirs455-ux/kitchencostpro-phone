@@ -231,6 +231,25 @@ export async function updatePantryItemYield(id, data) {
     await dbPut("pantryItems", existing);
 }
 
+// פחת משורת מתכון: שומר את הניצולת במוצר (הוזנה ביד, לא הערכה). אם המוצר עוד לא היה בניצולת פעילה,
+// שורות קיימות במתכונים אחרים מסומנות "בלי עיבוד" כדי שהעלות שלהן לא תשתנה.
+export async function setLineYield(id, { yieldPct, weightBefore = "", weightAfter = "" }) {
+    const existing = await dbGet("pantryItems", id);
+    if (!existing) throw new Error("מוצר לא נמצא");
+    if (!(yieldPct > 0 && yieldPct < 100)) throw new Error("פחת חייב להיות בין 0 ל-100 אחוז");
+    const wasActive = Number(existing.yield_pct || 100) !== 100 && !existing.yield_est;
+    if (!wasActive) {
+        for (const it of await dbGetAll("recipeItems")) {
+            if (it.pantry_item_id === id && !it.prep) await dbPut("recipeItems", { ...it, prep: "raw" });
+        }
+    }
+    existing.yield_pct = yieldPct;
+    existing.weight_before = weightBefore === "" ? null : Number(weightBefore);
+    existing.weight_after = weightAfter === "" ? null : Number(weightAfter);
+    delete existing.yield_est;
+    await dbPut("pantryItems", existing);
+}
+
 // מוחק פריט חומרי גלם אחד וכל מה שתלוי בו ישירות (ספירות מלאי), ומנתק אותו משורות חשבונית.
 // מתכונים/מנות שהשתמשו בו נשארים עם העלות ששמורה בהם (תמונת מצב) - לא נמחקים.
 async function purgePantryItem(id) {

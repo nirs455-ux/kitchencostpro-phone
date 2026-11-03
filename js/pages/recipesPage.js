@@ -3,7 +3,7 @@ import { bindUnitChoice } from "../unitChoice.js";
 // ויש תצוגת פרטים עם רשימת רכיבים לתווית והצהרת אלרגנים.
 import { isWaterName } from "../freeItems.js";
 import { listRecipesWithItems, saveRecipe, deleteRecipe, recipeDishCount, recipeParentCount, listSubRecipeOptions, setRecipeBase, replaceIngredientWithSubRecipe } from "../repo/recipesRepo.js";
-import { listAllPantryItems, addPantryItem, setItemAllergens, clearItemAllergens, setEggSize, setPieceWeight, pieceGrams } from "../repo/pantryRepo.js";
+import { listAllPantryItems, addPantryItem, setLineYield, setItemAllergens, clearItemAllergens, setEggSize, setPieceWeight, pieceGrams } from "../repo/pantryRepo.js";
 import { getLabelNames, setLabelName } from "../repo/labelNamesRepo.js";
 import { resolveAllergens, labelNameOf, preparedWord } from "../allergenResolve.js";
 import { openStickerModal, openNutritionStickerModal } from "./stickerModal.js";
@@ -825,6 +825,7 @@ async function openRecipeModal(existing, container, draft = null) {
                 ${um ? "" : `<select id="ing-mode-${id}" style="width:auto;font-size:12px;padding:2px 6px;margin:2px 0;">${modeOptionsHtml((prefill && (prefill.pct_mode || prefill.est_mode)) || "", (sources.find((x) => String(x.id) === String(prefill && prefill.pantry_item_id)) || {}).item)}</select><input type="text" inputmode="decimal" id="ing-pw-${id}" placeholder="גרם ליחידה" style="display:none;width:100px;font-size:12px;margin:2px 4px;">`}
                 <div class="line-total" id="ing-line-${id}"></div>
                 <button type="button" class="chip" id="ing-prep-${id}" style="display:none;margin:2px 0;"></button>
+                <div id="ing-wbox-${id}" style="display:none;background:var(--accent-soft);color:var(--text);border-radius:8px;padding:8px;margin:4px 0;"><div class="hint" style="margin:0 0 6px;">הכמות בשורה היא המשקל אחרי ניקוי. העלות מחושבת לפי מחיר הקנייה, והאחוז נשמר במוצר.</div><div class="form-row"><div class="field"><label>פחת באחוזים</label><input type="text" inputmode="decimal" id="ing-wp-${id}"></div></div><div class="hint" style="margin:0 0 4px;">או משקל המוצר לפני ואחרי ניקוי, בגרמים</div><div class="form-row"><div class="field"><label>לפני</label><input type="text" inputmode="decimal" id="ing-wb-${id}"></div><div class="field"><label>אחרי</label><input type="text" inputmode="decimal" id="ing-wa-${id}"></div></div><div class="error-msg" id="ing-we-${id}"></div><div style="display:flex;gap:6px;flex-wrap:wrap;"><button type="button" class="btn btn-primary btn-small" id="ing-ws-${id}">שמירה</button><button type="button" class="btn btn-secondary btn-small" id="ing-wn-${id}">ללא פחת בשורה זו</button></div></div>
                 <div class="hint" id="ing-echo-${id}" style="margin:2px 0;"></div>
                 <div id="ing-egg-${id}" style="display:none;margin:6px 0;">
                     <div class="seg" id="ing-part-${id}">${EGG_PARTS.map(([k]) => `<button type="button" data-part="${k}">${EGG_PART_UI[k]}</button>`).join("")}</div>
@@ -862,7 +863,48 @@ async function openRecipeModal(existing, container, draft = null) {
                 });
             }
         }
-        row.querySelector(`#ing-prep-${id}`).addEventListener("click", () => { const m = rowMeta.get(id); const sel = sources.find((x) => String(x.id) === row.querySelector(`#ing-source-${id}`).value); if (sel) { const now = yieldApplies(sel.item, m.prep); m.prep = now ? "raw" : "proc"; if (yieldApplies(sel.item, null) === !now) m.prep = null; } recalc(); });
+        { // כפתור "פחת": האחוז נשמר במוצר, ובפעם הבאה לחיצה אחת מחילה אותו. הבחירה בשורה נשמרת בנפרד (prep)
+            const wbox = row.querySelector(`#ing-wbox-${id}`), werr = row.querySelector(`#ing-we-${id}`);
+            const selNow = () => sources.find((x) => String(x.id) === row.querySelector(`#ing-source-${id}`).value);
+            const num = (sel) => { const t = String(row.querySelector(sel).value || "").trim().replace(",", "."); return t === "" ? null : Number(t); };
+            const fail = (msg) => { werr.textContent = msg; werr.style.display = "block"; };
+            row.querySelector(`#ing-prep-${id}`).addEventListener("click", () => {
+                const sel = selNow();
+                if (!sel) return;
+                if (wbox.style.display !== "none") { wbox.style.display = "none"; return; }
+                const y = Number(sel.item.yield_pct);
+                row.querySelector(`#ing-wp-${id}`).value = y > 0 && y < 100 ? String(+(100 - y).toFixed(1)) : "";
+                const wb = Number(sel.item.weight_before), wa = Number(sel.item.weight_after);
+                row.querySelector(`#ing-wb-${id}`).value = wb > 0 && wa > 0 ? String(wb) : "";
+                row.querySelector(`#ing-wa-${id}`).value = wb > 0 && wa > 0 ? String(wa) : "";
+                werr.style.display = "none";
+                wbox.style.display = "";
+            });
+            row.querySelector(`#ing-wn-${id}`).addEventListener("click", () => { rowMeta.get(id).prep = "raw"; wbox.style.display = "none"; recalc(); });
+            row.querySelector(`#ing-ws-${id}`).addEventListener("click", async () => {
+                const sel = selNow();
+                if (!sel) return;
+                const before = num(`#ing-wb-${id}`), after = num(`#ing-wa-${id}`), waste = num(`#ing-wp-${id}`);
+                let yieldPct;
+                if (before != null || after != null) {
+                    if (!(before > 0) || !(after > 0)) return fail("יש להזין גם משקל לפני וגם משקל אחרי");
+                    if (after >= before) return fail("המשקל אחרי חייב להיות קטן מהמשקל לפני");
+                    yieldPct = Math.round((after / before) * 10000) / 100;
+                } else {
+                    if (!(waste > 0 && waste < 100)) return fail("יש להזין פחת באחוזים, בין 0 ל-100");
+                    yieldPct = Math.round((100 - waste) * 100) / 100;
+                }
+                try {
+                    await setLineYield(sel.id, { yieldPct, weightBefore: before != null ? before : "", weightAfter: after != null ? after : "" });
+                } catch (e) { return fail(e.message); }
+                Object.assign(sel.item, { yield_pct: yieldPct, weight_before: before != null ? before : null, weight_after: after != null ? after : null });
+                delete sel.item.yield_est;
+                rowMeta.get(id).prep = "proc";
+                wbox.style.display = "none";
+                toast("הפחת נשמר במוצר");
+                recalc();
+            });
+        }
         if (um) rowMeta.get(id).autoQty = row.querySelector(`#ing-qty-${id}`).value; // מולא מהמסמך, לא הוקלד
         // אחרי שנבחר מוצר מחומרי הגלם, הבלוק הצהוב של המסמך מצטמצם לשורה אפורה קטנה (אחרת נראה שעוד חסר משהו)
         if (um && !um.manual) {
@@ -1125,10 +1167,10 @@ async function openRecipeModal(existing, container, draft = null) {
             const em = !egg && !count && !pm ? rowEst(id) : null;
             { // מצב עיבוד: מעובד (ניצולת המוצר) או גולמי (מחיר קנייה). מוצג רק למוצר שיש לו ניצולת
                 const prepEl = overlay.querySelector(`#ing-prep-${id}`);
-                const y = s && !subRec && !egg && !count ? Number(s.item.yield_pct) : 0;
-                const show = y > 0 && y !== 100 && advRow;
+                const show = !!(s && !subRec && !egg && !count && !s.item.parent_id && !s.item.is_frozen);
                 prepEl.style.display = show ? "" : "none";
-                if (show) prepEl.textContent = yieldApplies(s.item, meta.prep) ? `מעובד · ניצולת ${Math.round(y)}%${s.item.yield_est ? " מוערכת" : ""}` : s.item.yield_est ? "ללא עיבוד" : "גולמי · מחיר קנייה";
+                if (!show) { const wb = overlay.querySelector(`#ing-wbox-${id}`); if (wb) wb.style.display = "none"; }
+                if (show) { const y = Number(s.item.yield_pct); prepEl.textContent = y > 0 && y < 100 && yieldApplies(s.item, meta.prep) ? `פחת ${+(100 - y).toFixed(1)}%${s.item.yield_est ? " מוערך" : ""}` : "פחת"; }
             }
             { // משקל יחידה: מוצג כשבוחרים "יחידות לפי משקל יחידה", ממולא ממה ששמור במוצר או מהטבלה, ונשמר במוצר כשמשנים
                 const pwEl = overlay.querySelector(`#ing-pw-${id}`);
