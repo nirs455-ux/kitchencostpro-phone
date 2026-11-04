@@ -296,6 +296,7 @@ export async function scanRecipeImage(apiKey, file) {
     }
     const pantry = (await dbGetAll("pantryItems")).filter((r) => !NON_FOOD_CATEGORIES.has(r.category));
     const draft = buildRecipeDraft(parsed, pantry, categories);
+    if (!draft.ingredients.length) throw new Error("לא נמצאו רכיבים בתמונה. צלם שוב ישר ובאור טוב, כשכל הרשימה בפריים.");
     // המקור נשמר עם המתכון ("מתכון כפי שהוא"): הקובץ המקורי (תמונה מכווצת / PDF / מסמך), ואם הוא מסמך טקסט - גם הטקסט שחולץ
     draft.source_file = prepared.attachment || null;
     return draft;

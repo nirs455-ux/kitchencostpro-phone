@@ -23,7 +23,10 @@ export const recipeScanPrompt = (categories = RECIPE_CATEGORIES) =>
     'unit חייב להיות אחד מ: "g" (גרם), "kg" (ק"ג), "ml" (מ"ל), "l" (ליטר), "tbsp" (כף), ' +
     '"tsp" (כפית), "cup" (כוס), "unit" (יחידות, למשל 2 ביצים), או null אם לא כתוב. ' +
     "quantity מספר עשרוני (שברים כמו חצי -> 0.5), או null אם לא כתובה כמות. " +
-    "אל תמציא מרכיבים או כמויות שלא מופיעים. אם לא ניתן לקרוא שורה בבירור - דלג עליה.";
+    "אל תמציא מרכיבים או כמויות שלא מופיעים. אם לא ניתן לקרוא שורה בבירור - דלג עליה. " +
+    "החזר תמיד אובייקט אחד ולא רשימה. אם בדף כמה חלקים (למשל מתכון ואחריו מסה או רוטב), שים את כל המרכיבים של כל החלקים ברשימה אחת לפי הסדר, " +
+    'ובשדה method כתוב כל חלק עם כותרת שלו ("שלב 1: ...", "שלב 2: ..."). שורה עם שני מרכיבים (למשל "300 גרם בצל +100 שומן אווז") פצל לשתי שורות. ' +
+    '"קילו" = kg, "קורט" ושאר כמויות לא מספריות: quantity null.';
 export const RECIPE_SCAN_PROMPT = recipeScanPrompt();
 
 const round2 = (x) => Math.round(x * 100) / 100;
@@ -35,7 +38,30 @@ export function parseNum(v) {
     return parseFloat(/^\d{1,3}(,\d{3})+$/.test(s) ? s.replace(/,/g, "") : s.replace(",", "."));
 }
 
+// העוזר לפעמים מחזיר רשימת חלקים (דף עם "כבד קצוץ" ו"מסה"): מאחדים למתכון אחד. הרכיבים ברצף, ההוראות עם כותרת לכל שלב.
+export function mergeParts(parsed) {
+    let parts = Array.isArray(parsed) ? parsed : parsed && Array.isArray(parsed.recipes) ? parsed.recipes : parsed && Array.isArray(parsed.parts) ? parsed.parts : null;
+    if (!parts) return parsed || {};
+    parts = parts.filter((p) => p && typeof p === "object");
+    if (!parts.length) return {};
+    if (parts.length === 1) return parts[0];
+    const first = parts[0];
+    const method = parts.map((p, i) => {
+        const text = String(p.method || "").trim();
+        const title = String(p.name || "").trim();
+        return `שלב ${i + 1}${title ? ": " + title : ""}${text ? "\n" + text : ""}`;
+    }).join("\n\n");
+    return {
+        name: first.name,
+        category: first.category,
+        final_weight_g: parts.every((p) => parseNum(p.final_weight_g) > 0) ? parts.reduce((n, p) => n + parseNum(p.final_weight_g), 0) : null,
+        method,
+        ingredients: parts.flatMap((p) => (Array.isArray(p.ingredients) ? p.ingredients : [])),
+    };
+}
+
 export function buildRecipeDraft(parsed, pantryItems, categories = RECIPE_CATEGORIES) {
+    parsed = mergeParts(parsed);
     const byName = new Map(pantryItems.map((r) => [r.name.trim().toLowerCase(), r]));
 
     const name = String(parsed.name || "").trim();
