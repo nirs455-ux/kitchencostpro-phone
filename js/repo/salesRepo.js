@@ -1,6 +1,7 @@
 // דוח מכירות: שמירה, רשימה, מחיקה, ייבוא CSV, ודוח סטיות (עלות בפועל מול תיאורטית). הלוגיקה עצמה ב-salesCalc.js (טהור).
 import { dbGetAll, dbGet, dbPut, dbDelete } from "../db.js";
 import { SALES_LINE_TYPES, SALES_LINE_LABELS, consumptionEvents, gapReport, parseSalesCsv } from "../salesCalc.js";
+import { serviceConsumptionEvents } from "./serviceRepo.js";
 
 const todayIso = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
 export { todayIso };
@@ -77,7 +78,7 @@ export async function buildGapReport(from, to) {
     if (!from || !to || from >= to) throw new Error("בחר תאריך התחלה וסיום, כשההתחלה לפני הסיום");
     const ctx = await loadSalesCtx();
     const salesLines = await dbGetAll("salesLines");
-    const events = consumptionEvents(salesLines, await dbGetAll("wasteLogs"), ctx);
+    const events = consumptionEvents(salesLines, await dbGetAll("wasteLogs"), ctx, await serviceConsumptionEvents(ctx));
     const products = [...ctx.pantry.values()].filter((p) => !p.parent_id);
     const counts = await dbGetAll("inventoryCounts");
     const report = gapReport({ from, to, products, counts, purchases: await purchasesList(), events, salesLines, dishes: ctx.dishes });

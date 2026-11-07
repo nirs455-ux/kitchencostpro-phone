@@ -1,8 +1,11 @@
 // שכבת נתונים - IndexedDB בתוך הטלפון. מקביל ל-pantry.db (SQLite) של הגרסה הקיימת,
 // אבל עצמאי לגמרי - שתי הגרסאות לא מסונכרנות זו עם זו (ראה ייצוא/ייבוא).
 
-const DB_NAME = "kitchencostpro";
-const DB_VERSION = 4; // 2: נוסף מאגר scanQueue (תור סריקות שממתינות לעיבוד). 3: נוסף wasteLogs (פחת). 4: נוסף salesLines (דוח מכירות)
+import { activeDbName } from "./restaurants.js";
+
+// המסד של המסעדה הפעילה (מסעדה ראשונה = המסד הקיים). מחליפים מסעדה על ידי בחירה וטעינה מחדש של האפליקציה
+const DB_NAME = activeDbName();
+const DB_VERSION = 5; // 5: נוסף serviceLogs (סרוויסים). 2: נוסף מאגר scanQueue (תור סריקות שממתינות לעיבוד). 3: נוסף wasteLogs (פחת). 4: נוסף salesLines (דוח מכירות)
 
 const STORES = {
     pantryItems: "id",
@@ -15,6 +18,7 @@ const STORES = {
     invoiceItems: "id",
     inventoryCounts: "id",
     wasteLogs: "id",
+    serviceLogs: "id", // סרוויסים: { id (מזהה התוכנית), date, title, seat1, seat2, guests, price, rows: [{ id, name, out, back, thrown, shrink }] }
     salesLines: "id", // שורות דוח מכירות: { report_date, source_type: dish|recipe, source_id, source_name, quantity, line_type }
     settings: "key",
 };
@@ -22,13 +26,8 @@ const STORES = {
 // מאגרים שאינם חלק מהגיבוי/ייבוא (זמניים): תור סריקות
 const EXTRA_STORES = { scanQueue: "id" };
 
-let dbPromise = null;
-
-export function openDB() {
-    if (dbPromise) return dbPromise;
-    dbPromise = new Promise((resolve, reject) => {
-        const req = indexedDB.open(DB_NAME, DB_VERSION);
-        req.onupgradeneeded = () => {
+// יצירה ושדרוג של מבנה המסד (משותף למסד הפעיל ולמסדים של מסעדות אחרות)
+function applyUpgrade(req) {
             const db = req.result;
             for (const [name, keyPath] of Object.entries(STORES)) {
                 if (!db.objectStoreNames.contains(name)) {
@@ -52,7 +51,16 @@ export function openDB() {
             ensureIndex("inventoryCounts", "pantry_item_id");
             ensureIndex("pantryItems", "parent_id");
             ensureIndex("salesLines", "report_date");
-        };
+        
+}
+
+let dbPromise = null;
+
+export function openDB() {
+    if (dbPromise) return dbPromise;
+    dbPromise = new Promise((resolve, reject) => {
+        const req = indexedDB.open(DB_NAME, DB_VERSION);
+        req.onupgradeneeded = () => applyUpgrade(req);
         req.onsuccess = () => {
             const db = req.result;
             // אם עדכון גרסה מגיע מלשונית/חלון אחר - סוגרים את החיבור כדי שהשדרוג לא ייתקע
@@ -64,6 +72,26 @@ export function openDB() {
     });
     return dbPromise;
 }
+
+// פתיחת מסד של מסעדה אחרת (ליצירה, להעתקה ולמחיקה). לא נשמר במטמון, ואת החיבור סוגרים אחרי השימוש
+export function openDBByName(name) {
+    return new Promise((resolve, reject) => {
+        const req = indexedDB.open(name, DB_VERSION);
+        req.onupgradeneeded = () => applyUpgrade(req);
+        req.onsuccess = () => { const db = req.result; db.onversionchange = () => db.close(); resolve(db); };
+        req.onblocked = () => reject(new Error("המסד חסום. סגור לשוניות אחרות של האפליקציה ונסה שוב"));
+        req.onerror = () => reject(req.error);
+    });
+}
+export function deleteDBByName(name) {
+    return new Promise((resolve, reject) => {
+        const req = indexedDB.deleteDatabase(name);
+        req.onsuccess = () => resolve();
+        req.onblocked = () => resolve(); // יימחק כשהחיבורים ייסגרו
+        req.onerror = () => reject(req.error);
+    });
+}
+export const ACTIVE_DB_NAME = DB_NAME;
 
 // מאזינים לשינויים בנתונים (לגיבוי אוטומטי לענן). לא מדווח על הגדרות ועל תור הסריקות (זמניים).
 const changeListeners = new Set();

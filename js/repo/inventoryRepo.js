@@ -2,6 +2,7 @@
 import { dbGetAll, dbGet, dbAtomic } from "../db.js";
 import { loadSalesCtx } from "./salesRepo.js";
 import { consumptionEvents, consumedBetween, theoreticalStock } from "../salesCalc.js";
+import { serviceConsumptionEvents } from "./serviceRepo.js";
 
 function lastCountOf(rows) {
     if (!rows || rows.length === 0) return null;
@@ -32,7 +33,7 @@ export async function buildInventoryView() {
     let events = [];
     try {
         const ctx = await loadSalesCtx();
-        events = consumptionEvents(await dbGetAll("salesLines"), await dbGetAll("wasteLogs"), ctx);
+        events = consumptionEvents(await dbGetAll("salesLines"), await dbGetAll("wasteLogs"), ctx, await serviceConsumptionEvents(ctx));
     } catch (e) { events = []; }
     const topLevel = all.filter((it) => !it.parent_id).sort((a, b) => a.category.localeCompare(b.category, "he") || a.name.localeCompare(b.name, "he"));
 

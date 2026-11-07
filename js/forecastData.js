@@ -3,13 +3,29 @@ import { dbGetAll } from "./db.js";
 import { getSetting } from "./repo/settingsRepo.js";
 import { listPlans, todayIso } from "./repo/prepPlansRepo.js";
 import { historyPoints } from "./serviceDoc.js";
+import { serviceHistoryPlans } from "./repo/serviceRepo.js";
 import { buildForecast, thawFor, thawDaysOf } from "./forecast.js";
+
+// קלט משותף לתחזית ולהזמנה: חומרי גלם, תוכניות, נקודות היסטוריה, הגדרות, והפריטים מהתפריט שנבחר
+export async function loadForecastInputs() {
+    const pantry = new Map((await dbGetAll("pantryItems")).filter((p) => !p.parent_id).map((p) => [p.id, p]));
+    const plans = await listPlans();
+    const points = historyPoints(await serviceHistoryPlans(plans), pantry);
+    const planId = await getSetting("forecast_plan", "");
+    const plan = plans.find((p) => p.id === planId) || plans[0] || null;
+    const items = plan ? plan.rows.filter((r) => r.source_type === "pantry" && pantry.has(r.source_id)).map((r) => ({ id: r.source_id, name: pantry.get(r.source_id).name, per: r.per, cnt: pantry.get(r.source_id).unit_type === "unit" })) : [];
+    return {
+        pantry, plans, points, plan, items,
+        entered: (await getSetting("forecast_days", {})) || {},
+        margin: String((await getSetting("forecast_margin", "10")) ?? "10"),
+    };
+}
 
 export async function loadTodayCard() {
     const pantry = new Map((await dbGetAll("pantryItems")).filter((p) => !p.parent_id).map((p) => [p.id, p]));
     const plans = await listPlans();
     const today = todayIso();
-    const points = historyPoints(plans, pantry);
+    const points = historyPoints(await serviceHistoryPlans(plans), pantry);
     const entered = (await getSetting("forecast_days", {})) || {};
     const margin = String((await getSetting("forecast_margin", "10")) ?? "10");
     const thaw = (await getSetting("forecast_thaw", {})) || {};

@@ -16,6 +16,8 @@ import { compareService, changeText, SAME_DAY_COUNT } from "../serviceCompare.js
 import { renderServicePdf } from "../servicePdf.js";
 import { chartSvg } from "../serviceCharts.js";
 import { renderForecast } from "./forecastPage.js";
+import { renderUpcomingOrder } from "./upcomingOrderPage.js";
+import { syncServiceLog, serviceHistoryPlans } from "../repo/serviceRepo.js";
 import { qtyText, orderText, whatsappUrl, mailtoUrl } from "../shareText.js";
 import { checklistText, checklistHtml } from "../prepChecklist.js";
 import { buildEventDoc, eventDocHtml } from "../eventDoc.js";
@@ -30,13 +32,13 @@ let currentId = null; // התוכנית הפתוחה (נשמר בין מעברי
 let prepView = "forecast"; // התצוגה האחרונה בטאב, כשהתוסף סרוויסים פעיל
 export async function renderPrepTab(container) {
     if (!addonOn("service")) return renderEvent(container);
-    container.innerHTML = `<div class="seg" id="pv-seg"><button type="button" data-v="forecast">תחזית סועדים</button><button type="button" data-v="event">אירוע</button></div><div id="pv-body"></div>`;
+    container.innerHTML = `<div class="seg" id="pv-seg"><button type="button" data-v="forecast">תחזית סועדים</button><button type="button" data-v="order">הזמנה</button><button type="button" data-v="event">אירוע</button></div><div id="pv-body"></div>`;
     const body = container.querySelector("#pv-body");
     const show = async (v) => {
         prepView = v;
         container.querySelectorAll("#pv-seg button").forEach((b) => b.classList.toggle("active", b.dataset.v === v));
         body.innerHTML = "";
-        await (v === "event" ? renderEvent(body) : renderForecast(body));
+        await (v === "event" ? renderEvent(body) : v === "order" ? renderUpcomingOrder(body) : renderForecast(body));
     };
     container.querySelectorAll("#pv-seg button").forEach((b) => { b.onclick = () => show(b.dataset.v); });
     await show(prepView);
@@ -55,6 +57,7 @@ async function renderEvent(container) {
         plans = upsertPlan(plans, plan);
         plan.updated = plans[0].updated; // התוכנית החיה נשארת כפי שהוקלדה (שדה ריק לא הופך לברירת מחדל); רק הנשמר מנורמל
         await savePlans(plans);
+        if (addonOn("service")) { try { await syncServiceLog(plan); } catch (e) { /* ההעתקה למאגר הסרוויסים היא עזר */ } }
     };
 
     container.innerHTML = `
@@ -451,10 +454,10 @@ async function renderEvent(container) {
         });
     }
     // השוואה: הערב מול הערב האחרון, ממוצע שבועי, וממוצע של אותו יום בשבוע
-    function openCompare() {
+    async function openCompare() {
         const cur = pointFromSummary(serviceSummary(plan, ctx.pantry));
         if (!cur) { toast("הזן נתונים וסועדים כדי להשוות"); return; }
-        const others = historyPoints(plans.filter((p) => p.id !== plan.id), ctx.pantry);
+        const others = historyPoints((await serviceHistoryPlans(plans)).filter((p) => p.id !== plan.id), ctx.pantry);
         const st = { mode: "last" };
         const ovl = openModal(`<h2>השוואה</h2><div id="cp-body"></div><div class="modal-actions"><button type="button" class="btn btn-secondary" id="cp-close">סגור</button></div>`);
         ovl.querySelector("#cp-close").onclick = closeModal;
@@ -477,8 +480,8 @@ async function renderEvent(container) {
         paint();
     }
     // היסטוריית סרוויסים: גרף לפי נתח, נזרק ועלות, ורשימה
-    function openHistory() {
-        const all = [plan, ...plans.filter((p) => p.id !== plan.id)];
+    async function openHistory() {
+        const all = [plan, ...(await serviceHistoryPlans(plans)).filter((p) => p.id !== plan.id)];
         const pts = historyPoints(all, ctx.pantry);
         const cuts = [...new Set(pts.flatMap((p) => p.perCut.map((c) => c.name)))];
         const st = { metric: "g", cut: "" };

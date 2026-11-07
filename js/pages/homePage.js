@@ -18,6 +18,7 @@ import { resolveCloudIssue } from "../cloud/cloudUi.js";
 import { loadDemoData } from "../demoData.js";
 import { orderAttnItems } from "../orderReminders.js";
 import { loadTodayCard } from "../forecastData.js";
+import { restaurantChipHtml, openRestaurantPicker } from "./restaurantPicker.js";
 import { qtyText } from "../shareText.js";
 import { listDishesWithItems } from "../repo/dishesRepo.js";
 import { underpricedDishes } from "../dishPricing.js";
@@ -75,6 +76,7 @@ export async function renderHomePage(container) {
 
     const todayOn = addonOn("service");
     container.innerHTML = `
+        ${restaurantChipHtml()}
         ${todayOn ? '<div class="sec-title">היום</div><div class="card" id="home-today"></div>' : ""}
         <div class="sec-title">התראות</div>
         <div id="home-attn"></div>
@@ -88,6 +90,7 @@ export async function renderHomePage(container) {
         <div class="sec-title">פעילות אחרונה</div>
         <div id="home-recent"></div>
     `;
+    container.querySelector("#rest-chip").onclick = openRestaurantPicker;
     container.querySelector("#qa-waste").onclick = () => { setFlag("waste-new"); go("waste"); };
     container.querySelector("#qa-recipe").onclick = () => { setFlag("recipe-new"); go("recipes"); };
     const qc = container.querySelector("#qa-count");

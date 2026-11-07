@@ -8,6 +8,7 @@ import { GOOGLE_CLIENT_ID } from "./config.js";
 import { logError } from "../errorLog.js";
 import { isDeviceOnlySetting } from "../deviceSettings.js";
 import { downloadSafetyCopy } from "../export.js";
+import { activeRestaurant, cloudRootPath, displayName } from "../restaurants.js";
 
 const SCOPE = "https://www.googleapis.com/auth/drive.file"; // רק קבצים שהאפליקציה יצרה
 const GIS_URL = "https://accounts.google.com/gsi/client";
@@ -105,7 +106,16 @@ async function setStores(stores) {
 
 const settingsAdapter = { get: (k) => getSetting(k), set: (k, v) => setSetting(k, v) };
 const drive = createDrive({ getToken });
-const cloud = createCloud({ drive, getStores, setStores, settings: settingsAdapter, meta: () => ({ app: "KitchenCostPro", app_version: APP_VERSION }) });
+// לכל מסעדה תיקייה משלה בדרייב. המסעדה הראשונה נשארת בתיקייה הקיימת KitchenCostPro, והשאר תחת "מסעדות". אין החלפת מסעדה בלי טעינה מחדש, ולכן הערכים קבועים לריצה
+const restaurant = activeRestaurant();
+const cloud = createCloud({
+    drive, getStores, setStores, settings: settingsAdapter,
+    rootPath: cloudRootPath(restaurant), restaurantId: restaurant.id,
+    meta: () => ({ app: "KitchenCostPro", app_version: APP_VERSION, restaurant_id: restaurant.id, restaurant_name: displayName(restaurant) }),
+});
+
+// מסעדות ששמורות בדרייב, לטלפון חדש. פועל בלי לחבר את המסעדה הנוכחית לענן
+export async function listCloudRestaurants() { return withInteractive(() => cloud.listRestaurants()); }
 
 // ---- סטטוס ----
 const status = { state: "idle", message: "", lastBackup: null, enabled: false };

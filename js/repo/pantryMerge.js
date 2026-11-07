@@ -83,6 +83,24 @@ export function planPantryMerge(keepId, dropId, data) {
 
     for (const w of data.wasteLogs || []) if (w.source_type !== "recipe" && sameId(w.source_id, dropId)) addPut("wasteLogs", { ...w, source_id: keepId, name: keep.name });
 
+    // סרוויסים: שורות של הנמחק עוברות לנשאר, ואם יש לנשאר שורה באותו סרוויס, הכמויות מתחברות
+    for (const log of data.serviceLogs || []) {
+        if (!(log.rows || []).some((r) => sameId(r.id, dropId))) continue;
+        const rows = [];
+        for (const r of log.rows) {
+            if (!sameId(r.id, dropId)) { rows.push(r); continue; }
+            const twin = log.rows.find((x) => sameId(x.id, keepId));
+            if (twin) {
+                const num = (v) => { const n = parseFloat(String(v == null ? "" : v).replace(",", ".")); return Number.isFinite(n) ? n : 0; };
+                const sum = (f) => { const t = num(twin[f]) + num(r[f]); return t ? String(+t.toFixed(3)) : ""; };
+                const at = rows.findIndex((x) => sameId(x.id, keepId));
+                const merged = { ...twin, out: sum("out"), back: sum("back"), thrown: sum("thrown"), shrink: sum("shrink") };
+                if (at >= 0) rows[at] = merged; else rows.push(merged);
+            } else rows.push({ ...r, id: keepId, name: keep.name });
+        }
+        addPut("serviceLogs", { ...log, rows });
+    }
+
     // רשימות הזמנה קבועות של ספקים: שורה כפולה (אותו מוצר ואותו מקדם) נשארת פעם אחת
     for (const s of data.suppliers || []) {
         const list = Array.isArray(s.order_list) ? s.order_list : [];
@@ -137,9 +155,10 @@ export function planPantryMerge(keepId, dropId, data) {
 export async function mergePantryItems(keepId, dropId) {
     const [pantryItems, recipeItems, dishItems, invoiceItems, inventoryCounts, wasteLogs, suppliers] = await Promise.all(
         ["pantryItems", "recipeItems", "dishItems", "invoiceItems", "inventoryCounts", "wasteLogs", "suppliers"].map((s) => dbGetAll(s)));
+    const serviceLogs = await dbGetAll("serviceLogs");
     const settings = {};
     for (const k of SETTING_KEYS) { const r = await dbGet("settings", k); if (r && r.value != null) settings[k] = r.value; }
-    const plan = planPantryMerge(keepId, dropId, { pantryItems, recipeItems, dishItems, invoiceItems, inventoryCounts, wasteLogs, suppliers, settings });
+    const plan = planPantryMerge(keepId, dropId, { pantryItems, recipeItems, dishItems, invoiceItems, inventoryCounts, wasteLogs, suppliers, serviceLogs, settings });
     const stores = [...new Set([...Object.keys(plan.put), ...Object.keys(plan.del), "settings"])];
     await dbAtomic(stores, (t) => {
         for (const [s, rows] of Object.entries(plan.put)) for (const r of rows) t.objectStore(s).put(r);

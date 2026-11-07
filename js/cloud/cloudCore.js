@@ -1,5 +1,7 @@
 // ליבת הגיבוי לענן (דרייב): מנהלת תיקיות, גיבוי, שחזור והגנה מדריסה. לא תלויה בדפדפן (הכול מוזרק) כדי שאפשר לבדוק ב-Node.
 import { packForCloud, unpackFromCloud, DATA_FILE, extFor } from "./pack.js";
+import { FOLDER_MIME } from "./driveApi.js";
+import { parseCloudFolderName, RESTAURANTS_FOLDER } from "../restaurants.js";
 
 export const ROOT_FOLDER = "KitchenCostPro";
 // שמות תיקיות בדרייב (בעברית, לפי מסך הקבצים)
@@ -10,10 +12,12 @@ export class CloudConflict extends Error {
     constructor(remoteTime) { super("בענן יש גרסה חדשה יותר ממכשיר אחר"); this.name = "CloudConflict"; this.remoteTime = remoteTime; }
 }
 
-// deps: { drive, getStores(): Promise<{store:[rows]}>, setStores(stores): Promise<void>, settings: { get(key), set(key, value) }, now(): Date, meta(): object }
+// deps: { drive, getStores(): Promise<{store:[rows]}>, setStores(stores): Promise<void>, settings: { get(key), set(key, value) }, now(): Date, meta(): object,
+//   rootPath: ["KitchenCostPro", ...] תיקיית השורש של המסעדה (ברירת מחדל: KitchenCostPro), restaurantId: מזהה המסעדה להגנה מפני שחזור שגוי }
 export function createCloud(deps) {
     const { drive, getStores, setStores, settings } = deps;
     const now = deps.now || (() => new Date());
+    const rootPath = deps.rootPath && deps.rootPath.length ? deps.rootPath : [ROOT_FOLDER];
     let running = false;
     let again = false;
 
@@ -23,7 +27,8 @@ export function createCloud(deps) {
     async function ensureFolders() {
         const cached = await getIds();
         if (cached && cached.root) return cached;
-        const root = await drive.ensureFolder(ROOT_FOLDER, null);
+        let root = null;
+        for (const seg of rootPath) root = await drive.ensureFolder(seg, root);
         const ids = { root };
         for (const [key, name] of Object.entries(FOLDER_NAMES)) ids[key] = await drive.ensureFolder(name, root);
         await settings.set("cloud_ids", ids);
@@ -188,6 +193,7 @@ export function createCloud(deps) {
             const blob = await drive.download(id);
             return blob.type || !ref.type ? blob : new Blob([blob], { type: ref.type });
         });
+        if (deps.restaurantId && meta && meta.restaurant_id && meta.restaurant_id !== deps.restaurantId) throw new Error("הגיבוי בענן שייך למסעדה אחרת. השחזור בוטל.");
         await setStores(stores);
         if (meta && meta.organized) await settings.set("cloud_organized", true); // מכשיר שמשחזר מגיבוי מסודר ממשיך לסדר, ולא מחזיר שמות ישנים
         await settings.set("cloud_remote_mtime", f.modifiedTime || null);
@@ -208,8 +214,24 @@ export function createCloud(deps) {
             parent = reportCache[k];
         }
         const f = await drive.upsertByName({ name, parentId: parent, blob, mime });
-        return { id: f.id, path: [ROOT_FOLDER, folder, ...sub, name].join(" / ") };
+        return { id: f.id, path: [...rootPath, folder, ...sub, name].join(" / ") };
     }
 
-    return { ensureFolders, remoteInfo, connect, disconnect, backup, restore, isOrganized, saveReport, needsAgain: () => again };
+    // רשימת המסעדות ששמורות בדרייב (לטלפון חדש): המסעדה הראשונה בתיקייה הראשית, והשאר בתיקיית "מסעדות"
+    async function listRestaurants() {
+        const top = await drive.ensureFolder(ROOT_FOLDER, null);
+        const out = [];
+        if (await drive.findOne(DATA_FILE, top, "file")) out.push({ id: "r1", name: "", legacy: true });
+        const rf = await drive.findOne(RESTAURANTS_FOLDER, top, FOLDER_MIME);
+        if (rf) {
+            for (const f of await drive.list(rf.id)) {
+                if (f.mimeType !== FOLDER_MIME) continue;
+                const p = parseCloudFolderName(f.name);
+                if (p) out.push({ id: p.id, name: p.name, folderId: f.id });
+            }
+        }
+        return out;
+    }
+
+    return { ensureFolders, remoteInfo, connect, disconnect, backup, restore, isOrganized, saveReport, listRestaurants, needsAgain: () => again };
 }

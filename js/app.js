@@ -28,6 +28,7 @@ import { initStatusIcons, renderStatusIcons } from "./statusIcons.js";
 import { installErrorHandlers, crumb } from "./errorLog.js";
 import { openScanModal } from "./pages/scanModal.js";
 import { scanRecipeFile } from "./pages/recipesPage.js";
+import { restaurantTitle, offerPendingRestore } from "./pages/restaurantPicker.js";
 import { openModal, closeModal, dropLayers, toastAction, escapeHtml } from "./ui.js";
 import { openDB } from "./db.js";
 import { loadAddons, addonOn } from "./addons.js";
@@ -95,7 +96,7 @@ async function navigate(pageKey) {
     const shown = inPantry ? PAGES.pantry : PAGES[pageKey];
     const navKey = inPantry && !isStaffMode() ? "pantry" : pageKey === "waste" ? "inventory" : pageKey;
     navButtons.forEach((b) => b.classList.toggle("active", b.dataset.page === navKey));
-    pageTitle.textContent = "KitchenCostPro - " + shown.title;
+    pageTitle.textContent = (restaurantTitle() || "KitchenCostPro") + " - " + shown.title; // עם כמה מסעדות, השם תמיד מוצג בכותרת
     document.getElementById("page-info").innerHTML = shown.info ? info(shown.info) : "";
     view.innerHTML = '<div class="empty-state">טוען...</div>';
     renderStatusIcons();
@@ -179,6 +180,7 @@ let lastPage = "";
 try { lastPage = localStorage.getItem("kcp_last_page") || ""; } catch (e) { /* לא קריטי */ }
 const startKey = location.hash.replace("#", "");
 navigate(startKey === "share" ? "home" : startKey || (PAGES[lastPage] && lastPage !== "settings" ? lastPage : "home"));
+offerPendingRestore(); // מסעדה שנבחרה לשחזור מדרייב
 
 // אשף הפעלה: רק בהתקנה ריקה לגמרי שעוד לא עברה אותו (מי שכבר יש לו נתונים לא יראה אותו אוטומטית)
 (async () => {

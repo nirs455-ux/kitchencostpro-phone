@@ -4,6 +4,7 @@ import { dbGetAll } from "../db.js";
 import { getSetting, setSetting } from "../repo/settingsRepo.js";
 import { listPlans, savePlans, upsertPlan, todayIso } from "../repo/prepPlansRepo.js";
 import { historyPoints } from "../serviceDoc.js";
+import { serviceHistoryPlans } from "../repo/serviceRepo.js";
 import { buildForecast, addDays, thawFor, thawDaysOf } from "../forecast.js";
 import { qtyText } from "../shareText.js";
 import { escapeHtml, info } from "../ui.js";
@@ -17,7 +18,7 @@ const fmt = (n) => +Number(n).toFixed(2);
 export async function renderForecast(container) {
     const pantry = new Map((await dbGetAll("pantryItems")).filter((p) => !p.parent_id).map((p) => [p.id, p]));
     let plans = await listPlans();
-    const points = historyPoints(plans, pantry);
+    const points = historyPoints(await serviceHistoryPlans(plans), pantry);
     const today = todayIso();
 
     let entered = (await getSetting(K_DAYS, {})) || {};

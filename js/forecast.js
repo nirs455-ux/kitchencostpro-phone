@@ -43,7 +43,7 @@ export function dayLines(diners, items, points, marginPct) {
         const cnt = !!(it.cnt || (learned && learned.cnt));
         const raw = diners > 0 && per > 0 ? diners * per * f : 0;
         const qty = raw > 0 ? (cnt ? Math.ceil(Math.round(raw * 1e6) / 1e6) : Math.ceil(Math.round((raw / 100) * 1e6) / 1e6) * 100) : 0; // יחידות שלמות, או גרמים מעוגלים ל-100 למעלה
-        return { id: it.id, name: it.name, cnt, per, source: manual > 0 ? "manual" : learned ? "learned" : null, qty };
+        return { id: it.id, name: it.name, cnt, per, source: manual > 0 ? "manual" : learned ? "learned" : null, qty, raw }; // raw: לפני העיגול, להזמנות
     });
 }
 

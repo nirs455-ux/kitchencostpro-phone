@@ -109,7 +109,7 @@ export function explodeWaste(log, ctx) {
 }
 
 // כל אירועי הצריכה: [{ date, kind: "sale"|"waste", type, pantry, recipes, line }] ממוינים לפי תאריך
-export function consumptionEvents(salesLines, wasteLogs, ctx) {
+export function consumptionEvents(salesLines, wasteLogs, ctx, extraEvents = []) {
     const events = [];
     for (const l of salesLines || []) {
         if (!CONSUMING_TYPES.has(l.line_type)) continue;
@@ -120,6 +120,7 @@ export function consumptionEvents(salesLines, wasteLogs, ctx) {
         const e = explodeWaste(w, ctx);
         events.push({ date: w.date, kind: "waste", type: "waste", ...e, line: w });
     }
+    for (const x of extraEvents || []) events.push(x); // למשל אירועי סרוויס (serviceEvents)
     return events.sort((a, b) => String(a.date).localeCompare(String(b.date)));
 }
 
