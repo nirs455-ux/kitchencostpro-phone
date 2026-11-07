@@ -165,12 +165,14 @@ export async function renderPrepTab(container) {
     const check = (key, label, right, o = {}) => `<div class="card-row pp-task" style="gap:6px;align-items:center;${plan.done[key] ? "opacity:.55;text-decoration:line-through;" : ""}"><label style="display:flex;gap:8px;align-items:center;flex:1;min-width:0;cursor:pointer;"><input type="checkbox" data-k="${key}"${plan.done[key] ? " checked" : ""} style="width:22px;height:22px;flex:none;"><span style="flex:1;">${label}</span><b>${right}</b></label>${o.cidx != null && o.cidx >= 0 ? `<button type="button" class="btn btn-secondary btn-small" data-cedit="${o.cidx}">✎</button>` : o.name ? `<button type="button" class="btn btn-secondary btn-small" data-qedit="${key}" data-name="${escapeHtml(o.name)}" data-cur="${escapeHtml(o.cur)}">✎</button>` : ""}</div>`;
 
     // טקסט הסיכום של שורת תפריט: כמה בסך הכול, או מה חסר
+    const isCount = (r) => r.source_type === "pantry" && (ctx.pantry.get(r.source_id) || {}).unit_type === "unit";
     const rowNote = (r) => {
         const legacy = r.source_type === "dish";
+        const cnt = isCount(r);
         const qty = entryQuantity(plan.guests, r.per, r.share);
-        if (!(parseQty(r.per) > 0)) return legacy ? "הזן כמה מנות לסועד" : "הזן גרם לסועד";
+        if (!(parseQty(r.per) > 0)) return legacy ? "הזן כמה מנות לסועד" : cnt ? "הזן יחידות לסועד" : "הזן גרם לסועד";
         if (!qty) return "הזן כמות סועדים";
-        const total = legacy ? `סה"כ ${fmt(qty)} מנות` : `סה"כ ${qtyText(qty)}`;
+        const total = legacy ? `סה"כ ${fmt(qty)} מנות` : cnt ? `סה"כ ${fmt(qty)} יחידות` : `סה"כ ${qtyText(qty)}`;
         const rec = r.source_type === "recipe" ? ctx.recipes.get(r.source_id) : null;
         const noWeight = rec && !(Number(rec.final_weight) > 0);
         return noWeight ? `${total} · אין משקל סופי במתכון, יש להזין במתכון` : total;
@@ -184,7 +186,7 @@ export async function renderPrepTab(container) {
             const legacy = r.source_type === "dish";
             const head = (r.group || "") !== lastGroup && (r.group || lastGroup) ? `<div class="muted" style="margin:10px 4px 2px;">${r.group ? "🍽️ " + escapeHtml(r.group) : "📦 פריטים נוספים"}</div>` : "";
             lastGroup = r.group || "";
-            return head + `<div class="card-row" style="padding:6px 4px;gap:8px;align-items:center;border-bottom:1px solid var(--border,#0001);"><span style="flex:1;min-width:0;"><b>${escapeHtml(r.name)}</b><br><span class="muted" data-note="${i}">${escapeHtml(rowNote(r))}</span></span><input type="text" inputmode="decimal" data-per="${i}" value="${escapeHtml(String(r.per))}" placeholder="${legacy ? "מנות" : "גרם"}" style="width:76px;text-align:center;flex:none;"><span class="muted" style="flex:none;">${legacy ? "מנות לסועד" : "גרם לסועד"}</span><button type="button" class="btn btn-secondary btn-small" data-rm="${i}">✕</button></div>`;
+            return head + `<div class="card-row" style="padding:6px 4px;gap:8px;align-items:center;border-bottom:1px solid var(--border,#0001);"><span style="flex:1;min-width:0;"><b>${escapeHtml(r.name)}</b><br><span class="muted" data-note="${i}">${escapeHtml(rowNote(r))}</span></span><input type="text" inputmode="decimal" data-per="${i}" value="${escapeHtml(String(r.per))}" placeholder="${legacy ? "מנות" : isCount(r) ? "יחידות" : "גרם"}" style="width:76px;text-align:center;flex:none;"><span class="muted" style="flex:none;">${legacy ? "מנות לסועד" : isCount(r) ? "יחידות לסועד" : "גרם לסועד"}</span><button type="button" class="btn btn-secondary btn-small" data-rm="${i}">✕</button></div>`;
         }).join("");
         menuEl.innerHTML = (plan.rows.length ? `<div class="hint" style="margin:8px 4px 0;">בכל שורה כותבים כמה גרם מקבל סועד באירוע.</div>${rowsHtml}` : "") + (plan.custom.length ? `<div class="card-title" style="margin:12px 4px 4px;">פריטים ידניים</div>` + plan.custom.map((c, i) => `<div class="card-row" style="padding:6px 4px;border-bottom:1px solid var(--border,#0001);"><span><b>${escapeHtml(c.label)}</b><br><span class="muted">${c.kind === "order" ? "להזמין" + (c.supplier_id && supName(c.supplier_id) ? " · " + escapeHtml(supName(c.supplier_id)) : "") : "להכין"}${c.qty ? " · " + escapeHtml(c.qty) : ""}</span></span><span><button type="button" class="btn btn-secondary btn-small" data-cedit="${i}">✎</button> <button type="button" class="btn btn-secondary btn-small" data-crm="${i}">✕</button></span></div>`).join("") : "");
         menuEl.querySelectorAll("[data-per]").forEach((inp) => {

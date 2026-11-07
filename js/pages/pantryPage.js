@@ -32,7 +32,7 @@ const STAFF_TABS = ["inventory", "waste"]; // מצב עובד: ספירת מלא
 let currentTab = "products";
 export function setPantryTab(t) { collapseAll(); collapsePantryList(); currentTab = TABS.some((x) => x[0] === t) ? t : "products"; }
 
-const UNIT_FORM_LABELS = { weight: 'לפי משקל (מחיר לק"ג)', liter: "לפי נפח (מחיר לליטר)", unit: "לפי יחידה (בקבוק, ביצה, חבילה)" };
+const UNIT_FORM_LABELS = { weight: 'לפי משקל (מחיר לק"ג)', liter: "לפי נפח (מחיר לליטר)", unit: "לפי יחידה" };
 
 export async function renderPantryPage(container) {
     if (isStaffMode() && !STAFF_TABS.includes(currentTab)) currentTab = "inventory";

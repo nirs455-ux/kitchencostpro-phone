@@ -5,7 +5,7 @@ export function bindUnitChoice(hiddenSelect) {
     hiddenSelect.dataset.uc = "1";
     const wrap = document.createElement("div");
     wrap.className = "uc-wrap";
-    wrap.innerHTML = `<select class="uc-kind"><option value="kg">לפי משקל, קילו</option><option value="unit">לפי יחידה, בקבוק, ביצה, חבילה</option></select>
+    wrap.innerHTML = `<select class="uc-kind"><option value="kg">לפי משקל, קילו</option><option value="unit">לפי יחידה</option></select>
         <label class="checkbox-field uc-liq"><input type="checkbox" class="uc-liquid"><span>נוזל, מחיר לליטר</span></label>`;
     hiddenSelect.insertAdjacentElement("beforebegin", wrap);
     hiddenSelect.style.display = "none";

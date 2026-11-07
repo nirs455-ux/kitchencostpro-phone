@@ -64,6 +64,13 @@ export function planPrep(entries, ctx, marginPct = DEFAULT_MARGIN_PCT) {
     for (const e of entries || []) {
         const qty = num(e.quantity);
         if (!(qty > 0)) continue;
+        const prow = e.source_type === "pantry" ? ctx.pantry.get(e.source_id) : null;
+        if (prow && prow.unit_type === "unit") { // מוצר ביחידות (נקניקייה): הכמות היא כבר יחידות, בלי המרה מגרמים
+            const tid = prow.parent_id || prow.id;
+            pantry[tid] = (pantry[tid] || 0) + qty * factor;
+            foodGrams += qty * (Number(prow.unit_amount) || 0);
+            continue;
+        }
         const sale = explodeSale({ source_type: e.source_type, source_id: e.source_id, quantity: qty * factor }, ctx);
         for (const [id, u] of Object.entries(sale.pantry)) pantry[id] = (pantry[id] || 0) + u;
         for (const [id, g] of Object.entries(sale.recipes)) { recipes[id] = (recipes[id] || 0) + g; addSubRecipes(Number(id), g, ctx, subs); }
