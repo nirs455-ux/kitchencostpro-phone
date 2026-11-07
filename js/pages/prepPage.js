@@ -170,12 +170,18 @@ export async function renderPrepTab(container) {
         const legacy = r.source_type === "dish";
         const cnt = isCount(r);
         const qty = entryQuantity(plan.guests, r.per, r.share);
-        if (!(parseQty(r.per) > 0)) return legacy ? "הזן כמה מנות לסועד" : cnt ? "הזן יחידות לסועד" : "הזן גרם לסועד";
-        if (!qty) return "הזן כמות סועדים";
-        const total = legacy ? `סה"כ ${fmt(qty)} מנות` : cnt ? `סה"כ ${fmt(qty)} יחידות` : `סה"כ ${qtyText(qty)}`;
+        if (!(parseQty(r.per) > 0)) return escapeHtml(legacy ? "הזן כמה מנות לסועד" : cnt ? "הזן יחידות לסועד" : "הזן גרם לסועד");
+        if (!qty) return escapeHtml("הזן כמות סועדים");
+        // הכמות הסופית כוללת את מרווח הביטחון, והתג מראה מאיפה היא באה: הכמות הנקייה ואחוז התוספת
+        const mg = Math.max(0, parseQty(plan.margin));
+        const withM = qty * (1 + mg / 100);
+        const clean = legacy ? `${fmt(qty)}` : cnt ? `${fmt(qty)}` : qtyText(qty);
+        const final = legacy ? `${Math.ceil(Math.round(withM * 1e6) / 1e6)} מנות` : cnt ? `${Math.ceil(Math.round(withM * 1e6) / 1e6)} יחידות` : qtyText(Math.ceil(Math.round(withM * 1e6) / 1e6));
+        const badge = mg > 0 ? ` <span style="display:inline-block;padding:0 7px;border-radius:999px;background:var(--accent-soft,#0001);font-size:.85em;white-space:nowrap;">${escapeHtml(clean)} + ${escapeHtml(fmt(mg) + "%")}</span>` : "";
+        const total = `<b>${escapeHtml('סה"כ ' + (mg > 0 ? final : legacy ? `${fmt(qty)} מנות` : cnt ? `${fmt(qty)} יחידות` : qtyText(qty)))}</b>${badge}`;
         const rec = r.source_type === "recipe" ? ctx.recipes.get(r.source_id) : null;
         const noWeight = rec && !(Number(rec.final_weight) > 0);
-        return noWeight ? `${total} · אין משקל סופי במתכון, יש להזין במתכון` : total;
+        return noWeight ? `${total} · ${escapeHtml("אין משקל סופי במתכון, יש להזין במתכון")}` : total;
     };
 
     function drawMenu() {
@@ -186,7 +192,7 @@ export async function renderPrepTab(container) {
             const legacy = r.source_type === "dish";
             const head = (r.group || "") !== lastGroup && (r.group || lastGroup) ? `<div class="muted" style="margin:10px 4px 2px;">${r.group ? "🍽️ " + escapeHtml(r.group) : "📦 פריטים נוספים"}</div>` : "";
             lastGroup = r.group || "";
-            return head + `<div class="card-row" style="padding:6px 4px;gap:8px;align-items:center;border-bottom:1px solid var(--border,#0001);"><span style="flex:1;min-width:0;"><b>${escapeHtml(r.name)}</b><br><span class="muted" data-note="${i}">${escapeHtml(rowNote(r))}</span></span><input type="text" inputmode="decimal" data-per="${i}" value="${escapeHtml(String(r.per))}" placeholder="${legacy ? "מנות" : isCount(r) ? "יחידות" : "גרם"}" style="width:76px;text-align:center;flex:none;"><span class="muted" style="flex:none;">${legacy ? "מנות לסועד" : isCount(r) ? "יחידות לסועד" : "גרם לסועד"}</span><button type="button" class="btn btn-secondary btn-small" data-rm="${i}">✕</button></div>`;
+            return head + `<div class="card-row" style="padding:6px 4px;gap:8px;align-items:center;border-bottom:1px solid var(--border,#0001);"><span style="flex:1;min-width:0;"><b>${escapeHtml(r.name)}</b><br><span class="muted" data-note="${i}">${rowNote(r)}</span></span><input type="text" inputmode="decimal" data-per="${i}" value="${escapeHtml(String(r.per))}" placeholder="${legacy ? "מנות" : isCount(r) ? "יחידות" : "גרם"}" style="width:76px;text-align:center;flex:none;"><span class="muted" style="flex:none;">${legacy ? "מנות לסועד" : isCount(r) ? "יחידות לסועד" : "גרם לסועד"}</span><button type="button" class="btn btn-secondary btn-small" data-rm="${i}">✕</button></div>`;
         }).join("");
         menuEl.innerHTML = (plan.rows.length ? `<div class="hint" style="margin:8px 4px 0;">בכל שורה כותבים כמה גרם מקבל סועד באירוע.</div>${rowsHtml}` : "") + (plan.custom.length ? `<div class="card-title" style="margin:12px 4px 4px;">פריטים ידניים</div>` + plan.custom.map((c, i) => `<div class="card-row" style="padding:6px 4px;border-bottom:1px solid var(--border,#0001);"><span><b>${escapeHtml(c.label)}</b><br><span class="muted">${c.kind === "order" ? "להזמין" + (c.supplier_id && supName(c.supplier_id) ? " · " + escapeHtml(supName(c.supplier_id)) : "") : "להכין"}${c.qty ? " · " + escapeHtml(c.qty) : ""}</span></span><span><button type="button" class="btn btn-secondary btn-small" data-cedit="${i}">✎</button> <button type="button" class="btn btn-secondary btn-small" data-crm="${i}">✕</button></span></div>`).join("") : "");
         menuEl.querySelectorAll("[data-per]").forEach((inp) => {
@@ -194,7 +200,7 @@ export async function renderPrepTab(container) {
                 const i = Number(inp.dataset.per);
                 plan.rows[i].per = inp.value;
                 const note = menuEl.querySelector(`[data-note="${i}"]`);
-                if (note) note.textContent = rowNote(plan.rows[i]);
+                if (note) note.innerHTML = rowNote(plan.rows[i]);
                 drawResult(); await persist();
             };
         });
@@ -206,8 +212,19 @@ export async function renderPrepTab(container) {
     function drawResult() {
         const resEl = q("#pp-result");
         const entries = plan.rows.map((r) => ({ source_type: r.source_type, source_id: r.source_id, quantity: entryQuantity(plan.guests, r.per, r.share) })).filter((e) => e.quantity > 0);
-        const customPrep = plan.custom.filter((c) => c.kind === "prep"), customOrder = plan.custom.filter((c) => c.kind === "order");
+        const customPrep0 = plan.custom.filter((c) => c.kind === "prep"), customOrder = plan.custom.filter((c) => c.kind === "order");
         if (!entries.length && !plan.custom.length) { resEl.innerHTML = plan.rows.length ? '<div class="empty-state">הזן כמות סועדים וגרם לכל רכיב כדי לראות מה להכין ולהזמין.</div>' : ""; return; }
+        // מוצר גלם שנוסף ישירות לתפריט (נקניקייה, לחם): מופיע גם ב"מה להכין", עם אותה כמות כולל המרווח כמו בהזמנה
+        const fct = 1 + Math.max(0, parseQty(plan.margin)) / 100;
+        const directTot = new Map();
+        for (const e of entries) if (e.source_type === "pantry") directTot.set(e.source_id, (directTot.get(e.source_id) || 0) + e.quantity);
+        const directPrep = [...directTot].map(([id, q]) => {
+            const row = ctx.pantry.get(id);
+            if (!row) return null;
+            const n = Math.ceil(Math.round(q * fct * 1e6) / 1e6);
+            return { id: "p" + id, kind: "prep", label: row.name, qty: row.unit_type === "unit" ? `${n} יחידות` : qtyText(n) };
+        }).filter(Boolean);
+        const customPrep = [...customPrep0, ...directPrep];
         const result = entries.length ? planPrep(entries, ctx, plan.margin) : { dishes: [], recipes: {}, subRecipes: {}, pantry: {}, foodGrams: 0 };
         const allRecipes = { ...result.recipes };
         for (const [id, g] of Object.entries(result.subRecipes || {})) allRecipes[id] = (allRecipes[id] || 0) + g; // תת-מתכון שגם משמש ישירות מוכן פעם אחת
