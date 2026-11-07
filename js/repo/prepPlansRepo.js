@@ -35,24 +35,42 @@ export function normalizeSvc(o) {
     return out;
 }
 
+export const DIET_KEYS = ["kosher", "vegetarian", "vegan"];
+export function normalizeNeedCounts(o) {
+    const out = {};
+    for (const [k, v] of Object.entries(o && typeof o === "object" ? o : {})) { const t = txt(v); if (/^[a-z_]+$/.test(k) && t) out[k] = t; }
+    return out;
+}
+
+// סרוויס: התפריט הקבוע. מוזן פעם אחת ונפתח בכל יום חדש
+const MENU_KEY = "service_menu";
+export async function getServiceMenu() { return normalizePlan({ rows: await getSetting(MENU_KEY, []) }).rows; }
+export async function saveServiceMenu(rows) { await setSetting(MENU_KEY, normalizePlan({ rows }).rows); }
+
 // תוכנית תקינה מכל קלט (גם מגיבוי ישן/פגום)
 export function normalizePlan(p) {
     const rows = Array.isArray(p && p.rows) ? p.rows.filter((r) => r && (r.source_type === "dish" || r.source_type === "recipe" || r.source_type === "pantry") && Number.isFinite(Number(r.source_id))) : [];
     const done = {};
     for (const [k, v] of Object.entries((p && p.done) || {})) if (v) done[k] = true;
+    const svc = normalizeSvc(p && p.svc);
+    // סוג: סרוויס יומי או אירוע. תוכנית ישנה בלי סוג שיש בה נתוני סרוויס נחשבת סרוויס
+    const kind = p && p.kind === "service" ? "service" : p && p.kind === "event" ? "event" : (txt(p && p.seat1) || txt(p && p.seat2) || Object.keys(svc).length ? "service" : "event");
     return {
         id: txt(p && p.id) || `p${Date.now().toString(36)}`,
+        kind,
         name: txt(p && p.name),
         date: /^\d{4}-\d{2}-\d{2}$/.test(txt(p && p.date)) ? p.date : todayIso(),
         guests: txt(p && p.guests),
         seat1: txt(p && p.seat1),
         seat2: txt(p && p.seat2),
         price: txt(p && p.price), // מחיר לסועד בשקלים (לחישוב אחוז עלות מזון)
-        svc: normalizeSvc(p && p.svc),
+        svc,
         note: typeof (p && p.note) === "string" ? p.note.slice(0, 4000) : "",
         margin: p && p.margin != null && txt(p.margin) !== "" ? txt(p.margin) : "10",
         rows: rows.map((r) => ({ source_type: r.source_type, source_id: Number(r.source_id), name: txt(r.name), per: txt(r.per), share: txt(r.share), group: txt(r.group) })),
         allergens: Array.isArray(p && p.allergens) ? p.allergens.filter((k) => typeof k === "string") : [],
+        diets: Array.isArray(p && p.diets) ? p.diets.filter((k) => DIET_KEYS.includes(k)) : [], // כשר, צמחוני, טבעוני
+        needCounts: normalizeNeedCounts(p && p.needCounts), // כמה סועדים לכל אלרגן והעדפה: מפתח -> מספר
         custom: normalizeCustom(p && p.custom),
         overrides: normalizeOverrides(p && p.overrides),
         overrideBase: normalizeOverrides(p && p.overrideBase), // הטקסט המחושב ברגע השינוי, כדי לזהות שינוי שהתיישן

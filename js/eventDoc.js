@@ -66,7 +66,9 @@ export function buildEventDoc({ plan, ctx, result, groups, loose = [], prepRecip
         ...prepRecipes.map((r) => ({ name: r.name, qty: plan.overrides["r" + r.id] || gramsText(r.g, en), changed: !!plan.overrides["r" + r.id] })),
         ...customPrep.map((c) => ({ name: c.label, qty: c.qty })),
     ];
-    return { note: plan.note || "", title: plan.name, date: plan.date, guests: plan.guests, margin: plan.margin, algLabels, hits: chk.hits, unknown: [...new Set(chk.unknown)], hasCustom: plan.custom.length > 0, rows, prep, recipes, orders };
+    const DIET_LABELS = { kosher: "כשר", vegetarian: "צמחוני", vegan: "טבעוני" };
+    const needs = [...plan.allergens.map((k) => ({ label: (ALLERGENS.find((a) => a.key === k) || {}).label || k, n: (plan.needCounts || {})[k] || "" })), ...(plan.diets || []).map((k) => ({ label: DIET_LABELS[k] || k, n: (plan.needCounts || {})[k] || "" }))].filter((x) => x.n);
+    return { needs, note: plan.note || "", title: plan.name, date: plan.date, guests: plan.guests, margin: plan.margin, algLabels, hits: chk.hits, unknown: [...new Set(chk.unknown)], hasCustom: plan.custom.length > 0, rows, prep, recipes, orders };
 }
 
 // tr: פונקציית תרגום לתוויות העברית. en: כיוון ושפה
@@ -80,6 +82,7 @@ export function eventDocHtml(doc, tr = (s) => s, en = false) {
         ${doc.hits.length ? `<ul>${doc.hits.map((h) => `<li>⚠ <b>${esc(h.name)}</b> - ${T("מכיל")} ${esc(h.labels.map(tr).join(", "))}</li>`).join("")}</ul>` : `<div>${T("לא נמצאו בתפריט פריטים עם האלרגנים האלה, לפי ההגדרות במערכת.")}</div>`}
         ${doc.unknown.length ? `<div>${T("לא הוגדרו אלרגנים ב")}: ${esc(doc.unknown.join(", "))}. ${T("יש לבדוק ידנית.")}</div>` : ""}
         ${doc.hasCustom ? `<div>${T("פריטים ידניים לא נבדקים.")}</div>` : ""}</div>` : "";
+    const needsHtml = (doc.needs || []).length ? `<div class="alg"><b>${T("מנות מיוחדות")}:</b> ${esc(doc.needs.map((x) => `${tr(x.label)} ${x.n}`).join(", "))}</div>` : "";
     const recipes = doc.recipes.map((r) => `<div class="rec"><h3>${esc(r.name)} <span class="tg">${esc(r.target)}${r.changed ? ` · ${T("שונתה")}` : ""}</span></h3>
         ${r.scaled ? "" : `<div class="note">${T("אין משקל סופי במתכון, הכמויות לפי המתכון המקורי")}</div>`}
         <table><thead><tr><th>${T("רכיב")}</th><th class="q">${T("כמות")}</th></tr></thead><tbody>${r.items.map((i) => `<tr><td>${i.sub ? "📖 " : ""}${esc(i.name)}</td><td class="q">${esc(i.qty)}</td></tr>`).join("")}</tbody></table>
@@ -99,7 +102,7 @@ tr.gh td{background:#eee;font-weight:700}
 </style></head><body>
 <h1>${esc(doc.title || tr("מסמך אירוע"))}</h1>
 <div class="sub">${doc.date ? `${T("תאריך")}: ${esc(dateText(doc.date))} &nbsp; ` : ""}${doc.guests ? `${T("סועדים")}: ${esc(doc.guests)}` : ""}</div>
-${alg}
+${alg}${needsHtml}
 ${doc.note ? `<div class="alg"><b>${T("הערות לאירוע")}:</b><div style="white-space:pre-wrap;">${esc(doc.note)}</div></div>` : ""}
 <h2>${T("תפריט")}</h2>
 <table><thead><tr><th>${T("פריט")}</th><th class="q">${T("לסועד")}</th><th class="q">${T("סך הכול")}</th></tr></thead><tbody>${menu}</tbody></table>

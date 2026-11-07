@@ -22,37 +22,50 @@ import { qtyText, orderText, whatsappUrl, mailtoUrl } from "../shareText.js";
 import { checklistText, checklistHtml } from "../prepChecklist.js";
 import { buildEventDoc, eventDocHtml } from "../eventDoc.js";
 import { makeTranslator } from "../i18nCore.js";
-import { listPlans, savePlans, upsertPlan, removePlan, normalizePlan, progress } from "../repo/prepPlansRepo.js";
+import { listPlans, savePlans, upsertPlan, removePlan, normalizePlan, progress, todayIso, getServiceMenu, saveServiceMenu } from "../repo/prepPlansRepo.js";
 
 const fmt = (n) => +Number(n).toFixed(2);
 const shortDate = (d) => { const [y, m, day] = String(d || "").split("-"); return day ? `${parseInt(day, 10)}.${parseInt(m, 10)}` : ""; };
-const planLabel = (p) => `${p.name || "אירוע"} · ${shortDate(p.date)}`;
+const planLabel = (p) => (p.kind === "service" ? `${weekdayHe(p.date)} · ${shortDate(p.date)}` : `${p.name || "אירוע"} · ${shortDate(p.date)}`);
+const svcName = (p) => `סרוויס ${weekdayHe(p.date)}`;
+const DIETS = [{ key: "kosher", label: "כשר" }, { key: "vegetarian", label: "צמחוני" }, { key: "vegan", label: "טבעוני" }];
+const needLabel = (k) => ((ALLERGENS.find((a) => a.key === k) || DIETS.find((d) => d.key === k)) || { label: k }).label;
 let currentId = null; // התוכנית הפתוחה (נשמר בין מעברי מסכים)
 
-let prepView = "forecast"; // התצוגה האחרונה בטאב, כשהתוסף סרוויסים פעיל
+let prepView = "service"; // התצוגה האחרונה בטאב, כשהתוסף סרוויסים פעיל
 export async function renderPrepTab(container) {
-    if (!addonOn("service")) return renderEvent(container);
-    container.innerHTML = `<div class="seg" id="pv-seg"><button type="button" data-v="forecast">תחזית סועדים</button><button type="button" data-v="order">הזמנה</button><button type="button" data-v="event">אירוע</button></div><div id="pv-body"></div>`;
+    if (!addonOn("service")) return renderEvent(container, "all");
+    container.innerHTML = `<div class="seg" id="pv-seg"><button type="button" data-v="service">סרוויס</button><button type="button" data-v="forecast">תחזית סועדים</button><button type="button" data-v="order">הזמנה</button><button type="button" data-v="event">אירוע</button></div><div id="pv-body"></div>`;
     const body = container.querySelector("#pv-body");
     const show = async (v) => {
         prepView = v;
         container.querySelectorAll("#pv-seg button").forEach((b) => b.classList.toggle("active", b.dataset.v === v));
         body.innerHTML = "";
-        await (v === "event" ? renderEvent(body) : v === "order" ? renderUpcomingOrder(body) : renderForecast(body));
+        await (v === "event" ? renderEvent(body, "event") : v === "service" ? renderEvent(body, "service") : v === "order" ? renderUpcomingOrder(body) : renderForecast(body));
     };
     container.querySelectorAll("#pv-seg button").forEach((b) => { b.onclick = () => show(b.dataset.v); });
     await show(prepView);
 }
 
-async function renderEvent(container) {
+async function renderEvent(container, mode = "all") {
     const [ctx, suppliers] = await Promise.all([loadSalesCtx(), dbGetAll("suppliers")]);
     let plans = await listPlans();
+    let stdMenu = await getServiceMenu(); // התפריט הקבוע של הסרוויס
+    const isSvc = mode === "service";
+    const visible = () => plans.filter((p) => mode === "all" || p.kind === mode);
+    const freshPlan = (margin) => normalizePlan({ kind: isSvc ? "service" : "event", margin: margin != null ? margin : String(DEFAULT_MARGIN_PCT), rows: isSvc ? stdMenu.map((r) => ({ ...r })) : [] });
     const supplierOptions = (sel) => [...suppliers].sort((a, b) => a.name.localeCompare(b.name, "he")).map((s) => `<option value="${s.id}"${s.id === sel ? " selected" : ""}>${escapeHtml(s.name)}</option>`).join("");
 
-    let plan = plans.find((p) => p.id === currentId) || plans[0] || normalizePlan({ margin: String(DEFAULT_MARGIN_PCT) });
+    let plan = visible().find((p) => p.id === currentId) || (isSvc ? visible().find((p) => p.date === todayIso()) : visible()[0]) || freshPlan();
+    if (isSvc && !plans.some((p) => p.id === plan.id)) plan.name = svcName(plan);
+    if (isSvc && !plan.rows.length && !Object.keys(plan.svc).length && stdMenu.length) plan.rows = stdMenu.map((r) => ({ ...r })); // יום בלי תפריט ובלי נתונים מקבל את התפריט הקבוע
     currentId = plan.id;
-    const isBlank = (p) => !p.rows.length && !p.custom.length && !p.guests && !p.name;
+    const isBlank = (p) => (p.kind === "service" ? !p.guests && !p.seat1 && !p.seat2 && !Object.keys(p.svc).length && !p.custom.length && !p.note && !p.allergens.length && !p.diets.length : !p.rows.length && !p.custom.length && !p.guests && !p.name);
     const persist = async () => {
+        if (isSvc) { // התפריט הקבוע מתעדכן רק מהיום החדש ביותר, כדי שעריכת יום ישן לא תשנה אותו
+            const newest = plans.filter((p) => p.kind === "service" && p.id !== plan.id).reduce((m, p) => (p.date > m ? p.date : m), "");
+            if (plan.date >= newest) { stdMenu = plan.rows.map((r) => ({ ...r })); try { await saveServiceMenu(stdMenu); } catch (e) { /* התפריט הקבוע הוא עזר */ } }
+        }
         if (isBlank(plan)) return;
         plans = upsertPlan(plans, plan);
         plan.updated = plans[0].updated; // התוכנית החיה נשארת כפי שהוקלדה (שדה ריק לא הופך לברירת מחדל); רק הנשמר מנורמל
@@ -62,24 +75,27 @@ async function renderEvent(container) {
 
     container.innerHTML = `
         <div class="card">
-            <div class="card-title" style="margin:0 0 6px;">תכנון אירוע ${info("בוחרים פריטים מהמערכת או מוסיפים ידנית, וקובעים לכל רכיב כמה גרם מקבל סועד באירוע. האפליקציה מחשבת מה להכין ומה להזמין מכל ספק, כולל ניצולת ומרווח ביטחון. מה שחסר בו מידע מסומן להזנה ידנית. הכול נשמר.")}</div>
+            <div class="card-title" style="margin:0 0 6px;">${isSvc ? "סרוויס" : "תכנון אירוע"} ${isSvc ? info("כל יום נפתח דף חדש עם התפריט הקבוע. מזינים סועדים ומה שיצא, חזר, נזרק ופחת.") : ""}${isSvc ? "" : info("בוחרים פריטים מהמערכת או מוסיפים ידנית, וקובעים לכל רכיב כמה גרם מקבל סועד באירוע. האפליקציה מחשבת מה להכין ומה להזמין מכל ספק, כולל ניצולת ומרווח ביטחון. מה שחסר בו מידע מסומן להזנה ידנית. הכול נשמר.")}</div>
             <div class="form-row">
-                <div class="field"><label>אירוע</label><select id="pp-plan"></select></div>
+                <div class="field"><label>${isSvc ? "יום" : "אירוע"}</label><select id="pp-plan"></select></div>
                 <div class="field" style="align-self:end;"><div class="btn-row"><button type="button" class="btn btn-secondary btn-small" id="pp-new">＋ חדש</button><button type="button" class="btn btn-secondary btn-small" id="pp-del">מחק</button></div></div>
             </div>
             <div class="form-row">
-                <div class="field"><label>שם האירוע</label><input type="text" id="pp-name" placeholder="למשל: חתונה של דנה"></div>
+                <div class="field"${isSvc ? ' style="display:none;"' : ""}><label>שם האירוע</label><input type="text" id="pp-name" placeholder="למשל: חתונה של דנה"></div>
                 <div class="field"><label>תאריך</label><input type="date" id="pp-date"></div>
             </div>
-            <div class="form-row">
+            <div class="form-row"${isSvc ? ' style="display:none;"' : ""}>
                 <div class="field"><label>כמות סועדים</label><input type="text" inputmode="numeric" id="pp-guests" placeholder="80"></div>
                 <div class="field"><label>מרווח ביטחון באחוזים ${info("תוספת על הכמות המחושבת, כדי לא להישאר בלי. בבופה כדאי עשרה עד חמישה עשר. תבלינים לא תמיד גדלים ביחס ישר, לכן אפשר להוריד.")}</label><input type="text" inputmode="decimal" id="pp-margin"></div>
             </div>
             <div class="field"><label>אלרגנים של הסועדים ${info("מסמנים אלרגנים שיש בין הסועדים. האפליקציה רושמת אותם בתכנון ומזהירה על פריטים בתפריט שמכילים אותם, לפי הגדרות האלרגנים במערכת. פריט ידני ופריט בלי הגדרות לא נבדקים.")}</label><div id="pp-alg" class="btn-row" style="flex-wrap:wrap;"></div></div>
+            <div class="field"><label>העדפות של הסועדים ${info("כשר, צמחוני וטבעוני. אחרי סימון אלרגיה או העדפה מזינים כמה סועדים, וכך רואים כמה מנות להכין.")}</label><div id="pp-diet" class="btn-row" style="flex-wrap:wrap;"></div></div>
+            <div id="pp-need"></div>
             <div class="field"><label>הערות לאירוע ${info("מקום חופשי לכל מה שלא קשור לאוכל: סידורים, הכרות, ארגון, שעות, ציוד. ההערות מופיעות במסמך האירוע.")}</label><textarea id="pp-note" rows="3" style="width:100%;" placeholder="סידורים, הכרות, ארגון, מה שצריך לזכור"></textarea></div>
         </div>
         <div class="card">
             <div class="card-title" style="margin:0 0 6px;">תפריט</div>
+            ${isSvc ? '<div class="hint" style="margin:0 0 6px;">התפריט נפתח בכל יום. מה שמוסיפים או מורידים כאן משתנה מהיום הזה והלאה.</div>' : ""}
             <button type="button" class="btn btn-secondary btn-block" id="pp-pick">＋ הוספת פריטים מהמערכת</button>
             <div id="pp-menu"></div>
         </div>
@@ -103,7 +119,7 @@ async function renderEvent(container) {
                 <button type="button" class="btn btn-secondary btn-small" id="sv-hist">📈 היסטוריה וגרפים</button>
             </div>
         </div>
-        <div class="card">
+        <div class="card" id="pc-card"${isSvc ? ' style="display:none;"' : ""}>
             <div class="card-title" style="margin:0 0 6px;">פריט ידני ${info("מנה או משימה שאין במערכת. הכמות היא טקסט חופשי. הפריט מופיע בצ'ק ליסט, בהדפסה ובוואטסאפ.")}</div>
             <div class="form-row">
                 <div class="field"><label>שם</label><input type="text" id="pc-label" placeholder="למשל: סלט קינואה"></div>
@@ -120,36 +136,48 @@ async function renderEvent(container) {
     for (const id of ["#pp-plan", "#pc-kind", "#pc-sup"]) enhanceSelect(q(id));
 
     function loadFields() {
+        if (isSvc) plan.name = svcName(plan);
         q("#pp-note").value = plan.note || ""; q("#pp-name").value = plan.name; q("#pp-date").value = plan.date; q("#pp-guests").value = plan.guests; q("#pp-margin").value = plan.margin;
         const sel = q("#pp-plan");
-        const list = plans.some((p) => p.id === plan.id) ? plans : [plan, ...plans];
-        sel.innerHTML = list.map((p) => `<option value="${escapeHtml(p.id)}"${p.id === plan.id ? " selected" : ""}>${escapeHtml(plans.some((x) => x.id === p.id) ? planLabel(p) : "אירוע חדש")}</option>`).join("");
+        const vis = visible();
+        const list = vis.some((p) => p.id === plan.id) ? vis : [plan, ...vis];
+        sel.innerHTML = list.map((p) => `<option value="${escapeHtml(p.id)}"${p.id === plan.id ? " selected" : ""}>${escapeHtml(plans.some((x) => x.id === p.id) || isSvc ? planLabel(p) : "אירוע חדש")}</option>`).join("");
         if (sel.refreshPicker) sel.refreshPicker();
         drawAllergenChips();
     }
     function drawAllergenChips() {
-        const box = q("#pp-alg");
-        box.innerHTML = ALLERGENS.map((a) => `<button type="button" class="btn btn-small ${plan.allergens.includes(a.key) ? "btn-primary" : "btn-secondary"}" data-ak="${a.key}">${escapeHtml(a.label)}</button>`).join("");
-        box.querySelectorAll("[data-ak]").forEach((b) => {
-            b.onclick = async () => {
-                const k = b.dataset.ak;
-                plan.allergens = plan.allergens.includes(k) ? plan.allergens.filter((x) => x !== k) : [...plan.allergens, k];
-                drawAllergenChips(); drawResult(); await persist();
-            };
+        const paint = (boxSel, list, field) => {
+            const box = q(boxSel);
+            box.innerHTML = list.map((a) => `<button type="button" class="btn btn-small ${plan[field].includes(a.key) ? "btn-primary" : "btn-secondary"}" data-ak="${a.key}">${escapeHtml(a.label)}</button>`).join("");
+            box.querySelectorAll("[data-ak]").forEach((b) => {
+                b.onclick = async () => {
+                    const k = b.dataset.ak, on = plan[field].includes(k);
+                    plan[field] = on ? plan[field].filter((x) => x !== k) : [...plan[field], k];
+                    if (on) delete plan.needCounts[k];
+                    drawAllergenChips(); drawResult(); await persist();
+                };
+            });
+        };
+        paint("#pp-alg", ALLERGENS, "allergens"); paint("#pp-diet", DIETS, "diets");
+        const sel = [...plan.allergens, ...plan.diets];
+        const nb = q("#pp-need");
+        nb.innerHTML = sel.map((k) => `<div class="card-row" style="padding:4px 0;gap:8px;align-items:center;"><span style="flex:1;min-width:0;"><b>${escapeHtml(needLabel(k))}</b></span><input type="text" inputmode="numeric" data-nk="${k}" value="${escapeHtml(plan.needCounts[k] || "")}" placeholder="כמה סועדים" style="width:110px;text-align:center;flex:none;"></div>`).join("");
+        nb.querySelectorAll("[data-nk]").forEach((inp) => {
+            inp.oninput = async () => { const v = inp.value.trim(); if (v) plan.needCounts[inp.dataset.nk] = v; else delete plan.needCounts[inp.dataset.nk]; drawResult(); await persist(); };
         });
     }
-    const bind = (sel, key) => { q(sel).oninput = async (e) => { plan[key] = e.target.value; drawMenu(); drawResult(); updAll(); await persist(); }; };
+    const bind = (sel, key) => { q(sel).oninput = async (e) => { plan[key] = e.target.value; if (isSvc && key === "date") plan.name = svcName(plan); drawMenu(); drawResult(); updAll(); await persist(); }; };
     q("#pp-note").oninput = async (e) => { plan.note = e.target.value; await persist(); };
     bind("#pp-name", "name"); bind("#pp-date", "date"); bind("#pp-guests", "guests"); bind("#pp-margin", "margin");
     q("#pp-date").onchange = q("#pp-date").oninput;
     q("#pp-plan").onchange = (e) => { plan = plans.find((p) => p.id === e.target.value) || plan; currentId = plan.id; loadFields(); draw(); };
-    q("#pp-new").onclick = () => { plan = normalizePlan({ margin: plan.margin, rows: addonOn("service") ? plan.rows.map((r) => ({ ...r })) : [] }); currentId = plan.id; loadFields(); draw(); }; // עם סרוויסים: התפריט נשמר מערב לערב
+    q("#pp-new").onclick = () => { plan = freshPlan(plan.margin); currentId = plan.id; loadFields(); draw(); }; // בסרוויס: התפריט הקבוע נפתח בכל יום
     q("#pp-del").onclick = async () => {
-        if (!plans.some((p) => p.id === plan.id)) { plan = normalizePlan({ margin: plan.margin }); currentId = plan.id; loadFields(); draw(); return; }
+        if (!plans.some((p) => p.id === plan.id)) { plan = freshPlan(plan.margin); currentId = plan.id; loadFields(); draw(); return; }
         if (!(await confirmDialog(`למחוק את האירוע "${escapeHtml(plan.name || "ללא שם")}"?`))) return;
         plans = removePlan(plans, plan.id);
         await savePlans(plans);
-        plan = plans[0] || normalizePlan({ margin: plan.margin });
+        plan = visible()[0] || freshPlan(plan.margin);
         currentId = plan.id; loadFields(); draw();
     };
 
@@ -215,6 +243,7 @@ async function renderEvent(container) {
         const legacy = r.source_type === "dish";
         const cnt = isCount(r);
         const qty = entryQuantity(plan.guests, r.per, r.share);
+        if (isSvc && !(parseQty(r.per) > 0)) return "";
         if (!(parseQty(r.per) > 0)) return escapeHtml(legacy ? "הזן כמה מנות לסועד" : cnt ? "הזן יחידות לסועד" : "הזן גרם לסועד");
         if (!qty) return escapeHtml("הזן כמות סועדים");
         // הכמות הסופית כוללת את מרווח הביטחון, והתג מראה מאיפה היא באה: הכמות הנקייה ואחוז התוספת
@@ -239,7 +268,7 @@ async function renderEvent(container) {
             lastGroup = r.group || "";
             return head + `<div class="card-row" style="padding:6px 4px;gap:8px;align-items:center;border-bottom:1px solid var(--border,#0001);"><span style="flex:1;min-width:0;"><b>${escapeHtml(r.name)}</b><br><span class="muted" data-note="${i}">${rowNote(r)}</span></span><input type="text" inputmode="decimal" data-per="${i}" value="${escapeHtml(String(r.per))}" placeholder="${legacy ? "מנות" : isCount(r) ? "יחידות" : "גרם"}" style="width:76px;text-align:center;flex:none;"><span class="muted" style="flex:none;">${legacy ? "מנות לסועד" : isCount(r) ? "יחידות לסועד" : "גרם לסועד"}</span><button type="button" class="btn btn-secondary btn-small" data-rm="${i}">✕</button></div>`;
         }).join("");
-        menuEl.innerHTML = (plan.rows.length ? `<div class="hint" style="margin:8px 4px 0;">בכל שורה כותבים כמה גרם מקבל סועד באירוע.</div>${rowsHtml}` : "") + (plan.custom.length ? `<div class="card-title" style="margin:12px 4px 4px;">פריטים ידניים</div>` + plan.custom.map((c, i) => `<div class="card-row" style="padding:6px 4px;border-bottom:1px solid var(--border,#0001);"><span><b>${escapeHtml(c.label)}</b><br><span class="muted">${c.kind === "order" ? "להזמין" + (c.supplier_id && supName(c.supplier_id) ? " · " + escapeHtml(supName(c.supplier_id)) : "") : "להכין"}${c.qty ? " · " + escapeHtml(c.qty) : ""}</span></span><span><button type="button" class="btn btn-secondary btn-small" data-cedit="${i}">✎</button> <button type="button" class="btn btn-secondary btn-small" data-crm="${i}">✕</button></span></div>`).join("") : "");
+        menuEl.innerHTML = (plan.rows.length ? `${isSvc ? "" : '<div class="hint" style="margin:8px 4px 0;">בכל שורה כותבים כמה גרם מקבל סועד באירוע.</div>'}${rowsHtml}` : "") + (plan.custom.length ? `<div class="card-title" style="margin:12px 4px 4px;">פריטים ידניים</div>` + plan.custom.map((c, i) => `<div class="card-row" style="padding:6px 4px;border-bottom:1px solid var(--border,#0001);"><span><b>${escapeHtml(c.label)}</b><br><span class="muted">${c.kind === "order" ? "להזמין" + (c.supplier_id && supName(c.supplier_id) ? " · " + escapeHtml(supName(c.supplier_id)) : "") : "להכין"}${c.qty ? " · " + escapeHtml(c.qty) : ""}</span></span><span><button type="button" class="btn btn-secondary btn-small" data-cedit="${i}">✎</button> <button type="button" class="btn btn-secondary btn-small" data-crm="${i}">✕</button></span></div>`).join("") : "");
         menuEl.querySelectorAll("[data-per]").forEach((inp) => {
             inp.oninput = async () => {
                 const i = Number(inp.dataset.per);
@@ -254,8 +283,23 @@ async function renderEvent(container) {
         menuEl.querySelectorAll("[data-cedit]").forEach((b) => { b.onclick = () => editCustom(Number(b.dataset.cedit)); });
     }
 
+    // אלרגנים והעדפות של הסועדים: כמה מנות להכין לכל אחד, ואזהרה על פריטים בתפריט שמכילים את האלרגנים
+    function needCard() {
+        const keys = [...plan.allergens, ...plan.diets];
+        if (!keys.length) return "";
+        const rows = keys.map((k) => { const n = plan.needCounts[k]; return `<div class="card-row" style="padding:4px 0;"><span>${escapeHtml(needLabel(k))}</span>${n ? `<b>${escapeHtml(n)} מנות</b>` : '<span class="muted">הזן כמה סועדים</span>'}</div>`; }).join("");
+        let chkHtml = "";
+        if (plan.allergens.length) {
+            const chk = allergenCheck(plan.rows.map((r) => ({ source_type: r.source_type, source_id: r.source_id, name: r.name })), ctx, plan.allergens);
+            chkHtml = `${chk.hits.length ? chk.hits.map((h) => `<div class="card-row" style="padding:4px 0;"><span>⚠️ <b>${escapeHtml(h.name)}</b></span><span>מכיל ${escapeHtml(h.labels.join(", "))}</span></div>`).join("") : '<div class="muted" style="margin-top:6px;">לא נמצאו בתפריט פריטים עם האלרגנים האלה, לפי ההגדרות במערכת.</div>'}
+                ${chk.unknown.length ? `<div class="muted" style="margin-top:6px;">לא הוגדרו אלרגנים ב: ${escapeHtml([...new Set(chk.unknown)].join(", "))}. יש לבדוק ידנית.</div>` : ""}
+                ${plan.custom.length ? '<div class="muted" style="margin-top:6px;">פריטים ידניים לא נבדקים.</div>' : ""}`;
+        }
+        return `<div class="card"><div class="card-title" style="margin:0 0 6px;">אלרגנים והעדפות של הסועדים</div>${rows}${chkHtml}</div>`;
+    }
     function drawResult() {
         const resEl = q("#pp-result");
+        if (isSvc) { resEl.innerHTML = needCard(); return; }
         const entries = plan.rows.map((r) => ({ source_type: r.source_type, source_id: r.source_id, quantity: entryQuantity(plan.guests, r.per, r.share) })).filter((e) => e.quantity > 0);
         const customPrep0 = plan.custom.filter((c) => c.kind === "prep"), customOrder = plan.custom.filter((c) => c.kind === "order");
         if (!entries.length && !plan.custom.length) { resEl.innerHTML = plan.rows.length ? '<div class="empty-state">הזן כמות סועדים וגרם לכל רכיב כדי לראות מה להכין ולהזמין.</div>' : ""; return; }
@@ -306,16 +350,7 @@ async function renderEvent(container) {
         const cell = (key, html) => (plan.overrides[key] ? `${escapeHtml(plan.overrides[key])} <span class="muted">· שונתה</span>` : html);
         const customRow = (c) => check(`c${c.id}`, `✏️ ${escapeHtml(c.label)}`, escapeHtml(c.qty), { cidx: plan.custom.indexOf(c) });
 
-        // אלרגנים של הסועדים מול התפריט
-        let allergenHtml = "";
-        if (plan.allergens.length) {
-            const chk = allergenCheck(plan.rows.map((r) => ({ source_type: r.source_type, source_id: r.source_id, name: r.name })), ctx, plan.allergens);
-            const labels = ALLERGENS.filter((a) => plan.allergens.includes(a.key)).map((a) => a.label).join(", ");
-            allergenHtml = `<div class="card"><div class="card-title" style="margin:0 0 6px;">אלרגנים של הסועדים</div><div class="muted" style="margin-bottom:6px;">${escapeHtml(labels)}</div>
-                ${chk.hits.length ? chk.hits.map((h) => `<div class="card-row" style="padding:4px 0;"><span>⚠️ <b>${escapeHtml(h.name)}</b></span><span>מכיל ${escapeHtml(h.labels.join(", "))}</span></div>`).join("") : '<div class="muted">לא נמצאו בתפריט פריטים עם האלרגנים האלה, לפי ההגדרות במערכת.</div>'}
-                ${chk.unknown.length ? `<div class="muted" style="margin-top:6px;">לא הוגדרו אלרגנים ב: ${escapeHtml([...new Set(chk.unknown)].join(", "))}. יש לבדוק ידנית.</div>` : ""}
-                ${plan.custom.length ? '<div class="muted" style="margin-top:6px;">פריטים ידניים לא נבדקים.</div>' : ""}</div>`;
-        }
+        const allergenHtml = needCard();
 
         resEl.innerHTML = `
             <div class="card"><button type="button" class="btn btn-primary btn-block" id="pp-doc">📄 מסמך אירוע להדפסה ושליחה</button><div class="hint" style="margin-top:6px;">תפריט, כמויות, מתכונים מלאים והזמנות לפי ספק, בלי מחירים. בחלון ההדפסה בוחרים שמירה כ PDF ואז שולחים.</div></div>
@@ -387,7 +422,7 @@ async function renderEvent(container) {
     }
     function drawService() {
         const card = q("#sv-card");
-        if (!addonOn("service")) { card.style.display = "none"; return; }
+        if (!isSvc || !addonOn("service")) { card.style.display = "none"; return; }
         card.style.display = "";
         q("#sv-s1").value = plan.seat1 || ""; q("#sv-s2").value = plan.seat2 || "";
         q("#sv-day").textContent = [weekdayHe(plan.date), shortDate(plan.date)].filter(Boolean).join(" · ");

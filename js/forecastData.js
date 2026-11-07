@@ -12,7 +12,7 @@ export async function loadForecastInputs() {
     const plans = await listPlans();
     const points = historyPoints(await serviceHistoryPlans(plans), pantry);
     const planId = await getSetting("forecast_plan", "");
-    const plan = plans.find((p) => p.id === planId) || plans[0] || null;
+    const plan = plans.find((p) => p.id === planId) || plans.find((p) => p.kind === "service") || plans[0] || null;
     const items = plan ? plan.rows.filter((r) => r.source_type === "pantry" && pantry.has(r.source_id)).map((r) => ({ id: r.source_id, name: pantry.get(r.source_id).name, per: r.per, cnt: pantry.get(r.source_id).unit_type === "unit" })) : [];
     return {
         pantry, plans, points, plan, items,
@@ -30,7 +30,7 @@ export async function loadTodayCard() {
     const margin = String((await getSetting("forecast_margin", "10")) ?? "10");
     const thaw = (await getSetting("forecast_thaw", {})) || {};
     const planId = await getSetting("forecast_plan", "");
-    const plan = plans.find((p) => p.id === planId) || plans[0] || null;
+    const plan = plans.find((p) => p.id === planId) || plans.find((p) => p.kind === "service") || plans[0] || null;
     const items = plan ? plan.rows.filter((r) => r.source_type === "pantry" && pantry.has(r.source_id)).map((r) => ({ id: r.source_id, name: pantry.get(r.source_id).name, per: r.per, cnt: pantry.get(r.source_id).unit_type === "unit" })) : [];
     const maxThaw = Math.max(0, ...items.map((i) => thawDaysOf(thaw, i.id)));
     const m = buildForecast({ startIso: today, days: 3, extraDays: maxThaw, entered, points, items, marginPct: margin });

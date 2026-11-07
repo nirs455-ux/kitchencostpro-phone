@@ -26,7 +26,7 @@ export async function renderForecast(container) {
     let range = (await getSetting(K_RANGE, "two")) || "two";
     let thaw = (await getSetting(K_THAW, {})) || {}; // ימי הפשרה לכל נתח
     let planId = await getSetting(K_PLAN, "");
-    let plan = plans.find((p) => p.id === planId) || plans[0] || null; // ברירת מחדל: התוכנית האחרונה שנערכה
+    let plan = plans.find((p) => p.id === planId) || plans.find((p) => p.kind === "service") || plans[0] || null; // ברירת מחדל: התוכנית האחרונה שנערכה
     const open = new Set(); // ימים פתוחים לפירוט
 
     // פריטי התפריט שהם חומרי גלם (נתחים). מנות ומתכונים בתפריט לא נכנסים לתחזית הזו
