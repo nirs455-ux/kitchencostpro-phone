@@ -15,6 +15,7 @@ import { serviceSummary, serviceText, serviceFileName, serviceMonthFolder, histo
 import { compareService, changeText, SAME_DAY_COUNT } from "../serviceCompare.js";
 import { renderServicePdf } from "../servicePdf.js";
 import { chartSvg } from "../serviceCharts.js";
+import { renderForecast } from "./forecastPage.js";
 import { qtyText, orderText, whatsappUrl, mailtoUrl } from "../shareText.js";
 import { checklistText, checklistHtml } from "../prepChecklist.js";
 import { buildEventDoc, eventDocHtml } from "../eventDoc.js";
@@ -26,7 +27,22 @@ const shortDate = (d) => { const [y, m, day] = String(d || "").split("-"); retur
 const planLabel = (p) => `${p.name || "אירוע"} · ${shortDate(p.date)}`;
 let currentId = null; // התוכנית הפתוחה (נשמר בין מעברי מסכים)
 
+let prepView = "forecast"; // התצוגה האחרונה בטאב, כשהתוסף סרוויסים פעיל
 export async function renderPrepTab(container) {
+    if (!addonOn("service")) return renderEvent(container);
+    container.innerHTML = `<div class="seg" id="pv-seg"><button type="button" data-v="forecast">תחזית סועדים</button><button type="button" data-v="event">אירוע</button></div><div id="pv-body"></div>`;
+    const body = container.querySelector("#pv-body");
+    const show = async (v) => {
+        prepView = v;
+        container.querySelectorAll("#pv-seg button").forEach((b) => b.classList.toggle("active", b.dataset.v === v));
+        body.innerHTML = "";
+        await (v === "event" ? renderEvent(body) : renderForecast(body));
+    };
+    container.querySelectorAll("#pv-seg button").forEach((b) => { b.onclick = () => show(b.dataset.v); });
+    await show(prepView);
+}
+
+async function renderEvent(container) {
     const [ctx, suppliers] = await Promise.all([loadSalesCtx(), dbGetAll("suppliers")]);
     let plans = await listPlans();
     const supplierOptions = (sel) => [...suppliers].sort((a, b) => a.name.localeCompare(b.name, "he")).map((s) => `<option value="${s.id}"${s.id === sel ? " selected" : ""}>${escapeHtml(s.name)}</option>`).join("");
@@ -124,7 +140,7 @@ export async function renderPrepTab(container) {
     bind("#pp-name", "name"); bind("#pp-date", "date"); bind("#pp-guests", "guests"); bind("#pp-margin", "margin");
     q("#pp-date").onchange = q("#pp-date").oninput;
     q("#pp-plan").onchange = (e) => { plan = plans.find((p) => p.id === e.target.value) || plan; currentId = plan.id; loadFields(); draw(); };
-    q("#pp-new").onclick = () => { plan = normalizePlan({ margin: plan.margin }); currentId = plan.id; loadFields(); draw(); };
+    q("#pp-new").onclick = () => { plan = normalizePlan({ margin: plan.margin, rows: addonOn("service") ? plan.rows.map((r) => ({ ...r })) : [] }); currentId = plan.id; loadFields(); draw(); }; // עם סרוויסים: התפריט נשמר מערב לערב
     q("#pp-del").onclick = async () => {
         if (!plans.some((p) => p.id === plan.id)) { plan = normalizePlan({ margin: plan.margin }); currentId = plan.id; loadFields(); draw(); return; }
         if (!(await confirmDialog(`למחוק את האירוע "${escapeHtml(plan.name || "ללא שם")}"?`))) return;

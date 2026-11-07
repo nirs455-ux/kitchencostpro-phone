@@ -17,7 +17,7 @@ export function serviceSummary(plan, pantry) {
         if (!row) continue;
         const cnt = row.unit_type === "unit";
         const res = serviceRow((plan.svc || {})[`pantry:${r.source_id}`], guests, cnt);
-        rows.push({ name: r.name || row.name, cnt, res });
+        rows.push({ id: r.source_id, name: r.name || row.name, cnt, res });
         if (!res) continue;
         if (!cnt && !res.invalid) for (const k of Object.keys(t)) t[k] += res[k];
         if (!res.invalid && Number(row.price) > 0) cost += res.eaten * Number(row.price);
@@ -66,6 +66,7 @@ export function pointFromSummary(s) {
     return {
         date: s.date, title: s.title, guests: s.guests, perGuestG: s.perGuestG, eatenKg: s.totals.eaten, thrown: s.totals.thrown, costPerDiner: s.costPerDiner,
         perCut: s.rows.filter((x) => x.res && !x.cnt && x.res.perGuest != null).map((x) => ({ name: x.name, g: x.res.perGuest, kg: x.res.eaten })),
+        perItem: s.rows.filter((x) => x.res && !x.res.invalid && x.id != null).map((x) => ({ id: x.id, name: x.name, cnt: x.cnt, amt: x.res.eaten })), // ק"ג, או יחידות למוצר ביחידות
     };
 }
 

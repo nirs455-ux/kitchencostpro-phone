@@ -17,6 +17,8 @@ import { computeStatus, openWizardAt } from "../statusIcons.js";
 import { resolveCloudIssue } from "../cloud/cloudUi.js";
 import { loadDemoData } from "../demoData.js";
 import { orderAttnItems } from "../orderReminders.js";
+import { loadTodayCard } from "../forecastData.js";
+import { qtyText } from "../shareText.js";
 import { listDishesWithItems } from "../repo/dishesRepo.js";
 import { underpricedDishes } from "../dishPricing.js";
 import { showUnderpricedDialog } from "./dishesPage.js";
@@ -71,7 +73,9 @@ export async function renderHomePage(container) {
     const underpriced = underpricedDishes(await listDishesWithItems());
     if (stale()) return;
 
+    const todayOn = addonOn("service");
     container.innerHTML = `
+        ${todayOn ? '<div class="sec-title">היום</div><div class="card" id="home-today"></div>' : ""}
         <div class="sec-title">התראות</div>
         <div id="home-attn"></div>
         <div class="sec-title">פעולה מהירה</div>
@@ -110,7 +114,9 @@ export async function renderHomePage(container) {
         items.unshift({ cls: "warn", icon: "☁️", text, btn: "טפל", fn: async () => { await resolveCloudIssue(); rerender(); } });
     }
     if (!pantry.length && !invoices.length) items.push({ cls: "ok", icon: "🧪", text: "רוצה לנסות עם נתוני דוגמה? (חומרי גלם, מתכונים, מנות ומוצר יצרן)", btn: "טען", fn: async () => { await loadDemoData(); toast("נתוני הדוגמה נטענו"); rerender(); } });
-    try { items.unshift(...(await orderAttnItems(rerender))); } catch (e) { /* תזכורות הזמנה הן עזר */ }
+    let orderItems = [];
+    try { orderItems = await orderAttnItems(rerender); } catch (e) { /* תזכורות הזמנה הן עזר */ }
+    if (!todayOn) items.unshift(...orderItems); // עם סרוויסים, ההזמנות מוצגות בכרטיס היום
     if (stale()) return;
     const order = { danger: 0, warn: 1, ok: 2 };
     items.sort((x, y) => (order[x.cls] ?? 1) - (order[y.cls] ?? 1));
@@ -122,6 +128,48 @@ export async function renderHomePage(container) {
         }
     } else {
         attn.innerHTML = `<div class="tint-row ok"><span class="tr-ic">✓</span><span class="tr-text">הכול בסדר, אין התראות</span></div>`;
+    }
+
+    // ---- כרטיס היום: הפשרה, סועדים, הכנות, הסרוויס האחרון והזמנות ----
+    if (todayOn) {
+        const box = container.querySelector("#home-today");
+        try {
+            const c = await loadTodayCard();
+            if (stale()) return;
+            const q = (l) => (l.cnt ? `${l.qty} יחידות` : qtyText(l.qty));
+            const sd = (iso) => { const [, m, d] = String(iso).split("-"); return `${parseInt(d, 10)}.${parseInt(m, 10)}`; };
+            const head = (t) => `<div style="font-weight:700;margin:10px 0 4px;">${escapeHtml(t)}</div>`;
+            const row = (a, b) => `<div class="card-row" style="padding:3px 0;"><span>${a}</span><b>${b}</b></div>`;
+            let html = "";
+            if (c.anyThaw) {
+                html += head("להוציא מהמקפיא היום");
+                html += c.thaw.length ? c.thaw.map((x) => row(`${escapeHtml(x.name)} <span class="muted">${escapeHtml(`ל${x.forWeekday} ${sd(x.forDate)}`)}</span>`, escapeHtml(q(x)))).join("") : `<div class="muted">${escapeHtml("אין מה להוציא היום.")}</div>`;
+            }
+            if (c.hasItems) {
+                const dn = c.days.map((d, i) => `${i === 0 ? "היום" : i === 1 ? "מחר" : "מחרתיים"} ${d.diners > 0 ? d.diners : "-"}`).join(" · ");
+                html += head("סועדים צפויים");
+                html += `<div>${escapeHtml(dn)}</div><div class="muted">${escapeHtml(`השבוע ${c.weekDiners}`)}</div>`;
+                if (c.missingToday) html += `<div class="muted" style="margin-top:4px;">${escapeHtml("לא הוזנו סועדים להיום.")}</div>`;
+                if (c.prep.length) { html += head("הכנות להיום"); html += c.prep.map((l) => row(escapeHtml(l.name), escapeHtml(q(l)))).join(""); }
+            } else {
+                html += `<div class="muted">${escapeHtml("אין תפריט. הוסף פריטים בתפריט של אירוע.")}</div>`;
+            }
+            if (c.last) {
+                html += head("הסרוויס האחרון");
+                html += `<div>${escapeHtml(`${sd(c.last.date)} · ${c.last.guests} סועדים${c.last.perGuestG ? ` · ${Math.round(c.last.perGuestG)} גרם לסועד` : ""}${c.last.thrown > 0 ? ` · נזרק ${+c.last.thrown.toFixed(2)} ק"ג` : ""}`)}</div>`;
+            }
+            box.innerHTML = html + `<div id="home-today-orders"></div><div style="margin-top:10px;"><button type="button" class="btn btn-secondary btn-small" id="home-today-open">${escapeHtml("פתח תחזית")}</button></div>`;
+            box.querySelector("#home-today-open").onclick = () => go("prep");
+            const ob = box.querySelector("#home-today-orders");
+            if (orderItems.length) {
+                ob.innerHTML = head("הזמנות");
+                for (const it of orderItems) {
+                    const r = h(`<div class="tint-row ${it.cls}"><span class="tr-ic">${it.icon}</span><span class="tr-text">${escapeHtml(it.text)}</span><button type="button" class="tr-btn">${it.btn}</button></div>`);
+                    r.querySelector("button").onclick = it.fn;
+                    ob.appendChild(r);
+                }
+            }
+        } catch (e) { box.innerHTML = `<div class="muted">${escapeHtml("אי אפשר להציג את הכרטיס כרגע.")}</div>`; }
     }
 
     // ---- פעילות אחרונה: חשבוניות ופחת, מהחדש לישן ----
