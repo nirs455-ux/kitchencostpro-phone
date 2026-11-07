@@ -1,4 +1,4 @@
-const CACHE_NAME = "kcp-v149";
+const CACHE_NAME = "kcp-v150";
 const NET_TIMEOUT_MS = 4000;
 const ASSETS = [
     "./",
@@ -122,6 +122,7 @@ const ASSETS = [
     "./js/serviceCalc.js",
     "./js/serviceDoc.js",
     "./js/serviceCharts.js",
+    "./js/serviceCompare.js",
     "./js/servicePdf.js",
     "./js/repo/dishesRepo.js",
     "./js/repo/suppliersRepo.js",

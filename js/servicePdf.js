@@ -35,7 +35,7 @@ export function jpegsToPdf(jpegs, pw = 595, ph = 842) {
 // מצייר את הסיכום (serviceSummary) לעמודי A4 ומחזיר Blob מסוג PDF. רץ בדפדפן בלבד
 export async function renderServicePdf(s) {
     const W = 1240, H = 1754, M = 70, PAD = 8;
-    const cols = [["נתח", 230], ["מתוכנן", 120], ["יצא לסרוויס", 120], ["חזר מסרוויס", 120], ["נזרק", 110], ["פחת", 100], ["צריכה בפועל", 160], ["לסועד", 140]];
+    const cols = [["נתח", 260], ["יצא לסרוויס", 140], ["חזר מסרוויס", 140], ["פחת", 120], ["נזרק", 120], ["צריכה בפועל", 170], ["לסועד", 150]];
     const cvs = [];
     let ctx, y;
     const newPage = () => {
@@ -73,10 +73,10 @@ export async function renderServicePdf(s) {
         const r = x.res;
         const per = !r || r.perGuest == null ? "" : x.cnt ? `${n2(r.perGuest)} יחידות` : `${Math.round(r.perGuest)} גרם`;
         const cells = r
-            ? [x.name, x.planned.replace(/^מתוכנן /, ""), amt(r.out, x), amt(r.back, x), amt(r.thrown, x), amt(r.shrink, x), `${n2(r.eaten)} ${unitOf(x)}`, per]
-            : [x.name, x.planned.replace(/^מתוכנן /, ""), "אין נתונים", "", "", "", "", ""];
+            ? [x.name, amt(r.out, x), amt(r.back, x), amt(r.shrink, x), amt(r.thrown, x), `${n2(r.eaten)} ${unitOf(x)}`, per]
+            : [x.name, "אין נתונים", "", "", "", "", ""];
         let xr = W - M;
-        cols.forEach(([, w], i) => { if (cells[i]) text(cells[i], xr - PAD, 26, { bold: i === 6, maxW: w - 2 * PAD, color: r || i < 2 ? "#000" : "#777" }); xr -= w; });
+        cols.forEach(([, w], i) => { if (cells[i]) text(cells[i], xr - PAD, 26, { bold: i === 5, maxW: w - 2 * PAD, color: r || i < 1 ? "#000" : "#777" }); xr -= w; });
         y += 16; line(1); y += 42;
     }
     if (s.hasData) {

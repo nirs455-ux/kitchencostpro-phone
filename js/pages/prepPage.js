@@ -11,7 +11,8 @@ import { planPrep, groupBySupplier, entryQuantity, allergenCheck, parseQty, DEFA
 import { ALLERGENS } from "../allergens.js";
 import { addonOn } from "../addons.js";
 import { serviceRow, seatsTotal, weekdayHe } from "../serviceCalc.js";
-import { serviceSummary, serviceText, serviceFileName, serviceMonthFolder, historyPoints } from "../serviceDoc.js";
+import { serviceSummary, serviceText, serviceFileName, serviceMonthFolder, historyPoints, pointFromSummary } from "../serviceDoc.js";
+import { compareService, changeText, SAME_DAY_COUNT } from "../serviceCompare.js";
 import { renderServicePdf } from "../servicePdf.js";
 import { chartSvg } from "../serviceCharts.js";
 import { qtyText, orderText, whatsappUrl, mailtoUrl } from "../shareText.js";
@@ -79,6 +80,7 @@ export async function renderPrepTab(container) {
                 <button type="button" class="btn btn-secondary btn-small" id="sv-wa">📤 וואטסאפ</button>
                 <button type="button" class="btn btn-secondary btn-small" id="sv-mail">✉️ מייל</button>
                 <button type="button" class="btn btn-secondary btn-small" id="sv-drive">☁️ שמור בדרייב</button>
+                <button type="button" class="btn btn-secondary btn-small" id="sv-cmp">⚖️ השוואה</button>
                 <button type="button" class="btn btn-secondary btn-small" id="sv-hist">📈 היסטוריה וגרפים</button>
             </div>
         </div>
@@ -364,13 +366,6 @@ export async function renderPrepTab(container) {
         const per = res.perGuest == null ? "" : cnt ? ` · ${fmt(Math.round(res.perGuest * 10) / 10)} יחידות לסועד` : ` · ${Math.round(res.perGuest)} גרם לסועד`;
         return `צריכה בפועל ${eaten}${per}`;
     }
-    function svcPlannedText(r) {
-        const row = ctx.pantry.get(r.source_id), cnt = row && row.unit_type === "unit";
-        const qty = entryQuantity(plan.guests, r.per, r.share);
-        if (!qty) return "";
-        const f = 1 + Math.max(0, parseQty(plan.margin)) / 100;
-        return cnt ? `מתוכנן ${Math.ceil(Math.round(qty * f * 1e6) / 1e6)} יחידות` : `מתוכנן ${fmt(Math.round(qty * f) / 1000)} ק"ג`;
-    }
     function drawService() {
         const card = q("#sv-card");
         if (!addonOn("service")) { card.style.display = "none"; return; }
@@ -388,7 +383,7 @@ export async function renderPrepTab(container) {
         q("#sv-s1").oninput = onSeat; q("#sv-s2").oninput = onSeat;
         q("#sv-price").value = plan.price || "";
         q("#sv-price").oninput = async () => { plan.price = q("#sv-price").value; await persist(); };
-        const summary = () => serviceSummary(plan, ctx.pantry, svcPlannedText);
+        const summary = () => serviceSummary(plan, ctx.pantry);
         const needData = (s) => { if (s.hasData) return true; toast("הזן נתונים לפחות בנתח אחד"); return false; };
         const makePdf = async (s) => { try { return await renderServicePdf(s); } catch (e) { toast("יצירת הקובץ נכשלה"); return null; } };
         q("#sv-doc").onclick = async () => {
@@ -422,11 +417,12 @@ export async function renderPrepTab(container) {
             } catch (e) { toast(e && e.message ? e.message : "השמירה בדרייב נכשלה"); }
         };
         q("#sv-hist").onclick = () => openHistory();
+        q("#sv-cmp").onclick = () => openCompare();
         const rows = svcRows();
-        const FIELDS = [["out", "יצא לסרוויס"], ["back", "חזר מסרוויס"], ["thrown", "נזרק"], ["shrink", "פחת"]];
+        const FIELDS = [["out", "יצא לסרוויס"], ["back", "חזר מסרוויס"], ["shrink", "פחת"], ["thrown", "נזרק"]];
         q("#sv-rows").innerHTML = rows.length ? rows.map((r) => {
             const row = ctx.pantry.get(r.source_id), unit = row.unit_type === "unit" ? "יחידות" : 'ק"ג', k = svcKey(r), v = plan.svc[k] || {};
-            return `<div style="padding:8px 0;border-top:1px solid var(--border,#0001);"><div style="display:flex;justify-content:space-between;gap:8px;"><b>${escapeHtml(r.name || row.name)}</b><span class="muted" data-svp="${escapeHtml(k)}">${escapeHtml(svcPlannedText(r))}</span></div>
+            return `<div style="padding:8px 0;border-top:1px solid var(--border,#0001);"><div style="display:flex;justify-content:space-between;gap:8px;"><b>${escapeHtml(r.name || row.name)}</b></div>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:6px 0;">${FIELDS.map(([f, label]) => `<div class="field" style="margin:0;"><label>${escapeHtml(label)}</label><input type="text" inputmode="decimal" placeholder="${escapeHtml(unit)}" data-svk="${escapeHtml(k)}" data-svf="${f}" value="${escapeHtml(v[f] || "")}"></div>`).join("")}</div>
                 <div data-svr="${escapeHtml(k)}" style="font-weight:600;">${escapeHtml(svcResultText(r))}</div></div>`;
         }).join("") : `<div class="muted">הוסף נתחים לתפריט, והם יופיעו כאן.</div>`;
@@ -437,6 +433,32 @@ export async function renderPrepTab(container) {
                 updAll(); await persist();
             };
         });
+    }
+    // השוואה: הערב מול הערב האחרון, ממוצע שבועי, וממוצע של אותו יום בשבוע
+    function openCompare() {
+        const cur = pointFromSummary(serviceSummary(plan, ctx.pantry));
+        if (!cur) { toast("הזן נתונים וסועדים כדי להשוות"); return; }
+        const others = historyPoints(plans.filter((p) => p.id !== plan.id), ctx.pantry);
+        const st = { mode: "last" };
+        const ovl = openModal(`<h2>השוואה</h2><div id="cp-body"></div><div class="modal-actions"><button type="button" class="btn btn-secondary" id="cp-close">סגור</button></div>`);
+        ovl.querySelector("#cp-close").onclick = closeModal;
+        const body = ovl.querySelector("#cp-body");
+        const row = (name, r, bold) => `<div class="card-row" style="padding:6px 0;border-top:1px solid var(--border,#0001);gap:8px;${bold ? "font-weight:700;" : ""}"><span>${escapeHtml(name)}</span><span style="text-align:left;">${escapeHtml(r.base == null ? `${Math.round(r.now)} גרם לסועד` : `${Math.round(r.now)} גרם לסועד, ${changeText(r.d)}`)}</span></div>`;
+        const paint = () => {
+            const res = compareService(st.mode, cur, others);
+            const modes = [["last", "הערב האחרון"], ["week", "ממוצע שבועי"], ["same", `אותו יום בשבוע`]];
+            const chips = modes.map(([k, l]) => `<button type="button" class="btn btn-small ${st.mode === k ? "btn-primary" : "btn-secondary"}" data-md="${k}">${escapeHtml(l)}</button>`).join("");
+            let inner;
+            if (!res.available) {
+                inner = `<div class="muted">${st.mode === "same" ? `צריך לפחות ${res.need} ערבים קודמים באותו יום בשבוע. יש ${res.n}.` : "אין עדיין ערבים קודמים להשוואה."}</div>`;
+            } else {
+                const basis = st.mode === "last" ? "מול הערב האחרון" : st.mode === "week" ? (res.n === 1 ? "מול ערב אחד בשבוע האחרון" : `מול הממוצע של ${res.n} ערבים בשבוע האחרון`) : `מול הממוצע של ${res.n} ערבים קודמים באותו יום בשבוע`;
+                inner = `<div class="muted" style="margin:6px 0;">${escapeHtml(basis)}</div>${row("סה\"כ", res.total, true)}${res.cuts.map((c) => row(c.name, c, false)).join("")}`;
+            }
+            body.innerHTML = `<div class="btn-row" style="flex-wrap:wrap;gap:6px;margin-bottom:8px;">${chips}</div>${inner}`;
+            body.querySelectorAll("[data-md]").forEach((b) => { b.onclick = () => { st.mode = b.dataset.md; paint(); }; });
+        };
+        paint();
     }
     // היסטוריית סרוויסים: גרף לפי נתח, נזרק ועלות, ורשימה
     function openHistory() {
@@ -472,10 +494,6 @@ export async function renderPrepTab(container) {
         q("#sv-rows").querySelectorAll("[data-svr]").forEach((el) => {
             const r = svcRows().find((x) => svcKey(x) === el.dataset.svr);
             if (r) el.textContent = svcResultText(r);
-        });
-        q("#sv-rows").querySelectorAll("[data-svp]").forEach((el) => {
-            const r = svcRows().find((x) => svcKey(x) === el.dataset.svp);
-            if (r) el.textContent = svcPlannedText(r);
         });
     }
     function draw() { drawMenu(); drawResult(); drawService(); }

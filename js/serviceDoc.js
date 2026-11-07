@@ -4,8 +4,8 @@ import { serviceRow, seatsTotal, weekdayHe } from "./serviceCalc.js";
 export const n2 = (v) => +Number(v).toFixed(2);
 export const dateDots = (iso) => String(iso || "").split("-").reverse().join(".");
 
-// plan: תוכנית מיז אן פלאס עם svc. pantry: Map של חומרי גלם. plannedFn(r): טקסט "מתוכנן" לשורה (אופציונלי)
-export function serviceSummary(plan, pantry, plannedFn = () => "") {
+// plan: תוכנית מיז אן פלאס עם svc. pantry: Map של חומרי גלם
+export function serviceSummary(plan, pantry) {
     const guests = seatsTotal(plan.seat1, plan.seat2) || Math.round(parseFloat(String(plan.guests).replace(",", ".")) || 0);
     const price = parseFloat(String(plan.price || "").replace(",", ".")) || 0;
     const rows = [];
@@ -17,7 +17,7 @@ export function serviceSummary(plan, pantry, plannedFn = () => "") {
         if (!row) continue;
         const cnt = row.unit_type === "unit";
         const res = serviceRow((plan.svc || {})[`pantry:${r.source_id}`], guests, cnt);
-        rows.push({ name: r.name || row.name, cnt, planned: plannedFn(r), res });
+        rows.push({ name: r.name || row.name, cnt, res });
         if (!res) continue;
         if (!cnt && !res.invalid) for (const k of Object.keys(t)) t[k] += res[k];
         if (!res.invalid && Number(row.price) > 0) cost += res.eaten * Number(row.price);
@@ -41,7 +41,7 @@ export function serviceText(s) {
     for (const x of s.rows) {
         if (!x.res) { L.push(`${x.name}: אין נתונים`); continue; }
         const r = x.res;
-        const parts = [`יצא ${amt(r.out, x)}`, r.back > 0 ? `חזר ${amt(r.back, x)}` : "", r.thrown > 0 ? `נזרק ${amt(r.thrown, x)}` : "", r.shrink > 0 ? `פחת ${amt(r.shrink, x)}` : ""].filter(Boolean);
+        const parts = [`יצא ${amt(r.out, x)}`, r.back > 0 ? `חזר ${amt(r.back, x)}` : "", r.shrink > 0 ? `פחת ${amt(r.shrink, x)}` : "", r.thrown > 0 ? `נזרק ${amt(r.thrown, x)}` : ""].filter(Boolean);
         const per = r.perGuest == null ? "" : x.cnt ? ` · ${n2(r.perGuest)} יחידות לסועד` : ` · ${Math.round(r.perGuest)} גרם לסועד`;
         L.push(`${x.name}: ${parts.join(", ")} · צריכה בפועל ${amt(r.eaten, x)}${per}`);
     }
@@ -60,13 +60,18 @@ export function serviceFileName(s) {
 }
 export const serviceMonthFolder = (s) => String(s.date || "").slice(0, 7) || "ללא תאריך";
 
+// נקודה אחת להיסטוריה ולהשוואות, מסיכום של ערב. null אם אין נתונים או סועדים
+export function pointFromSummary(s) {
+    if (!s.hasData || !s.guests) return null;
+    return {
+        date: s.date, title: s.title, guests: s.guests, perGuestG: s.perGuestG, eatenKg: s.totals.eaten, thrown: s.totals.thrown, costPerDiner: s.costPerDiner,
+        perCut: s.rows.filter((x) => x.res && !x.cnt && x.res.perGuest != null).map((x) => ({ name: x.name, g: x.res.perGuest, kg: x.res.eaten })),
+    };
+}
+
 // נקודות להיסטוריה: מכל תוכנית עם נתוני סרוויס. ממויין מהישן לחדש
 export function historyPoints(plans, pantry) {
     const out = [];
-    for (const p of plans || []) {
-        const s = serviceSummary(p, pantry);
-        if (!s.hasData || !s.guests) continue;
-        out.push({ date: s.date, title: s.title, guests: s.guests, perGuestG: s.perGuestG, thrown: s.totals.thrown, costPerDiner: s.costPerDiner, perCut: s.rows.filter((x) => x.res && !x.cnt && x.res.perGuest != null).map((x) => ({ name: x.name, g: x.res.perGuest })) });
-    }
+    for (const p of plans || []) { const pt = pointFromSummary(serviceSummary(p, pantry)); if (pt) out.push(pt); }
     return out.sort((a, b) => String(a.date).localeCompare(String(b.date)));
 }
