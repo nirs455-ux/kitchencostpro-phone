@@ -17,6 +17,18 @@ export function serviceRow(r, guests, isCount = false) {
     return { out, back, thrown, shrink, eaten, perGuest, invalid: eaten < 0 };
 }
 
+// צמחוני וטבעוני אינם אוכלים מהנתחים: מורידים אותם מחישוב הגרם לסועד. כשר לא מורד
+const dietCount = (needCounts, key) => Math.round(toNum((needCounts || {})[key]));
+export function meatGuests(total, needCounts) {
+    const t = toNum(total);
+    if (!(t > 0)) return 0;
+    return Math.max(0, t - dietCount(needCounts, "vegetarian") - dietCount(needCounts, "vegan"));
+}
+export function dietText(needCounts) {
+    const v = dietCount(needCounts, "vegetarian"), g = dietCount(needCounts, "vegan");
+    return [v > 0 ? `צמחוני ${v}` : "", g > 0 ? `טבעוני ${g}` : ""].filter(Boolean).join(" · ");
+}
+
 export const seatsTotal = (s1, s2) => Math.round(toNum(s1) + toNum(s2));
 
 // יום בשבוע בעברית מתאריך yyyy-mm-dd

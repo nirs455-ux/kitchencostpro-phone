@@ -35,13 +35,13 @@ export function logFromPlan(plan) {
         rows.push({ id: Number(m[1]), name: pr.name, out: v.out || "", back: v.back || "", thrown: v.thrown || "", shrink: v.shrink || "" });
     }
     if (!rows.length) return null;
-    return { id: plan.id, date: plan.date, title: plan.name || "", seat1: plan.seat1 || "", seat2: plan.seat2 || "", guests: plan.guests || "", price: plan.price || "", rows, updated: Date.now() };
+    return { id: plan.id, date: plan.date, title: plan.name || "", seat1: plan.seat1 || "", seat2: plan.seat2 || "", guests: plan.guests || "", needCounts: { vegetarian: String((plan.needCounts || {}).vegetarian || ""), vegan: String((plan.needCounts || {}).vegan || "") }, price: plan.price || "", rows, updated: Date.now() };
 }
 
 // רשומת סרוויס -> אובייקט כמו תוכנית, כדי שסיכומים והיסטוריה (serviceSummary, historyPoints) יעבדו עליו בלי שינוי
 export function logAsPlan(log) {
     return {
-        id: log.id, name: log.title, date: log.date, seat1: log.seat1, seat2: log.seat2, guests: log.guests, price: log.price, margin: "10",
+        id: log.id, name: log.title, date: log.date, seat1: log.seat1, seat2: log.seat2, guests: log.guests, needCounts: log.needCounts || {}, price: log.price, margin: "10",
         rows: log.rows.map((r) => ({ source_type: "pantry", source_id: r.id, name: r.name, per: "", share: "" })),
         svc: Object.fromEntries(log.rows.map((r) => [`pantry:${r.id}`, { out: r.out, back: r.back, thrown: r.thrown, shrink: r.shrink }])),
     };

@@ -63,7 +63,7 @@ export async function renderServicePdf(s) {
     newPage();
     text(s.title || "דוח סרוויס", W - M, 46, { bold: true, maxW: W - 2 * M });
     y += 40;
-    const sub = [[s.weekday, dateDots(s.date)].filter(Boolean).join(" · "), s.guests ? `סועדים: ${s.seat1 || 0} + ${s.seat2 || 0} = ${s.guests}` : ""].filter(Boolean).join(" · ");
+    const sub = [[s.weekday, dateDots(s.date)].filter(Boolean).join(" · "), s.guests ? `סועדים: ${s.seat1 || 0} + ${s.seat2 || 0} = ${s.guests}` : "", s.diets || ""].filter(Boolean).join(" · ");
     text(sub, W - M, 28, { color: "#555", maxW: W - 2 * M });
     y += 56;
     tableHead();

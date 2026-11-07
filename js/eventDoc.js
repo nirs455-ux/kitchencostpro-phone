@@ -1,7 +1,8 @@
 // מסמך אירוע להדפסה / שמירה כ-PDF ושליחה: כותרת ואלרגנים, תפריט, כמויות להכנה, מתכונים מלאים והזמנות לפי ספק. בלי מחירים.
 // טהור (בלי DOM/DB): מקבל את התוכנית, ההקשר והתוצאה המחושבת, ופונקציית תרגום tr (זהות בעברית). שמות שהמשתמש כתב נשארים כמו שהם.
 import { ALLERGENS } from "./allergens.js";
-import { allergenCheck, entryQuantity, parseQty } from "./prepPlan.js";
+import { allergenCheck, entryQuantity, parseQty, rowGuests } from "./prepPlan.js";
+const DIET_NAMES = { kosher: "כשר", vegetarian: "צמחוני", vegan: "טבעוני" };
 
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const num = parseQty;
@@ -29,8 +30,8 @@ export function buildEventDoc({ plan, ctx, result, groups, loose = [], prepRecip
     const rows = plan.rows.map((r) => {
         const legacy = r.source_type === "dish";
         const per = num(r.per);
-        const total = entryQuantity(plan.guests, r.per, r.share);
-        return { group: r.group || "", name: r.name, per: per > 0 ? (legacy ? `${+per.toFixed(2)} ${en ? "portions" : "מנות"}` : gramsText(per, en)) : "", total: total > 0 ? (legacy ? `${+total.toFixed(2)} ${en ? "portions" : "מנות"}` : gramsText(total, en)) : "" };
+        const total = entryQuantity(rowGuests(plan.guests, plan.needCounts, r.diet), r.per, r.share);
+        return { group: r.group || "", name: r.name, forLabel: DIET_NAMES[r.diet] || "", per: per > 0 ? (legacy ? `${+per.toFixed(2)} ${en ? "portions" : "מנות"}` : gramsText(per, en)) : "", total: total > 0 ? (legacy ? `${+total.toFixed(2)} ${en ? "portions" : "מנות"}` : gramsText(total, en)) : "" };
     });
     const algLabels = ALLERGENS.filter((a) => plan.allergens.includes(a.key)).map((a) => a.label);
     const chk = plan.allergens.length ? allergenCheck(plan.rows.map((r) => ({ source_type: r.source_type, source_id: r.source_id, name: r.name })), ctx, plan.allergens) : { hits: [], unknown: [] };
@@ -77,7 +78,7 @@ export function eventDocHtml(doc, tr = (s) => s, en = false) {
     const T = (s) => esc(tr(s));
     const groups = [];
     for (const r of doc.rows) { let g = groups.find((x) => x.name === r.group); if (!g) { g = { name: r.group, rows: [] }; groups.push(g); } g.rows.push(r); }
-    const menu = groups.map((g) => `${g.name ? `<tr class="gh"><td colspan="3">${esc(g.name)}</td></tr>` : groups.length > 1 ? `<tr class="gh"><td colspan="3">${T("פריטים נוספים")}</td></tr>` : ""}${g.rows.map((r) => `<tr><td>${esc(r.name)}</td><td class="q">${esc(r.per)}</td><td class="q">${esc(r.total)}</td></tr>`).join("")}`).join("");
+    const menu = groups.map((g) => `${g.name ? `<tr class="gh"><td colspan="3">${esc(g.name)}</td></tr>` : groups.length > 1 ? `<tr class="gh"><td colspan="3">${T("פריטים נוספים")}</td></tr>` : ""}${g.rows.map((r) => `<tr><td>${esc(r.name)}${r.forLabel ? ` <span class="tg">${esc(tr(r.forLabel))}</span>` : ""}</td><td class="q">${esc(r.per)}</td><td class="q">${esc(r.total)}</td></tr>`).join("")}`).join("");
     const alg = doc.algLabels.length ? `<div class="alg"><b>${T("אלרגנים בין הסועדים")}:</b> ${esc(doc.algLabels.map(tr).join(", "))}
         ${doc.hits.length ? `<ul>${doc.hits.map((h) => `<li>⚠ <b>${esc(h.name)}</b> - ${T("מכיל")} ${esc(h.labels.map(tr).join(", "))}</li>`).join("")}</ul>` : `<div>${T("לא נמצאו בתפריט פריטים עם האלרגנים האלה, לפי ההגדרות במערכת.")}</div>`}
         ${doc.unknown.length ? `<div>${T("לא הוגדרו אלרגנים ב")}: ${esc(doc.unknown.join(", "))}. ${T("יש לבדוק ידנית.")}</div>` : ""}

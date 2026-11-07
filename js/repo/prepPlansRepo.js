@@ -67,7 +67,7 @@ export function normalizePlan(p) {
         svc,
         note: typeof (p && p.note) === "string" ? p.note.slice(0, 4000) : "",
         margin: p && p.margin != null && txt(p.margin) !== "" ? txt(p.margin) : "10",
-        rows: rows.map((r) => ({ source_type: r.source_type, source_id: Number(r.source_id), name: txt(r.name), per: txt(r.per), share: txt(r.share), group: txt(r.group) })),
+        rows: rows.map((r) => ({ source_type: r.source_type, source_id: Number(r.source_id), name: txt(r.name), per: txt(r.per), share: txt(r.share), group: txt(r.group), diet: DIET_KEYS.includes(r.diet) ? r.diet : "" })),
         allergens: Array.isArray(p && p.allergens) ? p.allergens.filter((k) => typeof k === "string") : [],
         diets: Array.isArray(p && p.diets) ? p.diets.filter((k) => DIET_KEYS.includes(k)) : [], // כשר, צמחוני, טבעוני
         needCounts: normalizeNeedCounts(p && p.needCounts), // כמה סועדים לכל אלרגן והעדפה: מפתח -> מספר

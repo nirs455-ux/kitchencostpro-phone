@@ -26,6 +26,13 @@ export function portionsFor(guests, sharePct, perGuest = 1) {
     return Math.ceil(Math.round(g * (s / 100) * p * 1e6) / 1e6);
 }
 
+// סועדים לשורת תפריט: שורה לקבוצה (צמחוני, טבעוני, כשר) לפי מספר הסועדים בקבוצה. שורה רגילה: כל הסועדים פחות הצמחוניים והטבעוניים
+export function rowGuests(guests, needCounts, diet) {
+    const nc = needCounts || {};
+    if (diet) return num(nc[diet]);
+    return Math.max(0, num(guests) - num(nc.vegetarian) - num(nc.vegan));
+}
+
 // פריט בתפריט -> כמות כוללת: סועדים x כמות ממוצעת לסועד (מנות לסועד, או גרם לסועד למתכון) x אחוז הסועדים שבוחרים בו
 export function entryQuantity(guests, perGuest, sharePct = 100) {
     const g = num(guests), p = num(perGuest), s = sharePct === "" || sharePct == null ? 100 : num(sharePct);

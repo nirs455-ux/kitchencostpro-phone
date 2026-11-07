@@ -1,5 +1,5 @@
 // דף סרוויס: סיכום, טקסט לשליחה (וואטסאפ, מייל), מסמך להדפסה, ונקודות להיסטוריה וגרפים. טהור (בלי DOM/DB).
-import { serviceRow, seatsTotal, weekdayHe } from "./serviceCalc.js";
+import { serviceRow, seatsTotal, weekdayHe, meatGuests, dietText } from "./serviceCalc.js";
 
 export const n2 = (v) => +Number(v).toFixed(2);
 export const dateDots = (iso) => String(iso || "").split("-").reverse().join(".");
@@ -8,6 +8,7 @@ export const dateDots = (iso) => String(iso || "").split("-").reverse().join("."
 export function serviceSummary(plan, pantry) {
     const guests = seatsTotal(plan.seat1, plan.seat2) || Math.round(parseFloat(String(plan.guests).replace(",", ".")) || 0);
     const price = parseFloat(String(plan.price || "").replace(",", ".")) || 0;
+    const mg = meatGuests(guests, plan.needCounts); // הגרם לסועד לפי מי שאוכל מהנתחים
     const rows = [];
     const t = { out: 0, back: 0, thrown: 0, shrink: 0, eaten: 0 };
     let cost = 0;
@@ -16,17 +17,17 @@ export function serviceSummary(plan, pantry) {
         const row = pantry.get(r.source_id);
         if (!row) continue;
         const cnt = row.unit_type === "unit";
-        const res = serviceRow((plan.svc || {})[`pantry:${r.source_id}`], guests, cnt);
+        const res = serviceRow((plan.svc || {})[`pantry:${r.source_id}`], mg, cnt);
         rows.push({ id: r.source_id, name: r.name || row.name, cnt, res });
         if (!res) continue;
         if (!cnt && !res.invalid) for (const k of Object.keys(t)) t[k] += res[k];
         if (!res.invalid && Number(row.price) > 0) cost += res.eaten * Number(row.price);
     }
     const hasData = rows.some((x) => x.res);
-    const perGuestG = guests > 0 && t.eaten > 0 ? (t.eaten * 1000) / guests : null;
+    const perGuestG = mg > 0 && t.eaten > 0 ? (t.eaten * 1000) / mg : null;
     const costPerDiner = guests > 0 && cost > 0 ? cost / guests : null;
     const foodCostPct = price > 0 && costPerDiner ? (costPerDiner / price) * 100 : null;
-    return { title: plan.name || "", date: plan.date, weekday: weekdayHe(plan.date), seat1: plan.seat1, seat2: plan.seat2, guests, price, rows, totals: t, perGuestG, costPerDiner, foodCostPct, hasData };
+    return { title: plan.name || "", date: plan.date, weekday: weekdayHe(plan.date), seat1: plan.seat1, seat2: plan.seat2, guests, diets: dietText(plan.needCounts), price, rows, totals: t, perGuestG, costPerDiner, foodCostPct, hasData };
 }
 
 export const unitOf = (x) => (x.cnt ? "יח'" : 'ק"ג');
@@ -36,7 +37,7 @@ export const amt = (v, x) => (v > 0 ? `${n2(v)} ${unitOf(x)}` : "");
 export function serviceText(s) {
     const L = [];
     L.push(`🥩 ${s.title || "סרוויס"} · ${[s.weekday, dateDots(s.date)].filter(Boolean).join(" ")}`);
-    if (s.guests) L.push(`סועדים: ${s.seat1 || 0} + ${s.seat2 || 0} = ${s.guests}`);
+    if (s.guests) L.push(`סועדים: ${s.seat1 || 0} + ${s.seat2 || 0} = ${s.guests}${s.diets ? ` · ${s.diets}` : ""}`);
     L.push("");
     for (const x of s.rows) {
         if (!x.res) { L.push(`${x.name}: אין נתונים`); continue; }
