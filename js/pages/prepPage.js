@@ -9,7 +9,12 @@ import { addPantryItem } from "../repo/pantryRepo.js";
 import { loadSalesCtx } from "../repo/salesRepo.js";
 import { planPrep, groupBySupplier, entryQuantity, allergenCheck, parseQty, DEFAULT_MARGIN_PCT } from "../prepPlan.js";
 import { ALLERGENS } from "../allergens.js";
-import { qtyText, orderText, whatsappUrl } from "../shareText.js";
+import { addonOn } from "../addons.js";
+import { serviceRow, seatsTotal, weekdayHe } from "../serviceCalc.js";
+import { serviceSummary, serviceText, serviceFileName, serviceMonthFolder, historyPoints } from "../serviceDoc.js";
+import { renderServicePdf } from "../servicePdf.js";
+import { chartSvg } from "../serviceCharts.js";
+import { qtyText, orderText, whatsappUrl, mailtoUrl } from "../shareText.js";
 import { checklistText, checklistHtml } from "../prepChecklist.js";
 import { buildEventDoc, eventDocHtml } from "../eventDoc.js";
 import { makeTranslator } from "../i18nCore.js";
@@ -58,6 +63,25 @@ export async function renderPrepTab(container) {
             <button type="button" class="btn btn-secondary btn-block" id="pp-pick">＋ הוספת פריטים מהמערכת</button>
             <div id="pp-menu"></div>
         </div>
+        <div class="card" id="sv-card" style="display:none;">
+            <div class="card-title" style="margin:0 0 6px;">דף סרוויס ${info("לכל נתח בתפריט מזינים בקילו כמה יצא לסרוויס, כמה חזר, כמה נזרק וכמה פחת. האפליקציה מחשבת את הצריכה בפועל ואת הגרם לסועד. בשר שבושל ושומש שוב נספר כחזר.")}</div>
+            <div class="muted" id="sv-day" style="margin:0 0 6px;"></div>
+            <div class="form-row">
+                <div class="field"><label>סועדים בסיט ראשון</label><input type="text" inputmode="numeric" id="sv-s1"></div>
+                <div class="field"><label>סועדים בסיט שני</label><input type="text" inputmode="numeric" id="sv-s2"></div>
+            </div>
+            <div class="muted" id="sv-total" style="margin:0 0 8px;"></div>
+            <div class="field"><label>מחיר לסועד, בשקלים ${info("משמש לחישוב אחוז עלות מזון בדוח ובגרפים. אפשר להשאיר ריק.")}</label><input type="text" inputmode="decimal" id="sv-price"></div>
+            <div id="sv-rows"></div>
+            <div class="btn-row" style="margin-top:10px;flex-wrap:wrap;gap:6px;">
+                <button type="button" class="btn btn-secondary btn-small" id="sv-doc">📄 מסמך סרוויס</button>
+                <button type="button" class="btn btn-secondary btn-small" id="sv-file">📎 שלח כקובץ</button>
+                <button type="button" class="btn btn-secondary btn-small" id="sv-wa">📤 וואטסאפ</button>
+                <button type="button" class="btn btn-secondary btn-small" id="sv-mail">✉️ מייל</button>
+                <button type="button" class="btn btn-secondary btn-small" id="sv-drive">☁️ שמור בדרייב</button>
+                <button type="button" class="btn btn-secondary btn-small" id="sv-hist">📈 היסטוריה וגרפים</button>
+            </div>
+        </div>
         <div class="card">
             <div class="card-title" style="margin:0 0 6px;">פריט ידני ${info("מנה או משימה שאין במערכת. הכמות היא טקסט חופשי. הפריט מופיע בצ'ק ליסט, בהדפסה ובוואטסאפ.")}</div>
             <div class="form-row">
@@ -93,7 +117,7 @@ export async function renderPrepTab(container) {
             };
         });
     }
-    const bind = (sel, key) => { q(sel).oninput = async (e) => { plan[key] = e.target.value; drawMenu(); drawResult(); await persist(); }; };
+    const bind = (sel, key) => { q(sel).oninput = async (e) => { plan[key] = e.target.value; drawMenu(); drawResult(); updAll(); await persist(); }; };
     q("#pp-note").oninput = async (e) => { plan.note = e.target.value; await persist(); };
     bind("#pp-name", "name"); bind("#pp-date", "date"); bind("#pp-guests", "guests"); bind("#pp-margin", "margin");
     q("#pp-date").onchange = q("#pp-date").oninput;
@@ -201,7 +225,7 @@ export async function renderPrepTab(container) {
                 plan.rows[i].per = inp.value;
                 const note = menuEl.querySelector(`[data-note="${i}"]`);
                 if (note) note.innerHTML = rowNote(plan.rows[i]);
-                drawResult(); await persist();
+                drawResult(); updAll(); await persist();
             };
         });
         menuEl.querySelectorAll("[data-rm]").forEach((b) => { b.onclick = async () => { plan.rows.splice(Number(b.dataset.rm), 1); draw(); await persist(); }; });
@@ -328,7 +352,133 @@ export async function renderPrepTab(container) {
             };
         });
     }
-    function draw() { drawMenu(); drawResult(); }
+    // ---------- דף סרוויס: שורה לכל נתח (חומר גלם בתפריט) ----------
+    const svcRows = () => plan.rows.filter((r) => r.source_type === "pantry" && ctx.pantry.get(r.source_id));
+    const svcKey = (r) => `pantry:${r.source_id}`;
+    function svcResultText(r) {
+        const row = ctx.pantry.get(r.source_id), cnt = row && row.unit_type === "unit";
+        const res = serviceRow(plan.svc[svcKey(r)], plan.guests, cnt);
+        if (!res) return "";
+        if (res.invalid) return "הכמויות לא מסתדרות: חזר, נזרק ופחת גדולים מהכמות שיצאה.";
+        const eaten = cnt ? `${fmt(res.eaten)} יחידות` : `${fmt(res.eaten)} ק"ג`;
+        const per = res.perGuest == null ? "" : cnt ? ` · ${fmt(Math.round(res.perGuest * 10) / 10)} יחידות לסועד` : ` · ${Math.round(res.perGuest)} גרם לסועד`;
+        return `צריכה בפועל ${eaten}${per}`;
+    }
+    function svcPlannedText(r) {
+        const row = ctx.pantry.get(r.source_id), cnt = row && row.unit_type === "unit";
+        const qty = entryQuantity(plan.guests, r.per, r.share);
+        if (!qty) return "";
+        const f = 1 + Math.max(0, parseQty(plan.margin)) / 100;
+        return cnt ? `מתוכנן ${Math.ceil(Math.round(qty * f * 1e6) / 1e6)} יחידות` : `מתוכנן ${fmt(Math.round(qty * f) / 1000)} ק"ג`;
+    }
+    function drawService() {
+        const card = q("#sv-card");
+        if (!addonOn("service")) { card.style.display = "none"; return; }
+        card.style.display = "";
+        q("#sv-s1").value = plan.seat1 || ""; q("#sv-s2").value = plan.seat2 || "";
+        q("#sv-day").textContent = [weekdayHe(plan.date), shortDate(plan.date)].filter(Boolean).join(" · ");
+        const updTotal = () => { const t = seatsTotal(plan.seat1, plan.seat2); q("#sv-total").textContent = t > 0 ? `סה"כ ${t} סועדים` : ""; };
+        updTotal();
+        const onSeat = async () => {
+            plan.seat1 = q("#sv-s1").value; plan.seat2 = q("#sv-s2").value;
+            const t = seatsTotal(plan.seat1, plan.seat2);
+            if (t > 0) { plan.guests = String(t); q("#pp-guests").value = plan.guests; }
+            updTotal(); drawMenu(); drawResult(); updAll(); await persist();
+        };
+        q("#sv-s1").oninput = onSeat; q("#sv-s2").oninput = onSeat;
+        q("#sv-price").value = plan.price || "";
+        q("#sv-price").oninput = async () => { plan.price = q("#sv-price").value; await persist(); };
+        const summary = () => serviceSummary(plan, ctx.pantry, svcPlannedText);
+        const needData = (s) => { if (s.hasData) return true; toast("הזן נתונים לפחות בנתח אחד"); return false; };
+        const makePdf = async (s) => { try { return await renderServicePdf(s); } catch (e) { toast("יצירת הקובץ נכשלה"); return null; } };
+        q("#sv-doc").onclick = async () => {
+            const s = summary(); if (!needData(s)) return;
+            const pdf = await makePdf(s); if (!pdf) return;
+            const url = URL.createObjectURL(pdf);
+            if (!window.open(url, "_blank")) toast("הדפדפן חסם את פתיחת הדף. אפשר חלונות קופצים לאתר ונסה שוב.");
+            setTimeout(() => URL.revokeObjectURL(url), 120000);
+        };
+        q("#sv-file").onclick = async () => { // תפריט השיתוף של הטלפון: וואטסאפ, מייל, דרייב ועוד, עם הקובץ עצמו
+            const s = summary(); if (!needData(s)) return;
+            const pdf = await makePdf(s); if (!pdf) return;
+            const file = new File([pdf], serviceFileName(s), { type: "application/pdf" });
+            try {
+                if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: s.title || "סרוויס" }); return; }
+            } catch (e) { if (e && e.name === "AbortError") return; }
+            const url = URL.createObjectURL(pdf);
+            const a = document.createElement("a"); a.href = url; a.download = file.name; document.body.appendChild(a); a.click(); a.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 60000);
+            toast("הקובץ נשמר במכשיר");
+        };
+        q("#sv-wa").onclick = () => { const s = summary(); if (!needData(s)) return; if (!window.open(whatsappUrl(serviceText(s)), "_blank")) toast("הדפדפן חסם את פתיחת הדף. אפשר חלונות קופצים לאתר ונסה שוב."); };
+        q("#sv-mail").onclick = () => { const s = summary(); if (!needData(s)) return; window.location.href = mailtoUrl("", `${s.title || "סרוויס"} ${s.date || ""}`.trim(), serviceText(s)); };
+        q("#sv-drive").onclick = async () => {
+            const s = summary(); if (!needData(s)) return;
+            try {
+                const { saveReportToDrive } = await import("../cloud/cloudGlue.js");
+                const pdf = await makePdf(s); if (!pdf) return;
+                await saveReportToDrive({ folder: "סרוויסים", sub: [serviceMonthFolder(s)], name: serviceFileName(s), blob: pdf, mime: "application/pdf" });
+                toast(`נשמר בדרייב בתיקיית סרוויסים, ${serviceMonthFolder(s)}`);
+            } catch (e) { toast(e && e.message ? e.message : "השמירה בדרייב נכשלה"); }
+        };
+        q("#sv-hist").onclick = () => openHistory();
+        const rows = svcRows();
+        const FIELDS = [["out", "יצא לסרוויס"], ["back", "חזר מסרוויס"], ["thrown", "נזרק"], ["shrink", "פחת"]];
+        q("#sv-rows").innerHTML = rows.length ? rows.map((r) => {
+            const row = ctx.pantry.get(r.source_id), unit = row.unit_type === "unit" ? "יחידות" : 'ק"ג', k = svcKey(r), v = plan.svc[k] || {};
+            return `<div style="padding:8px 0;border-top:1px solid var(--border,#0001);"><div style="display:flex;justify-content:space-between;gap:8px;"><b>${escapeHtml(r.name || row.name)}</b><span class="muted" data-svp="${escapeHtml(k)}">${escapeHtml(svcPlannedText(r))}</span></div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:6px 0;">${FIELDS.map(([f, label]) => `<div class="field" style="margin:0;"><label>${escapeHtml(label)}</label><input type="text" inputmode="decimal" placeholder="${escapeHtml(unit)}" data-svk="${escapeHtml(k)}" data-svf="${f}" value="${escapeHtml(v[f] || "")}"></div>`).join("")}</div>
+                <div data-svr="${escapeHtml(k)}" style="font-weight:600;">${escapeHtml(svcResultText(r))}</div></div>`;
+        }).join("") : `<div class="muted">הוסף נתחים לתפריט, והם יופיעו כאן.</div>`;
+        q("#sv-rows").querySelectorAll("[data-svk]").forEach((inp) => {
+            inp.oninput = async () => {
+                const k = inp.dataset.svk;
+                plan.svc[k] = { out: "", back: "", thrown: "", shrink: "", ...(plan.svc[k] || {}), [inp.dataset.svf]: inp.value };
+                updAll(); await persist();
+            };
+        });
+    }
+    // היסטוריית סרוויסים: גרף לפי נתח, נזרק ועלות, ורשימה
+    function openHistory() {
+        const all = [plan, ...plans.filter((p) => p.id !== plan.id)];
+        const pts = historyPoints(all, ctx.pantry);
+        const cuts = [...new Set(pts.flatMap((p) => p.perCut.map((c) => c.name)))];
+        const st = { metric: "g", cut: "" };
+        const ovl = openModal(`<h2>היסטוריית סרוויסים</h2><div id="hs-body"></div><div class="modal-actions"><button type="button" class="btn btn-secondary" id="hs-close">סגור</button></div>`);
+        ovl.querySelector("#hs-close").onclick = closeModal;
+        const body = ovl.querySelector("#hs-body");
+        const chip = (on, attr, label) => `<button type="button" class="btn btn-small ${on ? "btn-primary" : "btn-secondary"}" ${attr}>${escapeHtml(label)}</button>`;
+        const paint = () => {
+            if (!pts.length) { body.innerHTML = `<div class="muted">אין עדיין סרוויסים עם נתונים.</div>`; return; }
+            const metrics = [["g", "גרם לסועד"], ["thrown", "נזרק"], ["cost", "עלות בשר לסועד"]];
+            const series = pts.map((p) => ({
+                x: shortDate(p.date),
+                y: st.metric === "g" ? (st.cut ? ((p.perCut.find((c) => c.name === st.cut) || {}).g ?? null) : p.perGuestG) : st.metric === "thrown" ? p.thrown : p.costPerDiner,
+            }));
+            const fmtY = st.metric === "g" ? (v) => String(Math.round(v)) : (v) => String(+v.toFixed(st.metric === "cost" ? 1 : 2));
+            const title = st.metric === "g" ? "גרם לסועד" : st.metric === "thrown" ? 'נזרק בק"ג' : "עלות בשר לסועד, בשקלים";
+            const chart = chartSvg(series, { fmt: fmtY });
+            body.innerHTML = `<div class="btn-row" style="flex-wrap:wrap;gap:6px;margin-bottom:8px;">${metrics.map(([k, l]) => chip(st.metric === k, `data-m="${k}"`, l)).join("")}</div>
+                ${st.metric === "g" && cuts.length ? `<div class="btn-row" style="flex-wrap:wrap;gap:6px;margin-bottom:8px;">${chip(!st.cut, 'data-c=""', "כל הנתחים")}${cuts.map((c) => chip(st.cut === c, `data-c="${escapeHtml(c)}"`, c)).join("")}</div>` : ""}
+                <div style="font-weight:700;margin:4px 0;">${escapeHtml(title)}</div>
+                ${chart || `<div class="muted">אין נתונים לתצוגה הזו.</div>`}
+                <div style="margin-top:10px;">${[...pts].reverse().map((p) => `<div class="card-row" style="padding:5px 0;border-top:1px solid var(--border,#0001);gap:8px;"><span>${escapeHtml(shortDate(p.date))}${p.title ? ` · ${escapeHtml(p.title)}` : ""}</span><span class="muted">${escapeHtml(`${p.guests} סועדים · ${p.perGuestG ? Math.round(p.perGuestG) : "-"} גרם לסועד · נזרק ${fmt(p.thrown)} ק"ג`)}</span></div>`).join("")}</div>`;
+            body.querySelectorAll("[data-m]").forEach((b) => { b.onclick = () => { st.metric = b.dataset.m; paint(); }; });
+            body.querySelectorAll("[data-c]").forEach((b) => { b.onclick = () => { st.cut = b.dataset.c; paint(); }; });
+        };
+        paint();
+    }
+    function updAll() {
+        q("#sv-rows").querySelectorAll("[data-svr]").forEach((el) => {
+            const r = svcRows().find((x) => svcKey(x) === el.dataset.svr);
+            if (r) el.textContent = svcResultText(r);
+        });
+        q("#sv-rows").querySelectorAll("[data-svp]").forEach((el) => {
+            const r = svcRows().find((x) => svcKey(x) === el.dataset.svp);
+            if (r) el.textContent = svcPlannedText(r);
+        });
+    }
+    function draw() { drawMenu(); drawResult(); drawService(); }
 
     // שינוי כמות של משימה/שורת הזמנה שחושבה: טקסט חופשי שמחליף את החישוב (בהדפסה, בוואטסאפ ובהעתקה). אפשר לחזור לחישוב
     function editQty(key, name, cur) {

@@ -24,6 +24,17 @@ export function normalizeOverrides(o) {
     return out;
 }
 
+// דף סרוויס: לכל נתח בתפריט (מפתח "pantry:12"): יצא לסרוויס, חזר מסרוויס, נזרק, פחת. טקסט חופשי בק"ג או ביחידות
+export function normalizeSvc(o) {
+    const out = {};
+    for (const [k, v] of Object.entries(o && typeof o === "object" ? o : {})) {
+        if (!/^(pantry|recipe|dish):\d+$/.test(k) || !v || typeof v !== "object") continue;
+        const row = { out: txt(v.out), back: txt(v.back), thrown: txt(v.thrown), shrink: txt(v.shrink) };
+        if (row.out || row.back || row.thrown || row.shrink) out[k] = row;
+    }
+    return out;
+}
+
 // תוכנית תקינה מכל קלט (גם מגיבוי ישן/פגום)
 export function normalizePlan(p) {
     const rows = Array.isArray(p && p.rows) ? p.rows.filter((r) => r && (r.source_type === "dish" || r.source_type === "recipe" || r.source_type === "pantry") && Number.isFinite(Number(r.source_id))) : [];
@@ -34,6 +45,10 @@ export function normalizePlan(p) {
         name: txt(p && p.name),
         date: /^\d{4}-\d{2}-\d{2}$/.test(txt(p && p.date)) ? p.date : todayIso(),
         guests: txt(p && p.guests),
+        seat1: txt(p && p.seat1),
+        seat2: txt(p && p.seat2),
+        price: txt(p && p.price), // מחיר לסועד בשקלים (לחישוב אחוז עלות מזון)
+        svc: normalizeSvc(p && p.svc),
         note: typeof (p && p.note) === "string" ? p.note.slice(0, 4000) : "",
         margin: p && p.margin != null && txt(p.margin) !== "" ? txt(p.margin) : "10",
         rows: rows.map((r) => ({ source_type: r.source_type, source_id: Number(r.source_id), name: txt(r.name), per: txt(r.per), share: txt(r.share), group: txt(r.group) })),

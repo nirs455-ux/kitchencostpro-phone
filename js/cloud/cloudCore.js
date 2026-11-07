@@ -197,5 +197,19 @@ export function createCloud(deps) {
         return { rows: Object.values(stores).reduce((n, r) => n + r.length, 0) };
     }
 
-    return { ensureFolders, remoteInfo, connect, disconnect, backup, restore, isOrganized, needsAgain: () => again };
+    // שמירת דוח (HTML) בתיקייה ייעודית: KitchenCostPro / folder / sub... / name. אותו שם = מעדכן את אותו קובץ
+    const reportCache = {};
+    async function saveReport({ folder, sub = [], name, blob, mime = "text/html" }) {
+        const ids = await ensureFolders();
+        let parent = ids.root;
+        for (const seg of [folder, ...sub]) {
+            const k = `${parent}/${seg}`;
+            if (!reportCache[k]) reportCache[k] = await drive.ensureFolder(seg, parent);
+            parent = reportCache[k];
+        }
+        const f = await drive.upsertByName({ name, parentId: parent, blob, mime });
+        return { id: f.id, path: [ROOT_FOLDER, folder, ...sub, name].join(" / ") };
+    }
+
+    return { ensureFolders, remoteInfo, connect, disconnect, backup, restore, isOrganized, saveReport, needsAgain: () => again };
 }

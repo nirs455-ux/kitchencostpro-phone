@@ -13,6 +13,7 @@ export const ADDONS = [
     { key: "pct", icon: "％", label: "כמות באחוזים בשורת מתכון", desc: "כמות באחוז מהבסיס או מהמסה, לבצקים ולרטבים." },
     { key: "est", icon: "🍋", label: "יחידות לפי משקל ממוצע", desc: "כמות ביחידות או במ\"ל מיץ, והמערכת מחשבת גרמים לפי משקל יחידה ממוצע." },
     { key: "yield", icon: "🔪", label: "ניצולת ופירוק", desc: "לשונית בחומרי הגלם: ניצולת וקפוא לכל מוצר, ופירוק מוצר שלם לתוצרים. כולל מילוי ניצולת מוערכת בהגדרות. ניצולת בשורת מתכון זמינה תמיד." },
+    { key: "service", icon: "🥩", label: "סרוויסים", desc: "דף סרוויס בתוך מיז אן פלאס: סועדים בכל סיט, כמה יצא, חזר, נזרק ופחת לכל נתח, וצריכה בפועל לסועד." },
     { key: "cloud", icon: "☁️", label: "גיבוי לענן", desc: "גיבוי אוטומטי ל-Google Drive וסנכרון בין מכשירים." },
 ];
 export const ADDON_KEYS = ADDONS.map((a) => a.key);
@@ -20,7 +21,7 @@ const SETTING = "addons";
 
 // משתמש חדש (בלי נתונים) מתחיל נקי. משתמש שכבר עובד עם המערכת לא מאבד כלום: כל מה שהיה גלוי נשאר גלוי.
 export function initialAddons({ hasData, producerMode = false } = {}) {
-    const on = hasData ? new Set(ADDON_KEYS.filter((k) => k !== "producer")) : new Set(); // יצרן היה תמיד אופציונלי: פעיל רק למי שהפעיל אותו
+    const on = hasData ? new Set(ADDON_KEYS.filter((k) => k !== "producer" && k !== "service")) : new Set(); // יצרן היה תמיד אופציונלי: פעיל רק למי שהפעיל אותו
     if (producerMode) on.add("producer");
     return on;
 }

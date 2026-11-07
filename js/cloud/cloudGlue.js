@@ -127,6 +127,12 @@ async function markDirty() {
     clearTimeout(timer);
     timer = setTimeout(() => runBackup({ auto: true }), DEBOUNCE_MS);
 }
+// שמירת דוח בדרייב בתיקייה ייעודית. זורק שגיאה ברורה אם הענן לא מחובר
+export async function saveReportToDrive(args) {
+    await refreshStatus();
+    if (!status.enabled) throw new Error("גיבוי לענן לא מחובר. אפשר לחבר בהגדרות, בגיבוי וענן.");
+    return withInteractive(() => cloud.saveReport(args));
+}
 export async function isCloudOrganized() { return !!(await getSetting("cloud_organized")); }
 export async function runBackup({ auto = false, force = false, interactive = false, organize = false } = {}) {
     await refreshStatus();
