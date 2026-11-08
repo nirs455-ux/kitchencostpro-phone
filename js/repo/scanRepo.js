@@ -16,6 +16,7 @@ import { getRecipeCategories } from "./recipeCategories.js";
 import { invoicePromptWithPantry, mergeDiscountLines, computeStockFactor, toFloat, cleanVatTotals } from "../invoiceParse.js";
 import { LABEL_SCAN_PROMPT, parseLabelAnswer } from "../labelParse.js";
 import { COUNT_SCAN_PROMPT } from "../countAssist.js";
+import { THAW_SCAN_PROMPT, parseThawAnswer } from "../thaw.js";
 
 function fileToBase64(file) {
     return new Promise((resolve, reject) => {
@@ -335,6 +336,35 @@ export async function scanLabelImage(apiKey, file) {
     const draft = parseLabelAnswer(parsed);
     if (draft.empty) throw new Error("לא הצלחתי לקרוא נתונים מהתווית. צלם שוב: קרוב, ישר, באור טוב, כשהטבלה התזונתית ורשימת הרכיבים בפריים.");
     return draft;
+}
+
+// קריאת אריזת מוצר להפשרה: ספק, שם מוצר ותאריך אחרון. טיוטה לבדיקה בלבד, שום דבר לא נשמר
+export async function scanThawPackage(apiKey, file) {
+    if (!apiKey) throw new Error("עוזר AI לא זמין כרגע.");
+    const prepared = await prepareParts(file, "טקסט האריזה");
+    let response;
+    try {
+        response = await geminiFetch(apiKey, { contents: [{ parts: [{ text: THAW_SCAN_PROMPT }, ...prepared.parts] }] }, { fast: true });
+    } catch (e) {
+        throw new Error("אין חיבור לאינטרנט או שהשרת לא זמין. נסה שוב בעוד רגע.");
+    }
+    if (!response.ok) {
+        if (await agentDown(response)) throw new Error(AGENT_DOWN_MSG);
+        if (response.status === 413) throw new Error("התמונה גדולה מדי. צלם שוב קרוב יותר לאריזה.");
+        if (response.status === 402) throw new Error("הגעת למגבלה היומית של עוזר AI. אפשר להמשיך מחר.");
+        if (response.status === 503 || response.status === 429) throw new Error("שרת הקריאה של Google עמוס כרגע. נסה שוב בעוד רגע.");
+        throw new Error(`שגיאה מה-API (${response.status})`);
+    }
+    let parsed;
+    try {
+        const result = await response.json();
+        let text = result.candidates[0].content.parts[0].text.trim();
+        if (text.startsWith("```")) { text = text.split("```")[1]; if (text.startsWith("json")) text = text.slice(4); }
+        parsed = JSON.parse(text.trim());
+    } catch (e) {
+        throw new Error(unreadableMessage(e));
+    }
+    return parseThawAnswer(parsed);
 }
 
 // קריאת דף ספירה בכתב יד: מחזיר את ה-JSON הגולמי { rows: [{ n, name, counted, uncertain }] } להתאמה ב-countAssist.js. שום דבר לא נשמר.

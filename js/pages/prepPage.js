@@ -15,9 +15,10 @@ import { serviceSummary, serviceText, serviceFileName, serviceMonthFolder, histo
 import { compareService, changeText, SAME_DAY_COUNT } from "../serviceCompare.js";
 import { renderServicePdf } from "../servicePdf.js";
 import { chartSvg } from "../serviceCharts.js";
-import { renderForecast } from "./forecastPage.js";
+import { renderThaw } from "./thawPage.js";
 import { renderUpcomingOrder } from "./upcomingOrderPage.js";
 import { syncServiceLog, serviceHistoryPlans } from "../repo/serviceRepo.js";
+import { deviation, recentAverage, LEVEL_COLOR } from "../menuDeviation.js";
 import { qtyText, orderText, whatsappUrl, mailtoUrl } from "../shareText.js";
 import { checklistText, checklistHtml } from "../prepChecklist.js";
 import { buildEventDoc, eventDocHtml } from "../eventDoc.js";
@@ -35,13 +36,13 @@ let currentId = null; // התוכנית הפתוחה (נשמר בין מעברי
 let prepView = "service"; // התצוגה האחרונה בטאב, כשהתוסף סרוויסים פעיל
 export async function renderPrepTab(container) {
     if (!addonOn("service")) return renderEvent(container, "all");
-    container.innerHTML = `<div class="seg" id="pv-seg"><button type="button" data-v="service">סרוויס</button><button type="button" data-v="forecast">תחזית סועדים</button><button type="button" data-v="order">הזמנה</button><button type="button" data-v="event">אירוע</button></div><div id="pv-body"></div>`;
+    container.innerHTML = `<div class="seg" id="pv-seg"><button type="button" data-v="service">סרוויס</button><button type="button" data-v="thaw">הפשרות</button><button type="button" data-v="order">הזמנה</button><button type="button" data-v="event">אירוע</button></div><div id="pv-body"></div>`;
     const body = container.querySelector("#pv-body");
     const show = async (v) => {
         prepView = v;
         container.querySelectorAll("#pv-seg button").forEach((b) => b.classList.toggle("active", b.dataset.v === v));
         body.innerHTML = "";
-        await (v === "event" ? renderEvent(body, "event") : v === "service" ? renderEvent(body, "service") : v === "order" ? renderUpcomingOrder(body) : renderForecast(body));
+        await (v === "event" ? renderEvent(body, "event") : v === "service" ? renderEvent(body, "service") : v === "order" ? renderUpcomingOrder(body) : renderThaw(body));
     };
     container.querySelectorAll("#pv-seg button").forEach((b) => { b.onclick = () => show(b.dataset.v); });
     await show(prepView);
@@ -50,6 +51,8 @@ export async function renderPrepTab(container) {
 async function renderEvent(container, mode = "all") {
     const [ctx, suppliers] = await Promise.all([loadSalesCtx(), dbGetAll("suppliers")]);
     let plans = await listPlans();
+    let histPts = []; // סרוויסים קודמים, להשוואת הגרם לסועד בתפריט למה שהיה בפועל
+    if (mode === "service") { try { histPts = historyPoints(await serviceHistoryPlans(plans), ctx.pantry); } catch (e) { histPts = []; } }
     let stdMenu = await getServiceMenu(); // התפריט הקבוע של הסרוויס
     const isSvc = mode === "service";
     const visible = () => plans.filter((p) => mode === "all" || p.kind === mode);
@@ -84,30 +87,33 @@ async function renderEvent(container, mode = "all") {
                 <div class="field"${isSvc ? ' style="display:none;"' : ""}><label>שם האירוע</label><input type="text" id="pp-name" placeholder="למשל: חתונה של דנה"></div>
                 <div class="field"><label>תאריך</label><input type="date" id="pp-date"></div>
             </div>
-            <div class="form-row"${isSvc ? ' style="display:none;"' : ""}>
-                <div class="field"><label>כמות סועדים</label><input type="text" inputmode="numeric" id="pp-guests" placeholder="80"></div>
-                <div class="field"><label>מרווח ביטחון באחוזים ${info("תוספת על הכמות המחושבת, כדי לא להישאר בלי. בבופה כדאי עשרה עד חמישה עשר. תבלינים לא תמיד גדלים ביחס ישר, לכן אפשר להוריד.")}</label><input type="text" inputmode="decimal" id="pp-margin"></div>
-            </div>
-            <div class="field"><label>אלרגנים של הסועדים ${info("מסמנים אלרגנים שיש בין הסועדים. האפליקציה רושמת אותם בתכנון ומזהירה על פריטים בתפריט שמכילים אותם, לפי הגדרות האלרגנים במערכת. פריט ידני ופריט בלי הגדרות לא נבדקים.")}</label><div id="pp-alg" class="btn-row" style="flex-wrap:wrap;"></div></div>
-            <div class="field"><label>העדפות של הסועדים ${info("כשר, צמחוני וטבעוני. אחרי סימון אלרגיה או העדפה מזינים כמה סועדים, וכך רואים כמה מנות להכין.")}</label><div id="pp-diet" class="btn-row" style="flex-wrap:wrap;"></div></div>
-            <div id="pp-need"></div>
-            <div class="field"><label>הערות לאירוע ${info("מקום חופשי לכל מה שלא קשור לאוכל: סידורים, הכרות, ארגון, שעות, ציוד. ההערות מופיעות במסמך האירוע.")}</label><textarea id="pp-note" rows="3" style="width:100%;" placeholder="סידורים, הכרות, ארגון, מה שצריך לזכור"></textarea></div>
-        </div>
-        <div class="card">
-            <div class="card-title" style="margin:0 0 6px;">תפריט</div>
-            ${isSvc ? '<div class="hint" style="margin:0 0 6px;">התפריט נפתח בכל יום. מה שמוסיפים או מורידים כאן משתנה מהיום הזה והלאה.</div>' : ""}
-            <button type="button" class="btn btn-secondary btn-block" id="pp-pick">＋ הוספת פריטים מהמערכת</button>
-            <div id="pp-menu"></div>
-        </div>
-        <div class="card" id="sv-card" style="display:none;">
-            <div class="card-title" style="margin:0 0 6px;">דף סרוויס ${info("לכל נתח בתפריט מזינים בקילו כמה יצא לסרוויס, כמה חזר, כמה נזרק וכמה פחת. האפליקציה מחשבת את הצריכה בפועל ואת הגרם לסועד. בשר שבושל ושומש שוב נספר כחזר.")}</div>
-            <div class="muted" id="sv-day" style="margin:0 0 6px;"></div>
-            <div class="form-row">
+            ${isSvc ? `            <div class="form-row">
                 <div class="field"><label>סועדים בסיט ראשון</label><input type="text" inputmode="numeric" id="sv-s1"></div>
                 <div class="field"><label>סועדים בסיט שני</label><input type="text" inputmode="numeric" id="sv-s2"></div>
             </div>
             <div class="muted" id="sv-total" style="margin:0 0 8px;"></div>
-            <div class="field"><label>מחיר לסועד, בשקלים ${info("משמש לחישוב אחוז עלות מזון בדוח ובגרפים. אפשר להשאיר ריק.")}</label><input type="text" inputmode="decimal" id="sv-price"></div>
+            <div class="field"><label>מחיר לסועד, בשקלים ${info("משמש לחישוב אחוז עלות מזון בדוח ובגרפים. אפשר להשאיר ריק.")}</label><input type="text" inputmode="decimal" id="sv-price"></div>` : ""}
+            <div class="form-row"${isSvc ? ' style="display:none;"' : ""}>
+                <div class="field"><label>כמות סועדים</label><input type="text" inputmode="numeric" id="pp-guests" placeholder="80"></div>
+                <div class="field"><label>מרווח ביטחון באחוזים ${info("תוספת על הכמות המחושבת, כדי לא להישאר בלי. בבופה כדאי עשרה עד חמישה עשר. תבלינים לא תמיד גדלים ביחס ישר, לכן אפשר להוריד.")}</label><input type="text" inputmode="decimal" id="pp-margin"></div>
+            </div>
+            <div class="field"><label>העדפות של הסועדים ${info("כשר, צמחוני וטבעוני. אחרי סימון אלרגיה או העדפה מזינים כמה סועדים, וכך רואים כמה מנות להכין.")}</label><div id="pp-diet" class="btn-row" style="flex-wrap:wrap;"></div></div>
+            <div id="pp-need-d"></div>
+            <details id="pp-alg-det"${isSvc ? "" : " open"}><summary style="cursor:pointer;margin:6px 0;font-weight:600;">אלרגנים</summary>
+            <div class="field"><label>אלרגנים של הסועדים ${info("מסמנים אלרגנים שיש בין הסועדים. האפליקציה רושמת אותם בתכנון ומזהירה על פריטים בתפריט שמכילים אותם, לפי הגדרות האלרגנים במערכת. פריט ידני ופריט בלי הגדרות לא נבדקים.")}</label><div id="pp-alg" class="btn-row" style="flex-wrap:wrap;"></div></div>
+            <div id="pp-need-a"></div></details>
+            <div class="field"><label>הערות לאירוע ${info("מקום חופשי לכל מה שלא קשור לאוכל: סידורים, הכרות, ארגון, שעות, ציוד. ההערות מופיעות במסמך האירוע.")}</label><textarea id="pp-note" rows="3" style="width:100%;" placeholder="סידורים, הכרות, ארגון, מה שצריך לזכור"></textarea></div>
+        </div>
+        <div class="card">
+            ${isSvc ? '<details id="pp-menu-det"><summary class="card-title" style="margin:0 0 6px;cursor:pointer;">תפריט <span id="pp-menu-n" class="muted"></span></summary>' : '<div class="card-title" style="margin:0 0 6px;">תפריט</div>'}
+            ${isSvc ? '<div class="hint" style="margin:0 0 6px;">התפריט נפתח בכל יום. מה שמוסיפים או מורידים כאן משתנה מהיום הזה והלאה.</div>' : ""}
+            <button type="button" class="btn btn-secondary btn-block" id="pp-pick">＋ הוספת פריטים מהמערכת</button>
+            <div id="pp-menu"></div>
+            ${isSvc ? "</details>" : ""}
+        </div>
+        <div class="card" id="sv-card" style="display:none;">
+            <div class="card-title" style="margin:0 0 6px;">דף סרוויס ${info("לכל נתח בתפריט מזינים בקילו כמה יצא לסרוויס, כמה חזר, כמה נזרק וכמה פחת. האפליקציה מחשבת את הצריכה בפועל ואת הגרם לסועד. בשר שבושל ושומש שוב נספר כחזר.")}</div>
+            <div class="muted" id="sv-day" style="margin:0 0 6px;"></div>
             <div id="sv-rows"></div>
             <div class="btn-row" style="margin-top:10px;flex-wrap:wrap;gap:6px;">
                 <button type="button" class="btn btn-secondary btn-small" id="sv-doc">📄 מסמך סרוויס</button>
@@ -159,12 +165,14 @@ async function renderEvent(container, mode = "all") {
             });
         };
         paint("#pp-alg", ALLERGENS, "allergens"); paint("#pp-diet", DIETS, "diets");
-        const sel = [...plan.allergens, ...plan.diets];
-        const nb = q("#pp-need");
-        nb.innerHTML = sel.map((k) => `<div class="card-row" style="padding:4px 0;gap:8px;align-items:center;"><span style="flex:1;min-width:0;"><b>${escapeHtml(needLabel(k))}</b></span><input type="text" inputmode="numeric" data-nk="${k}" value="${escapeHtml(plan.needCounts[k] || "")}" placeholder="כמה סועדים" style="width:110px;text-align:center;flex:none;"></div>`).join("");
+        for (const [boxSel, keys] of [["#pp-need-d", plan.diets], ["#pp-need-a", plan.allergens]]) {
+        const nb = q(boxSel);
+        nb.innerHTML = keys.map((k) => `<div class="card-row" style="padding:4px 0;gap:8px;align-items:center;"><span style="flex:1;min-width:0;"><b>${escapeHtml(needLabel(k))}</b></span><input type="text" inputmode="numeric" data-nk="${k}" value="${escapeHtml(plan.needCounts[k] || "")}" placeholder="כמה סועדים" style="width:110px;text-align:center;flex:none;"></div>`).join("");
         nb.querySelectorAll("[data-nk]").forEach((inp) => {
             inp.oninput = async () => { const v = inp.value.trim(); if (v) plan.needCounts[inp.dataset.nk] = v; else delete plan.needCounts[inp.dataset.nk]; drawResult(); updAll(); svTotal(); await persist(); };
         });
+        }
+        if (plan.allergens.length) q("#pp-alg-det").open = true;
     }
     const bind = (sel, key) => { q(sel).oninput = async (e) => { plan[key] = e.target.value; if (isSvc && key === "date") plan.name = svcName(plan); drawMenu(); drawResult(); updAll(); await persist(); }; };
     q("#pp-note").oninput = async (e) => { plan.note = e.target.value; await persist(); };
@@ -258,6 +266,16 @@ async function renderEvent(container, mode = "all") {
         return noWeight ? `${total} · ${escapeHtml("אין משקל סופי במתכון, יש להזין במתכון")}` : total;
     };
 
+    const devSpan = (level, text) => `<span style="color:${LEVEL_COLOR[level]};font-weight:600;">● ${escapeHtml(text)}</span>`;
+    function devHtml(r, i) { // צבע לפי הממוצע של הסרוויסים האחרונים מול הגרם לסועד בתפריט
+        if (!isSvc || r.source_type !== "pantry" || r.diet) return "";
+        const a = recentAverage(histPts, r.source_id, plan.date); if (!a) return "";
+        const row = ctx.pantry.get(r.source_id), cnt = row && row.unit_type === "unit";
+        const d = deviation(r.per, a.avg); if (!d) return "";
+        const val = cnt ? fmt(Math.round(a.avg * 10) / 10) : Math.round(a.avg);
+        const btn = d.level === "ok" ? "" : ` <button type="button" class="btn btn-secondary btn-small" data-upd="${i}" data-val="${val}">עדכן ל-${val}</button>`;
+        return `${devSpan(d.level, `בפועל ${val} ${cnt ? "יחידות" : "גרם"} בממוצע של ${a.n} סרוויסים`)}${btn}<br>`;
+    }
     function drawMenu() {
         const menuEl = q("#pp-menu");
         const supName = (id) => (suppliers.find((s) => s.id === id) || {}).name || "";
@@ -266,7 +284,7 @@ async function renderEvent(container, mode = "all") {
             const legacy = r.source_type === "dish";
             const head = (r.group || "") !== lastGroup && (r.group || lastGroup) ? `<div class="muted" style="margin:10px 4px 2px;">${r.group ? "🍽️ " + escapeHtml(r.group) : "📦 פריטים נוספים"}</div>` : "";
             lastGroup = r.group || "";
-            return head + `<div class="card-row" style="padding:6px 4px;gap:8px;align-items:center;border-bottom:1px solid var(--border,#0001);"><span style="flex:1;min-width:0;"><b>${escapeHtml(r.name)}</b><br><span class="muted" data-note="${i}">${rowNote(r)}</span><br><select data-diet="${i}" style="margin-top:4px;">${[["", "לכולם"], ["vegetarian", "צמחוני"], ["vegan", "טבעוני"], ["kosher", "כשר"]].map(([v, l]) => `<option value="${v}"${(r.diet || "") === v ? " selected" : ""}>${l}</option>`).join("")}</select></span><input type="text" inputmode="decimal" data-per="${i}" value="${escapeHtml(String(r.per))}" placeholder="${legacy ? "מנות" : isCount(r) ? "יחידות" : "גרם"}" style="width:76px;text-align:center;flex:none;"><span class="muted" style="flex:none;">${legacy ? "מנות לסועד" : isCount(r) ? "יחידות לסועד" : "גרם לסועד"}</span><button type="button" class="btn btn-secondary btn-small" data-rm="${i}">✕</button></div>`;
+            return head + `<div class="card-row" style="padding:6px 4px;gap:8px;align-items:center;border-bottom:1px solid var(--border,#0001);"><span style="flex:1;min-width:0;"><b>${escapeHtml(r.name)}</b><br><span class="muted" data-note="${i}">${rowNote(r)}</span><br>${devHtml(r, i)}<select data-diet="${i}" style="margin-top:4px;">${[["", "לכולם"], ["vegetarian", "צמחוני"], ["vegan", "טבעוני"], ["kosher", "כשר"]].map(([v, l]) => `<option value="${v}"${(r.diet || "") === v ? " selected" : ""}>${l}</option>`).join("")}</select></span><input type="text" inputmode="decimal" data-per="${i}" value="${escapeHtml(String(r.per))}" placeholder="${legacy ? "מנות" : isCount(r) ? "יחידות" : "גרם"}" style="width:76px;text-align:center;flex:none;"><span class="muted" style="flex:none;">${legacy ? "מנות לסועד" : isCount(r) ? "יחידות לסועד" : "גרם לסועד"}</span><button type="button" class="btn btn-secondary btn-small" data-rm="${i}">✕</button></div>`;
         }).join("");
         menuEl.innerHTML = (plan.rows.length ? `${isSvc ? "" : '<div class="hint" style="margin:8px 4px 0;">בכל שורה כותבים כמה גרם מקבל סועד באירוע.</div>'}${rowsHtml}` : "") + (plan.custom.length ? `<div class="card-title" style="margin:12px 4px 4px;">פריטים ידניים</div>` + plan.custom.map((c, i) => `<div class="card-row" style="padding:6px 4px;border-bottom:1px solid var(--border,#0001);"><span><b>${escapeHtml(c.label)}</b><br><span class="muted">${c.kind === "order" ? "להזמין" + (c.supplier_id && supName(c.supplier_id) ? " · " + escapeHtml(supName(c.supplier_id)) : "") : "להכין"}${c.qty ? " · " + escapeHtml(c.qty) : ""}</span></span><span><button type="button" class="btn btn-secondary btn-small" data-cedit="${i}">✎</button> <button type="button" class="btn btn-secondary btn-small" data-crm="${i}">✕</button></span></div>`).join("") : "");
         menuEl.querySelectorAll("[data-per]").forEach((inp) => {
@@ -278,6 +296,8 @@ async function renderEvent(container, mode = "all") {
                 drawResult(); updAll(); await persist();
             };
         });
+        menuEl.querySelectorAll("[data-upd]").forEach((b) => { b.onclick = async () => { plan.rows[Number(b.dataset.upd)].per = b.dataset.val; toast("עודכן בתפריט"); draw(); await persist(); }; });
+        const cnEl = q("#pp-menu-n"); if (cnEl) cnEl.textContent = plan.rows.length ? `· ${plan.rows.length} מנות` : "";
         menuEl.querySelectorAll("[data-diet]").forEach((sel) => { sel.onchange = async () => { plan.rows[Number(sel.dataset.diet)].diet = sel.value; draw(); await persist(); }; });
         menuEl.querySelectorAll("[data-rm]").forEach((b) => { b.onclick = async () => { plan.rows.splice(Number(b.dataset.rm), 1); draw(); await persist(); }; });
         menuEl.querySelectorAll("[data-crm]").forEach((b) => { b.onclick = async () => { const [gone] = plan.custom.splice(Number(b.dataset.crm), 1); if (gone) { delete plan.done["c" + gone.id]; } draw(); await persist(); }; });
@@ -422,6 +442,13 @@ async function renderEvent(container, mode = "all") {
         const w = res.weight ? ` · משקל כולל ${fmt(Math.round(res.weight.kg * 100) / 100)} ק"ג${res.weight.perGuestG != null ? ` · ${Math.round(res.weight.perGuestG)} גרם לסועד` : ""}${res.weight.perUnitG != null ? ` · ${Math.round(res.weight.perUnitG)} גרם ליחידה` : ""}` : "";
         return `צריכה בפועל ${eaten}${per}${w}`;
     }
+    function svcDevHtml(r) { // הערב מול הגרם לסועד בתפריט
+        const row = ctx.pantry.get(r.source_id), cnt = row && row.unit_type === "unit";
+        const res = serviceRow(plan.svc[svcKey(r)], meatGuests(plan.guests, plan.needCounts), cnt);
+        if (!res || res.invalid || res.perGuest == null) return "";
+        const d = deviation(r.per, res.perGuest); if (!d) return "";
+        return devSpan(d.level, d.level === "ok" ? "בטווח התפריט" : `${Math.round(Math.abs(d.pct))}% ${d.pct > 0 ? "מעל התפריט" : "מתחת לתפריט"}`);
+    }
     function svTotal() {
         const el = q("#sv-total"); if (!el) return;
         const t = seatsTotal(plan.seat1, plan.seat2), d = dietText(plan.needCounts);
@@ -487,7 +514,7 @@ async function renderEvent(container, mode = "all") {
             return `<div style="padding:8px 0;border-top:1px solid var(--border,#0001);"><div style="display:flex;justify-content:space-between;gap:8px;"><b>${escapeHtml(r.name || row.name)}</b></div>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:6px 0;">${FIELDS.map(([f, label]) => `<div class="field" style="margin:0;"><label>${escapeHtml(label)}</label><input type="text" inputmode="decimal" placeholder="${escapeHtml(unit)}" data-svk="${escapeHtml(k)}" data-svf="${f}" value="${escapeHtml(v[f] || "")}"></div>`).join("")}</div>
                 ${row.unit_type === "unit" ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:6px 0;">${WFIELDS.map(([f, label]) => `<div class="field" style="margin:0;"><label>${escapeHtml(label)}</label><input type="text" inputmode="decimal" placeholder="ק&quot;ג" data-svk="${escapeHtml(k)}" data-svf="${f}" value="${escapeHtml(v[f] || "")}"></div>`).join("")}</div>` : ""}
-                <div data-svr="${escapeHtml(k)}" style="font-weight:600;">${escapeHtml(svcResultText(r))}</div></div>`;
+                <div data-svr="${escapeHtml(k)}" style="font-weight:600;">${escapeHtml(svcResultText(r))}</div><div data-svd="${escapeHtml(k)}">${svcDevHtml(r)}</div></div>`;
         }).join("") : `<div class="muted">הוסף נתחים לתפריט, והם יופיעו כאן.</div>`;
         q("#sv-rows").querySelectorAll("[data-svk]").forEach((inp) => {
             inp.oninput = async () => {
@@ -557,6 +584,10 @@ async function renderEvent(container, mode = "all") {
         q("#sv-rows").querySelectorAll("[data-svr]").forEach((el) => {
             const r = svcRows().find((x) => svcKey(x) === el.dataset.svr);
             if (r) el.textContent = svcResultText(r);
+        });
+        q("#sv-rows").querySelectorAll("[data-svd]").forEach((el) => {
+            const r = svcRows().find((x) => svcKey(x) === el.dataset.svd);
+            if (r) el.innerHTML = svcDevHtml(r);
         });
     }
     function draw() { drawMenu(); drawResult(); drawService(); }

@@ -68,7 +68,7 @@ export function pointFromSummary(s) {
     return {
         date: s.date, title: s.title, guests: s.guests, perGuestG: s.perGuestG, eatenKg: s.totals.eaten, thrown: s.totals.thrown, costPerDiner: s.costPerDiner,
         perCut: s.rows.filter((x) => x.res && !x.cnt && x.res.perGuest != null).map((x) => ({ name: x.name, g: x.res.perGuest, kg: x.res.eaten })),
-        perItem: s.rows.filter((x) => x.res && !x.res.invalid && x.id != null).map((x) => ({ id: x.id, name: x.name, cnt: x.cnt, amt: x.res.eaten })), // ק"ג, או יחידות למוצר ביחידות
+        perItem: s.rows.filter((x) => x.res && !x.res.invalid && x.id != null).map((x) => ({ id: x.id, name: x.name, cnt: x.cnt, amt: x.res.eaten, pg: x.res.perGuest })), // ק"ג, או יחידות למוצר ביחידות
     };
 }
 
