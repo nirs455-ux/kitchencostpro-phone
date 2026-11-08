@@ -44,7 +44,8 @@ export function serviceText(s) {
         const r = x.res;
         const parts = [`יצא ${amt(r.out, x)}`, r.back > 0 ? `חזר ${amt(r.back, x)}` : "", r.shrink > 0 ? `פחת ${amt(r.shrink, x)}` : "", r.thrown > 0 ? `נזרק ${amt(r.thrown, x)}` : ""].filter(Boolean);
         const per = r.perGuest == null ? "" : x.cnt ? ` · ${n2(r.perGuest)} יחידות לסועד` : ` · ${Math.round(r.perGuest)} גרם לסועד`;
-        L.push(`${x.name}: ${parts.join(", ")} · צריכה בפועל ${amt(r.eaten, x)}${per}`);
+        const w = r.weight ? ` · משקל כולל ${n2(r.weight.kg)} ק"ג${r.weight.perGuestG != null ? ` · ${Math.round(r.weight.perGuestG)} גרם לסועד` : ""}${r.weight.perUnitG != null ? ` · ${Math.round(r.weight.perUnitG)} גרם ליחידה` : ""}` : "";
+        L.push(`${x.name}: ${parts.join(", ")} · צריכה בפועל ${amt(r.eaten, x)}${per}${w}`);
     }
     if (s.hasData) {
         L.push("");

@@ -419,7 +419,8 @@ async function renderEvent(container, mode = "all") {
         if (res.invalid) return "הכמויות לא מסתדרות: חזר, נזרק ופחת גדולים מהכמות שיצאה.";
         const eaten = cnt ? `${fmt(res.eaten)} יחידות` : `${fmt(res.eaten)} ק"ג`;
         const per = res.perGuest == null ? "" : cnt ? ` · ${fmt(Math.round(res.perGuest * 10) / 10)} יחידות לסועד` : ` · ${Math.round(res.perGuest)} גרם לסועד`;
-        return `צריכה בפועל ${eaten}${per}`;
+        const w = res.weight ? ` · משקל כולל ${fmt(Math.round(res.weight.kg * 100) / 100)} ק"ג${res.weight.perGuestG != null ? ` · ${Math.round(res.weight.perGuestG)} גרם לסועד` : ""}${res.weight.perUnitG != null ? ` · ${Math.round(res.weight.perUnitG)} גרם ליחידה` : ""}` : "";
+        return `צריכה בפועל ${eaten}${per}${w}`;
     }
     function svTotal() {
         const el = q("#sv-total"); if (!el) return;
@@ -480,16 +481,18 @@ async function renderEvent(container, mode = "all") {
         q("#sv-cmp").onclick = () => openCompare();
         const rows = svcRows();
         const FIELDS = [["out", "יצא לסרוויס"], ["back", "חזר מסרוויס"], ["shrink", "פחת"], ["thrown", "נזרק"]];
+        const WFIELDS = [["wout", "משקל שיצא"], ["wback", "משקל שחזר"]]; // מוצר ביחידות שנשקל גם
         q("#sv-rows").innerHTML = rows.length ? rows.map((r) => {
             const row = ctx.pantry.get(r.source_id), unit = row.unit_type === "unit" ? "יחידות" : 'ק"ג', k = svcKey(r), v = plan.svc[k] || {};
             return `<div style="padding:8px 0;border-top:1px solid var(--border,#0001);"><div style="display:flex;justify-content:space-between;gap:8px;"><b>${escapeHtml(r.name || row.name)}</b></div>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:6px 0;">${FIELDS.map(([f, label]) => `<div class="field" style="margin:0;"><label>${escapeHtml(label)}</label><input type="text" inputmode="decimal" placeholder="${escapeHtml(unit)}" data-svk="${escapeHtml(k)}" data-svf="${f}" value="${escapeHtml(v[f] || "")}"></div>`).join("")}</div>
+                ${row.unit_type === "unit" ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:6px 0;">${WFIELDS.map(([f, label]) => `<div class="field" style="margin:0;"><label>${escapeHtml(label)}</label><input type="text" inputmode="decimal" placeholder="ק&quot;ג" data-svk="${escapeHtml(k)}" data-svf="${f}" value="${escapeHtml(v[f] || "")}"></div>`).join("")}</div>` : ""}
                 <div data-svr="${escapeHtml(k)}" style="font-weight:600;">${escapeHtml(svcResultText(r))}</div></div>`;
         }).join("") : `<div class="muted">הוסף נתחים לתפריט, והם יופיעו כאן.</div>`;
         q("#sv-rows").querySelectorAll("[data-svk]").forEach((inp) => {
             inp.oninput = async () => {
                 const k = inp.dataset.svk;
-                plan.svc[k] = { out: "", back: "", thrown: "", shrink: "", ...(plan.svc[k] || {}), [inp.dataset.svf]: inp.value };
+                plan.svc[k] = { out: "", back: "", thrown: "", shrink: "", wout: "", wback: "", ...(plan.svc[k] || {}), [inp.dataset.svf]: inp.value };
                 updAll(); await persist();
             };
         });

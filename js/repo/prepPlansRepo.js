@@ -29,8 +29,8 @@ export function normalizeSvc(o) {
     const out = {};
     for (const [k, v] of Object.entries(o && typeof o === "object" ? o : {})) {
         if (!/^(pantry|recipe|dish):\d+$/.test(k) || !v || typeof v !== "object") continue;
-        const row = { out: txt(v.out), back: txt(v.back), thrown: txt(v.thrown), shrink: txt(v.shrink) };
-        if (row.out || row.back || row.thrown || row.shrink) out[k] = row;
+        const row = { out: txt(v.out), back: txt(v.back), thrown: txt(v.thrown), shrink: txt(v.shrink), wout: txt(v.wout), wback: txt(v.wback) };
+        if (row.out || row.back || row.thrown || row.shrink || row.wout || row.wback) out[k] = row;
     }
     return out;
 }

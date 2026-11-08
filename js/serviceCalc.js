@@ -14,7 +14,13 @@ export function serviceRow(r, guests, isCount = false) {
     const eaten = Math.round((out - back - thrown - shrink) * 1e6) / 1e6;
     const g = toNum(guests);
     const perGuest = g > 0 && eaten >= 0 ? (isCount ? eaten / g : (eaten * 1000) / g) : null;
-    return { out, back, thrown, shrink, eaten, perGuest, invalid: eaten < 0 };
+    // מוצר ביחידות שנשקל גם: משקל כולל שיצא פחות משקל שחזר (ק"ג), גרם לסועד וגרם ליחידה
+    let weight = null;
+    if (isCount && has(r.wout)) {
+        const kg = Math.round((toNum(r.wout) - toNum(r.wback)) * 1e6) / 1e6;
+        if (kg >= 0) weight = { kg, perGuestG: g > 0 ? (kg * 1000) / g : null, perUnitG: eaten > 0 ? (kg * 1000) / eaten : null };
+    }
+    return { out, back, thrown, shrink, eaten, perGuest, invalid: eaten < 0, weight };
 }
 
 // צמחוני וטבעוני אינם אוכלים מהנתחים: מורידים אותם מחישוב הגרם לסועד. כשר לא מורד
