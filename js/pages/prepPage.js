@@ -91,8 +91,7 @@ async function renderEvent(container, mode = "all") {
                 <div class="field"><label>סועדים בסיט ראשון</label><input type="text" inputmode="numeric" id="sv-s1"></div>
                 <div class="field"><label>סועדים בסיט שני</label><input type="text" inputmode="numeric" id="sv-s2"></div>
             </div>
-            <div class="muted" id="sv-total" style="margin:0 0 8px;"></div>
-            <div class="field"><label>מחיר לסועד, בשקלים ${info("משמש לחישוב אחוז עלות מזון בדוח ובגרפים. אפשר להשאיר ריק.")}</label><input type="text" inputmode="decimal" id="sv-price"></div>` : ""}
+            <div class="muted" id="sv-total" style="margin:0 0 8px;"></div>` : ""}
             <div class="form-row"${isSvc ? ' style="display:none;"' : ""}>
                 <div class="field"><label>כמות סועדים</label><input type="text" inputmode="numeric" id="pp-guests" placeholder="80"></div>
                 <div class="field"><label>מרווח ביטחון באחוזים ${info("תוספת על הכמות המחושבת, כדי לא להישאר בלי. בבופה כדאי עשרה עד חמישה עשר. תבלינים לא תמיד גדלים ביחס ישר, לכן אפשר להוריד.")}</label><input type="text" inputmode="decimal" id="pp-margin"></div>
@@ -469,8 +468,6 @@ async function renderEvent(container, mode = "all") {
             updTotal(); drawMenu(); drawResult(); updAll(); await persist();
         };
         q("#sv-s1").oninput = onSeat; q("#sv-s2").oninput = onSeat;
-        q("#sv-price").value = plan.price || "";
-        q("#sv-price").oninput = async () => { plan.price = q("#sv-price").value; await persist(); };
         const summary = () => serviceSummary(plan, ctx.pantry);
         const needData = (s) => { if (s.hasData) return true; toast("הזן נתונים לפחות בנתח אחד"); return false; };
         const makePdf = async (s) => { try { return await renderServicePdf(s); } catch (e) { toast("יצירת הקובץ נכשלה"); return null; } };
