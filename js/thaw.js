@@ -72,10 +72,10 @@ export function upsertEntry(list, entry) {
 export const removeEntry = (list, id) => list.filter((x) => x.id !== id);
 
 // שורות להדפסה: רק רשומות שההפשרה בהן הסתיימה. mode "unprinted" = מה שעוד לא הודפס, "range" = לפי תאריך התחלה
-export function printableRows(list, { mode = "unprinted", from = "", to = "" } = {}) {
+export function printableRows(list, { mode = "unprinted", from = "", to = "", includeOpen = false } = {}) {
     const inScope = list.filter((e) => (mode === "range" ? (!from || e.startDate >= from) && (!to || e.startDate <= to) : !e.printed));
-    const rows = inScope.filter((e) => !isOpen(e)).sort((a, b) => `${a.startDate} ${a.startTime}`.localeCompare(`${b.startDate} ${b.startTime}`));
-    return { rows, openCount: inScope.length - rows.length };
+    const rows = inScope.filter((e) => includeOpen || !isOpen(e)).sort((a, b) => `${a.startDate} ${a.startTime}`.localeCompare(`${b.startDate} ${b.startTime}`));
+    return { rows, openCount: includeOpen ? 0 : inScope.length - rows.length };
 }
 
 export const markPrinted = (list, ids, date) => list.map((e) => (ids.has(e.id) ? { ...e, printed: date } : e));

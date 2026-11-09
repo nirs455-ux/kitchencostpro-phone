@@ -125,13 +125,14 @@ export async function renderThaw(container) {
             <label class="checkbox-field"><input type="radio" name="pm" value="unprinted" checked><span>רק מה שעוד לא הודפס</span></label>
             <label class="checkbox-field"><input type="radio" name="pm" value="range"><span>לפי תאריכים</span></label>
             <div class="form-row" id="pm-range" style="display:none;"><div class="field"><label>מתאריך</label><input type="date" id="pm-from" value="${t.slice(0, 8)}01"></div><div class="field"><label>עד תאריך</label><input type="date" id="pm-to" value="${t}"></div></div>
+            <label class="checkbox-field"><input type="checkbox" id="pm-open"><span>כולל הפשרות שעדיין לא הסתיימו</span></label>
             <div class="muted" id="pm-info"></div>
             <div class="modal-actions"><button type="button" class="btn btn-secondary" id="pm-cancel">ביטול</button><button type="button" class="btn btn-primary" id="pm-go">צור טופס</button></div>`);
-        const opts = () => { const mode = ov.querySelector("input[name=pm]:checked").value; return { mode, from: ov.querySelector("#pm-from").value, to: ov.querySelector("#pm-to").value }; };
+        const opts = () => { const mode = ov.querySelector("input[name=pm]:checked").value; return { mode, from: ov.querySelector("#pm-from").value, to: ov.querySelector("#pm-to").value, includeOpen: ov.querySelector("#pm-open").checked }; };
         const refresh = () => {
             const o = opts(); ov.querySelector("#pm-range").style.display = o.mode === "range" ? "" : "none";
             const r = printableRows(log, o);
-            ov.querySelector("#pm-info").textContent = `${r.rows.length} שורות מוכנות להדפסה${r.openCount ? `, ועוד ${r.openCount} שעדיין בהפשרה ולא ייכללו` : ""}`;
+            ov.querySelector("#pm-info").textContent = `${r.rows.length} שורות להדפסה${r.openCount ? `, ועוד ${r.openCount} שעדיין בהפשרה ולא ייכללו` : ""}`;
         };
         ov.querySelectorAll("input").forEach((i) => { i.onchange = refresh; });
         refresh();

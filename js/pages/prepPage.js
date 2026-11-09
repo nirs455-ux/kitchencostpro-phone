@@ -16,7 +16,6 @@ import { compareService, changeText, SAME_DAY_COUNT } from "../serviceCompare.js
 import { renderServicePdf } from "../servicePdf.js";
 import { chartSvg } from "../serviceCharts.js";
 import { renderThaw } from "./thawPage.js";
-import { renderUpcomingOrder } from "./upcomingOrderPage.js";
 import { syncServiceLog, serviceHistoryPlans } from "../repo/serviceRepo.js";
 import { deviation, recentAverage, LEVEL_COLOR } from "../menuDeviation.js";
 import { qtyText, orderText, whatsappUrl, mailtoUrl } from "../shareText.js";
@@ -36,13 +35,13 @@ let currentId = null; // התוכנית הפתוחה (נשמר בין מעברי
 let prepView = "service"; // התצוגה האחרונה בטאב, כשהתוסף סרוויסים פעיל
 export async function renderPrepTab(container) {
     if (!addonOn("service")) return renderEvent(container, "all");
-    container.innerHTML = `<div class="seg" id="pv-seg"><button type="button" data-v="service">סרוויס</button><button type="button" data-v="thaw">הפשרות</button><button type="button" data-v="order">הזמנה</button><button type="button" data-v="event">אירוע</button></div><div id="pv-body"></div>`;
+    container.innerHTML = `<div class="seg" id="pv-seg"><button type="button" data-v="service">סרוויס</button><button type="button" data-v="thaw">הפשרות</button><button type="button" data-v="event">אירוע</button></div><div id="pv-body"></div>`;
     const body = container.querySelector("#pv-body");
     const show = async (v) => {
         prepView = v;
         container.querySelectorAll("#pv-seg button").forEach((b) => b.classList.toggle("active", b.dataset.v === v));
         body.innerHTML = "";
-        await (v === "event" ? renderEvent(body, "event") : v === "service" ? renderEvent(body, "service") : v === "order" ? renderUpcomingOrder(body) : renderThaw(body));
+        await (v === "event" ? renderEvent(body, "event") : v === "service" ? renderEvent(body, "service") : renderThaw(body));
     };
     container.querySelectorAll("#pv-seg button").forEach((b) => { b.onclick = () => show(b.dataset.v); });
     await show(prepView);
