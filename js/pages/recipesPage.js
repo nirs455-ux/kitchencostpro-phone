@@ -700,7 +700,7 @@ function scanNoticeHtml(draft) {
 }
 
 // שלב אחד לכל הרכיבים שלא נמצאו בחומרי הגלם: שם, קטגוריה, נמדד ב- ומחיר (לא חובה). מחזיר Map לפי מזהה שורה, או null אם ביטל
-function askMissingIngredients(todo) {
+function askMissingIngredients(todo, srcBlob = null) {
     return new Promise((resolve) => {
         const unitOf = (um) => (um.unit === "ml" || um.unit === "l" ? "liter" : um.unit === "unit" ? "unit" : "weight");
         const cats = Object.keys(CATEGORY_GROUPS);
@@ -712,8 +712,10 @@ function askMissingIngredients(todo) {
         document.body.appendChild(ov);
         layerOpened();
         const shut = () => { ov.remove(); layerClosed(); };
+        const srcUrl = srcBlob && String(srcBlob.type || "").startsWith("image/") ? URL.createObjectURL(srcBlob) : "";
         ov.innerHTML = `<div class="pk-top"><div class="pk-title">רכיבים שלא נמצאו בחומרי הגלם</div></div>
             <div style="padding:0 16px;overflow:auto;flex:1;"><div class="hint" style="margin-bottom:8px;">בדוק את הקטגוריה והיחידה, והוסף מחיר אם אתה יודע. בלי מחיר הרכיב נכנס למתכון ומסומן ממתין למחיר.</div>
+            ${srcUrl ? `<div class="hint" style="margin:0 0 4px;">המסמך המקורי, לבדיקת השמות. לחיצה מגדילה.</div><img id="mi-src" src="${srcUrl}" alt="" style="width:100%;max-height:26vh;object-fit:contain;border:1px solid var(--border,#0003);border-radius:8px;margin-bottom:8px;cursor:zoom-in;">` : ""}
             ${groups.map((g) => { const x = g[0], i = todo.indexOf(x); return `<div class="card" style="margin:0 0 8px;" data-i="${i}">
                 <div class="field" style="margin:0 0 6px;"><input type="text" data-f="name" value="${escapeHtml(x.um.name)}"></div>
                 <div class="form-row">
@@ -723,6 +725,7 @@ function askMissingIngredients(todo) {
                 <div class="field" data-f-ua style="margin:0 0 6px;${unitOf(x.um) === "unit" ? "" : "display:none;"}"><input type="text" inputmode="decimal" data-f="ua" placeholder="משקל ליחידה בגרמים, לא חובה"></div>
                 <div class="field" style="margin:0;display:flex;gap:10px;align-items:center;"><input type="text" inputmode="decimal" data-f="price" placeholder="מחיר, לא חובה" style="flex:1;"${isWaterName(x.um.name) ? " disabled" : ""}><label class="checkbox-field"><input type="checkbox" data-f="free"${isWaterName(x.um.name) ? " checked" : ""}><span>ללא עלות</span></label></div></div>`; }).join("")}</div>
             <div style="padding:10px 16px calc(10px + env(safe-area-inset-bottom,0px));display:flex;gap:8px;"><button type="button" class="btn btn-secondary" id="mi-skip">דלג</button><button type="button" class="btn btn-primary" id="mi-ok" style="flex:1;">הוסף הכול</button></div>`;
+        const srcImg = ov.querySelector("#mi-src"); if (srcImg) srcImg.onclick = () => showImageFullscreen(srcBlob, "המסמך המקורי");
         ov.querySelectorAll('[data-f="unit"]').forEach(bindUnitChoice);
         ov.querySelectorAll('[data-f="unit"]').forEach((u) => u.addEventListener("change", () => { u.closest(".card").querySelector("[data-f-ua]").style.display = u.value === "unit" ? "" : "none"; }));
         ov.querySelectorAll('[data-f="free"]').forEach((cb) => cb.addEventListener("change", () => { const card = cb.closest(".card"), pr = card.querySelector('[data-f="price"]'); pr.disabled = cb.checked; if (cb.checked) { pr.value = ""; const cs = card.querySelector('[data-f="cat"]'); if (cs && [...cs.options].some((o) => o.value === "ללא עלות")) cs.value = "ללא עלות"; } }));
@@ -1323,7 +1326,7 @@ async function openRecipeModal(existing, container, draft = null) {
             if (meta && meta.um && !sel.value && String(meta.um.name || "").trim()) todo.push({ id, um: meta.um });
         });
         if (!todo.length) return;
-        const chosen = await askMissingIngredients(todo);
+        const chosen = await askMissingIngredients(todo, (draft && draft.source_file) || (existing && existing.source_file) || null);
         if (!chosen) return;
         for (const x of todo) Object.assign(x, chosen.get(x.id) || {});
         let added = 0, reused = 0;

@@ -272,7 +272,7 @@ export async function scanRecipeImage(apiKey, file) {
 
     let response;
     try {
-        response = await geminiFetch(apiKey, { contents: [{ parts: [{ text: recipeScanPrompt(categories) }, ...filePart] }] }, { fast: true });
+        response = await geminiFetch(apiKey, { contents: [{ parts: [{ text: recipeScanPrompt(categories) }, ...filePart] }] }); // בלי מצב מהיר: קריאה מדויקת יותר
     } catch (e) {
         throw new Error("אין חיבור לאינטרנט או שהשרת לא זמין. נסה שוב בעוד רגע.");
     }
