@@ -80,7 +80,7 @@ export async function addPantryItem(data) {
     // ניצולת מוערכת לפי שם המוצר (גזר, אבטיח...) כשלא הוזנה ניצולת או משקלים. עיבוד אמיתי דורס אותה
     let yieldEst = false;
     if (data.unit_type === "weight" && !isFrozen && weightBefore == null && weightAfter == null && yieldPct === 100 && !data.no_yield_est) {
-        const est = estimateYield(name);
+        const est = null; // ניצולת ידנית בלבד: אין הערכה אוטומטית
         if (est) { yieldPct = est; yieldEst = true; }
     }
 

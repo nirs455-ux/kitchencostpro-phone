@@ -811,7 +811,7 @@ async function openRecipeModal(existing, container, draft = null) {
     // מוצר שנבחר ויש לו ניצולת מוכרת בטבלה: נשמרת במוצר ומיושמת מיד, בלי שהמשתמש יזין אחוז
     async function autoYield(sel) {
         if (!sel || !sel.item || isCountItem(sel.item) || isEggProduct(sel.item)) return;
-        const pct = estimateYield(sel.item.name);
+        const pct = null; // ניצולת ידנית בלבד: אין הערכה אוטומטית
         if (!pct) return;
         try { if (await setEstimatedYield(sel.id, pct)) { sel.item.yield_pct = pct; sel.item.yield_est = true; } } catch (e) { /* לא קריטי */ }
     }
@@ -827,6 +827,7 @@ async function openRecipeModal(existing, container, draft = null) {
                     <div class="field" style="margin:0 0 6px;"><label>מהמסמך (אפשר לתקן)</label><input type="text" id="ing-name-${id}" value="${escapeHtml(um.name || "")}"></div>
                     <div class="form-row"><div class="field"><label>כמות במסמך</label><input type="text" inputmode="decimal" id="ing-oq-${id}" value="${um.quantity != null ? escapeHtml(um.quantity) : ""}"></div>
                     <div class="field"><label>יחידה</label><select id="ing-ou-${id}"><option value=""></option>${[...new Set([...Object.keys(UNIT_HE), um.unit].filter(Boolean))].map((k) => `<option value="${escapeHtml(k)}" ${k === um.unit ? "selected" : ""}>${escapeHtml(UNIT_HE[k] || k)}</option>`).join("")}</select></div></div></div>` : ""}
+                ${!um && prefill && prefill.read ? `<div class="field" style="margin:0 0 6px;"><label>מהמסמך (אפשר לתקן)</label><input type="text" id="ing-read-${id}" value="${escapeHtml(prefill.read)}"></div>` : ""}
                 <div class="top-line">
                     <button type="button" class="pick-btn" id="ing-pick-${id}" style="flex:2;">בחר מרכיב...</button>
                     <select id="ing-source-${id}" style="display:none;">
@@ -1001,11 +1002,18 @@ async function openRecipeModal(existing, container, draft = null) {
             // שם מתוקן: מחפשים שוב בחומרי הגלם, ואם נמצא מוצר ושום מוצר עוד לא נבחר - בוחרים אותו
             nameInp.addEventListener("change", () => {
                 const sel = row.querySelector(`#ing-source-${id}`);
-                if (um.manual || sel.value) return;
+                if (um.manual) return;
                 const m = smartMatch(um.name, sources.map((x) => x.item));
                 if (m) { sel.value = String(m.item.id); refreshPickerButton(row.querySelector(`#ing-pick-${id}`), sel); sel.dispatchEvent(new Event("change")); }
             });
         }
+        // שם שנקרא מהמסמך ותוקן בשורה שכבר מקושרת: מחפשים שוב בחומרי הגלם ומחליפים את המוצר אם נמצא (בלי לצאת מהמסך)
+        const readInp = row.querySelector(`#ing-read-${id}`);
+        if (readInp) readInp.addEventListener("change", () => {
+            const sel = row.querySelector(`#ing-source-${id}`);
+            const m = smartMatch(readInp.value, sources.map((x) => x.item));
+            if (m && String(m.item.id) !== sel.value) { sel.value = String(m.item.id); refreshPickerButton(row.querySelector(`#ing-pick-${id}`), sel); sel.dispatchEvent(new Event("change")); }
+        });
         // כמות/יחידה שנקראו מהמסמך ותוקנו: מעדכנים את הכמות בגרמים לפי המוצר שנבחר
         const oq = row.querySelector(`#ing-oq-${id}`), ou = row.querySelector(`#ing-ou-${id}`);
         if (oq && ou) {
@@ -1284,6 +1292,7 @@ async function openRecipeModal(existing, container, draft = null) {
             addRow({
                 pantry_item_id: ing.pantry_item_id, quantity_g: ing.quantity_g, est_mode: ing.est_mode, est_n: ing.est_n,
                 um: ing.pantry_item_id ? null : { name: ing.original_name, quantity: ing.original_quantity, unit: ing.original_unit },
+                read: ing.pantry_item_id ? ing.original_name : null,
             });
         }
     } else {

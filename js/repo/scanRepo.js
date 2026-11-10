@@ -42,7 +42,7 @@ function unreadableMessage(e) {
 
 // ניצולת מוערכת לפי שם (גזר, אבטיח...) למוצר חדש שנוצר מחשבונית. נשמר yield_est; עיבוד אמיתי דורס
 const estYieldFields = (name, unitType, frozen) => {
-    const est = unitType === "weight" && !frozen ? estimateYield(name) : null;
+    const est = null; // ניצולת ידנית בלבד: אין הערכה אוטומטית
     return est ? { yield_pct: est, yield_est: true } : {};
 };
 

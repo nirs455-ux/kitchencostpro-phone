@@ -129,7 +129,7 @@ export async function openIngredientPicker({ title = "בחר מרכיב", items,
         bindUnitChoice(unitSel);
         let yEst = null;
         const syncYield = () => {
-            const est = unitSel.value === "weight" ? estimateYield(nameIn.value) : null;
+            const est = null; // ניצולת ידנית בלבד: אין הערכה אוטומטית
             if (est !== yEst) { yEst = est; yIn.value = est || ""; }
             yWrap.style.display = est ? "" : "none";
         };
