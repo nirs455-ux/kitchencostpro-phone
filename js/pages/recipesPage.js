@@ -178,7 +178,7 @@ export async function scanRecipeFile(file, container) {
     openModal('<div style="text-align:center;padding:24px;color:#666;">קורא את המתכון...</div>');
     try {
         const draft = await scanRecipeImage(apiKey, file);
-        crumb("scan got draft");
+        crumb("scan got draft model=" + (draft.model || "?"));
         closeModal();
         await openRecipeModal(null, container, draft); // await: שגיאה בבניית המסך תוצג כשגיאת סריקה ולא תיבלע בשקט
         crumb("scan draft opened");
@@ -700,7 +700,7 @@ function scanNoticeHtml(draft) {
 }
 
 // שלב אחד לכל הרכיבים שלא נמצאו בחומרי הגלם: שם, קטגוריה, נמדד ב- ומחיר (לא חובה). מחזיר Map לפי מזהה שורה, או null אם ביטל
-function askMissingIngredients(todo, srcBlob = null) {
+function askMissingIngredients(todo, srcBlob = null, readInfo = {}) {
     return new Promise((resolve) => {
         const unitOf = (um) => (um.unit === "ml" || um.unit === "l" ? "liter" : um.unit === "unit" ? "unit" : "weight");
         const cats = Object.keys(CATEGORY_GROUPS);
@@ -716,6 +716,7 @@ function askMissingIngredients(todo, srcBlob = null) {
         ov.innerHTML = `<div class="pk-top"><div class="pk-title">רכיבים שלא נמצאו בחומרי הגלם</div></div>
             <div style="padding:0 16px;overflow:auto;flex:1;"><div class="hint" style="margin-bottom:8px;">בדוק את הקטגוריה והיחידה, והוסף מחיר אם אתה יודע. בלי מחיר הרכיב נכנס למתכון ומסומן ממתין למחיר.</div>
             ${srcUrl ? `<div class="hint" style="margin:0 0 4px;">המסמך המקורי, לבדיקת השמות. לחיצה מגדילה.</div><img id="mi-src" src="${srcUrl}" alt="" style="width:100%;max-height:26vh;object-fit:contain;border:1px solid var(--border,#0003);border-radius:8px;margin-bottom:8px;cursor:zoom-in;">` : ""}
+            ${readInfo.transcript ? `<details style="margin:0 0 8px;"><summary class="hint">הטקסט שנקרא מהתמונה</summary><div class="hint" style="white-space:pre-wrap;">${escapeHtml(readInfo.transcript)}</div></details>` : ""}${readInfo.model ? `<div class="hint" style="margin:0 0 8px;">נקרא על ידי ${escapeHtml(readInfo.model)}</div>` : ""}
             ${groups.map((g) => { const x = g[0], i = todo.indexOf(x); return `<div class="card" style="margin:0 0 8px;" data-i="${i}">
                 <div class="field" style="margin:0 0 6px;"><input type="text" data-f="name" value="${escapeHtml(x.um.name)}"></div>
                 <div class="form-row">
@@ -1326,7 +1327,7 @@ async function openRecipeModal(existing, container, draft = null) {
             if (meta && meta.um && !sel.value && String(meta.um.name || "").trim()) todo.push({ id, um: meta.um });
         });
         if (!todo.length) return;
-        const chosen = await askMissingIngredients(todo, (draft && draft.source_file) || (existing && existing.source_file) || null);
+        const chosen = await askMissingIngredients(todo, (draft && draft.source_file) || (existing && existing.source_file) || null, { transcript: draft && draft.transcript, model: draft && draft.model });
         if (!chosen) return;
         for (const x of todo) Object.assign(x, chosen.get(x.id) || {});
         let added = 0, reused = 0;

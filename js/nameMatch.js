@@ -42,10 +42,24 @@ export function tokenMatch(a, b) {
     return cp >= 4 && cp >= min - 2;
 }
 
-// מחזיר { item, score, exact } למוצר הקרוב ביותר, או null. כל מילות המרכיב חייבות להופיע בשם המוצר.
+// מילות תיאור "רכות": לא משנות איזה מוצר זה (שום גבישי = שום). הן לא חוסמות התאמה, אבל התאמה בלעדיהן תמיד נחשבת משוערת (לבדיקה)
+export const SOFT_WORDS = new Set(["טחון", "טחונה", "טחונים", "גרוס", "גרוסה", "גרוסים", "גבישי", "גבישים", "גבישית", "יבש", "יבשה", "יבשים", "טרי", "טרייה", "טריים", "קצוץ", "קצוצה", "קצוצים", "חתוך", "חתוכה", "פרוס", "פרוסה", "פרוסות"]);
+// גזע פשוט: שבבי / שבבים -> שבב (סמיכות ורבים). לא מורידים ה סופית כדי לא לבלבל חלב עם חלבה
+const stem = (t) => (t.length >= 5 && /(ים|ות)$/.test(t) ? t.slice(0, -2) : t.length >= 4 && t.endsWith("י") ? t.slice(0, -1) : t);
+const sameWord = (t, u) => t === u || stem(t) === stem(u);
+
+// מחזיר { item, score, exact } למוצר הקרוב ביותר, או null. כל מילות המרכיב חייבות להופיע בשם המוצר. אם לא נמצא, מנסים שוב בלי מילות תיאור רכות.
 export function smartMatch(name, items) {
     const q = parseNameParts(name);
     if (!q.tokens.length) return null;
+    const r = matchParts(q, items);
+    if (r) return r;
+    const core = q.tokens.filter((t) => !SOFT_WORDS.has(t));
+    if (core.length && core.length < q.tokens.length) { const r2 = matchParts({ ...q, tokens: core }, items); if (r2) return { ...r2, exact: false }; }
+    return null;
+}
+
+function matchParts(q, items) {
     let best = null;
     for (const it of items) {
         const p = parseNameParts(it.name);
@@ -56,7 +70,7 @@ export function smartMatch(name, items) {
         if (q.pct != null && p.pct != null) score += q.pct === p.pct ? 0.5 : -0.3;
         else if (q.pct == null && p.pct == null) score += 0.05;
         // מילים זהות לגמרי עדיפות על תחילית ("חלב" -> "חלב 3%" ולא "חלבה"); התאמה מדויקת רק כשכל המילים זהות
-        const identical = q.tokens.every((t) => p.tokens.includes(t));
+        const identical = q.tokens.every((t) => p.tokens.some((u) => sameWord(t, u)));
         if (identical) score += 0.1;
         if (!best || score > best.score) best = { item: it, score, exact: identical && p.tokens.length === q.tokens.length && (q.pct ?? null) === (p.pct ?? null) };
     }

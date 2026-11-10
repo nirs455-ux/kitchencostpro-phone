@@ -30,13 +30,13 @@ function toBase64(buffer) {
 
 // מחזיר { parts, kind, attachment, partial } - parts מוכנים לשליחה ל-Gemini (אחרי הפרומפט),
 // attachment = הקובץ לשמירה ליד הרשומה (תמונה מכווצת / PDF / המסמך המקורי)
-export async function prepareParts(file, textLabel = "תוכן המסמך") {
+export async function prepareParts(file, textLabel = "תוכן המסמך", imageOpts = {}) {
     const buffer = await file.arrayBuffer();
     const info = await readFileContent(buffer, file.name || "", file.type || "");
 
     if (info.kind === "image") {
         const typed = new File([buffer], file.name || "image", { type: info.mime });
-        const small = await compressImage(typed); // אם הדפדפן לא מפענח (למשל HEIC) - נשלח כמו שהוא
+        const small = await compressImage(typed, imageOpts); // אם הדפדפן לא מפענח (למשל HEIC) - נשלח כמו שהוא
         const outBuffer = small === typed ? buffer : await small.arrayBuffer();
         const mime = small === typed ? info.mime : (small.type || "image/jpeg");
         if (outBuffer.byteLength > MAX_INLINE_BYTES) throw new Error("התמונה גדולה מדי. צלם שוב באיכות נמוכה יותר.");

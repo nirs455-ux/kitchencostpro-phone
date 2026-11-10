@@ -12,6 +12,7 @@ export const recipeScanPrompt = (categories = RECIPE_CATEGORIES) =>
     "אתה מערכת לקריאת מתכונים למסעדה. נתח את התמונה/הקובץ וחלץ ממנו את המתכון.\n" +
     "החזר אך ורק JSON תקין, בדיוק בפורמט הזה, בלי שום טקסט נוסף לפני או אחרי:\n" +
     "{\n" +
+    '  "transcript": "העתקה מילה במילה של כל השורות שבתמונה, שורה בשורה, בדיוק כפי שהן כתובות",\n' +
     '  "name": "שם המתכון",\n' +
     '  "category": "אחת מ: ' + categories.join(", ") + '",\n' +
     '  "final_weight_g": משקל סופי של המתכון בגרם אם כתוב במפורש, אחרת null,\n' +
@@ -26,7 +27,8 @@ export const recipeScanPrompt = (categories = RECIPE_CATEGORIES) =>
     "אל תמציא מרכיבים או כמויות שלא מופיעים. אם לא ניתן לקרוא שורה בבירור - דלג עליה. " +
     "החזר תמיד אובייקט אחד ולא רשימה. אם בדף כמה חלקים (למשל מתכון ואחריו מסה או רוטב), שים את כל המרכיבים של כל החלקים ברשימה אחת לפי הסדר, " +
     'ובשדה method כתוב כל חלק עם כותרת שלו ("שלב 1: ...", "שלב 2: ..."). שורה עם שני מרכיבים (למשל "300 גרם בצל +100 שומן אווז") פצל לשתי שורות. ' +
-    '"קילו" = kg, "קורט" ושאר כמויות לא מספריות: quantity null.';
+    '"קילו" = kg, "קורט" ושאר כמויות לא מספריות: quantity null. ' +
+    "התמונה עלולה להיות מסובבת: קרא אותה כאילו היא זקופה. קודם העתק את הטקסט כפי שהוא לשדה transcript, בלי לנחש ובלי לתקן, ורק אחר כך בנה את רשימת המרכיבים מתוך ההעתקה. אם מילה לא ברורה, כתוב אותה כפי שהיא נראית.";
 export const RECIPE_SCAN_PROMPT = recipeScanPrompt();
 
 const round2 = (x) => Math.round(x * 100) / 100;
@@ -56,6 +58,7 @@ export function mergeParts(parsed) {
         category: first.category,
         final_weight_g: parts.every((p) => parseNum(p.final_weight_g) > 0) ? parts.reduce((n, p) => n + parseNum(p.final_weight_g), 0) : null,
         method,
+        transcript: parts.map((p) => String(p.transcript || "").trim()).filter(Boolean).join("\n"),
         ingredients: parts.flatMap((p) => (Array.isArray(p.ingredients) ? p.ingredients : [])),
     };
 }
@@ -138,5 +141,5 @@ export function buildRecipeDraft(parsed, pantryItems, categories = RECIPE_CATEGO
         });
     }
     const method = String(parsed.method || "").trim() || null;
-    return { name, category, final_weight: finalWeight, method, ingredients };
+    return { name, category, final_weight: finalWeight, method, ingredients, ...(String(parsed.transcript || "").trim() ? { transcript: String(parsed.transcript).trim() } : {}) };
 }

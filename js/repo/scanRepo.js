@@ -266,13 +266,13 @@ export async function applyScannedInvoice({ items, supplierId, invoiceDate, imag
 // סריקת מתכון מתמונה: מחזיר טיוטה (name, category, final_weight, ingredients) - שום דבר לא נשמר.
 export async function scanRecipeImage(apiKey, file) {
     if (!apiKey) throw new Error("עוזר AI לא זמין כרגע.");
-    const prepared = await prepareParts(file, "טקסט המתכון");
+    const prepared = await prepareParts(file, "טקסט המתכון", { maxSide: 2400, quality: 0.88 }); // טקסט קטן בהדפסה: רזולוציה גבוהה יותר
     const filePart = prepared.parts;
     const categories = await getRecipeCategories();
 
     let response;
     try {
-        response = await geminiFetch(apiKey, { contents: [{ parts: [{ text: recipeScanPrompt(categories) }, ...filePart] }] }); // בלי מצב מהיר: קריאה מדויקת יותר
+        response = await geminiFetch(apiKey, { contents: [{ parts: [{ text: recipeScanPrompt(categories) }, ...filePart] }] }, { fast: true });
     } catch (e) {
         throw new Error("אין חיבור לאינטרנט או שהשרת לא זמין. נסה שוב בעוד רגע.");
     }
@@ -299,7 +299,7 @@ export async function scanRecipeImage(apiKey, file) {
     const draft = buildRecipeDraft(parsed, pantry, categories);
     if (!draft.ingredients.length) throw new Error("לא נמצאו רכיבים בתמונה. צלם שוב ישר ובאור טוב, כשכל הרשימה בפריים.");
     // המקור נשמר עם המתכון ("מתכון כפי שהוא"): הקובץ המקורי (תמונה מכווצת / PDF / מסמך), ואם הוא מסמך טקסט - גם הטקסט שחולץ
-    draft.source_file = prepared.attachment || null;
+    draft.source_file = prepared.attachment || null; draft.model = (response.headers && response.headers.get && response.headers.get("X-Model")) || "";
     return draft;
 }
 

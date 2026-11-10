@@ -5,11 +5,11 @@ const MAX_SIDE = 1800;
 const JPEG_QUALITY = 0.82;
 
 // מקטין את התמונה לצד ארוך של 1800px ושומר כ-JPEG. אם הדפדפן לא מצליח לפענח - שומר את הקובץ המקורי כמו שהוא.
-export async function compressImage(file) {
+export async function compressImage(file, { maxSide = MAX_SIDE, quality = JPEG_QUALITY } = {}) {
     if (!file || !(file.type || "").startsWith("image/")) return file;
     try {
         const bitmap = await createImageBitmap(file);
-        const scale = Math.min(1, MAX_SIDE / Math.max(bitmap.width, bitmap.height));
+        const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
         const w = Math.max(1, Math.round(bitmap.width * scale));
         const h = Math.max(1, Math.round(bitmap.height * scale));
         const canvas = document.createElement("canvas");
@@ -17,7 +17,7 @@ export async function compressImage(file) {
         canvas.height = h;
         canvas.getContext("2d").drawImage(bitmap, 0, 0, w, h);
         if (bitmap.close) bitmap.close();
-        const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", JPEG_QUALITY));
+        const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
         // אם הכיווץ לא חסך כלום (קובץ כבר קטן) - משאירים את המקורי
         return blob && blob.size < file.size ? blob : file;
     } catch (e) {
