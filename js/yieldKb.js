@@ -88,4 +88,5 @@ export const estimatedYieldItems = (pantry) => (pantry || []).filter((r) => r.yi
 // האם ניצולת המוצר חלה על שורת מתכון. prep: "proc" = מעובד (קילוף וניקוי), "raw" = בלי עיבוד, בלי ערך = ברירת מחדל:
 // ניצולת המוצר, שנשקלה או מוערכת, חלה תמיד על שורה, אלא אם סימנו בה "בלי ניצולת"
 export const yieldApplies = (row, prep) => prep !== "raw";
-export const rowForLine = (row, prep) => (yieldApplies(row, prep) ? row : { ...row, yield_pct: 100 });
+// lineYield: ניצולת של השורה עצמה (אם הוגדרה, גוברת על ניצולת המוצר). בלי ערך: ניצולת המוצר, כמו עד היום
+export const rowForLine = (row, prep, lineYield) => (!yieldApplies(row, prep) ? { ...row, yield_pct: 100 } : Number(lineYield) > 0 && Number(lineYield) <= 100 ? { ...row, yield_pct: Number(lineYield) } : row);

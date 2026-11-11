@@ -55,7 +55,7 @@ async function recalcRecipes(cache) {
         for (const r of rows) ((isSubRow(r) ? cache.recipes.get(r.sub_recipe_id) : cache.pantry.get(r.pantry_item_id)) ? live : ghosts).push(r);
         let resolved = { resolved: [], totalCost: 0, rawWeight: 0 };
         try {
-            if (live.length) resolved = await resolveRecipeItems(live.map((r) => ({ pantry_item_id: r.pantry_item_id, sub_recipe_id: r.sub_recipe_id, quantity_g: r.quantity_g, egg_part: r.egg_part, prep: r.prep })), { selfId: recipe.id, cache });
+            if (live.length) resolved = await resolveRecipeItems(live.map((r) => ({ pantry_item_id: r.pantry_item_id, sub_recipe_id: r.sub_recipe_id, quantity_g: r.quantity_g, egg_part: r.egg_part, prep: r.prep, line_yield: r.line_yield })), { selfId: recipe.id, cache });
         } catch (e) { continue; } // למשל מוצר ביחידות שאיבד משקל ליחידה: משאירים כמו שהיה
         const ghostCost = ghosts.reduce((n, r) => n + (Number(r.item_cost) || 0), 0);
         const ghostGrams = ghosts.reduce((n, r) => n + (r.unit_count ? 0 : Number(r.quantity_g) || 0), 0);

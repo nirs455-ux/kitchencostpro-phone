@@ -54,7 +54,7 @@ const pctFields = (it) => ({
 
 // טכניקה חופשית לשורה ("שרוף", "קצוץ"): טקסט בלבד, לא משפיע על חישובים
 // עיבוד בשורה: "proc" = מעובד (חל ניצולת המוצר), "raw" = בלי עיבוד (מחיר קנייה). בלי ערך: ניצולת שנשקלה חלה, ניצולת מוערכת לא
-const prepField = (it) => (it.prep === "raw" || it.prep === "proc" ? { prep: it.prep } : {});
+const prepField = (it) => ({ ...(it.prep === "raw" || it.prep === "proc" ? { prep: it.prep } : {}), ...(Number(it.line_yield) > 0 && Number(it.line_yield) <= 100 ? { line_yield: Number(it.line_yield) } : {}) });
 const techField = (it) => (it.technique && String(it.technique).trim() ? { technique: String(it.technique).trim().slice(0, 60) } : {});
 
 export async function resolveRecipeItems(items, { selfId = null, cache = null } = {}) {
@@ -95,7 +95,7 @@ export async function resolveRecipeItems(items, { selfId = null, cache = null } 
         if (eggPart) row = await ensureEggDefaults(row); // גודל ומשקל ללא קליפה אוטומטיים אם חסרים
         if (isCountItem(row) && isEggProduct(row)) throw new Error(`'${row.name}' חסר משקל ליחידה - השלם אותו בחומרי הגלם לפני השימוש במתכון`);
         const count = isCountItem(row);
-        const ppg = pricePerGram(rowForLine(row, it.prep));
+        const ppg = pricePerGram(rowForLine(row, it.prep, it.line_yield));
         const cost = calcItemCost(ppg, qty);
         totalCost += cost;
         if (!count) rawWeight += qty; // מוצר ספירה (יחידות בלי משקל): הכמות היא יחידות ולא גרמים
