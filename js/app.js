@@ -14,6 +14,7 @@ import { initLocale } from "./locale.js";
 import { initCloud, getCloudStatus } from "./cloud/cloudGlue.js";
 import { getSetting, setSetting } from "./repo/settingsRepo.js";
 import { freezeEstimatedLines } from "./repo/pantryRepo.js";
+import { migrateLineYield } from "./repo/lineYieldMigration.js";
 import { dbGetAll } from "./db.js";
 import { downloadExport } from "./export.js";
 import { applyTheme } from "./theme.js";
@@ -154,6 +155,7 @@ await initLocale();
 await loadAddons(); // אילו תוספות פעילות (לפני שהמסכים מצוירים)
 // סמל מטבע וכו' לפני שהמסכים מצוירים
 if (!(await getSetting("est_yield_default_v139", false))) { try { await freezeEstimatedLines(); await setSetting("est_yield_default_v139", true); } catch (e) { /* נסיון חוזר בהפעלה הבאה */ } }
+try { await migrateLineYield(); } catch (e) { /* ניסיון חוזר בהפעלה הבאה */ } // ניצולת עוברת לשורות המתכון, בלי לשנות אף עלות (נבדק לפני כתיבה)
 await recalcAllCosts().catch(() => {}); // ריפוי: עלויות שנשארו ישנות מגרסאות קודמות מתעדכנות לפי חומרי הגלם הנוכחי
 startAutoRecalc(); // מכאן כל שינוי בחומרי הגלם מעדכן מתכונים ומנות לבד
 await initLang(); // שפת האשף והסיור

@@ -15,6 +15,7 @@ import { h, openModal, closeModal, confirmDialog, toast, escapeHtml, money, busy
 import { openImagePicker } from "../imagePicker.js";
 import { scanRecipeImage, suggestRecipeBase } from "../repo/scanRepo.js";
 import { getSetting, setSetting } from "../repo/settingsRepo.js";
+import { LINE_YIELD_FLAG } from "../repo/lineYieldMigration.js";
 import { getAgentKey } from "../agent.js";
 import { dbGetAll, dbGet } from "../db.js";
 import { buildLabel } from "../recipeLabel.js";
@@ -745,7 +746,12 @@ function askMissingIngredients(todo, srcBlob = null, readInfo = {}) {
     });
 }
 
+// ניצולת בשורה: אחרי ההעברה (דגל done) כל שורה של מוצר רגיל נושאת ניצולת משלה, ובלי הגדרה היא 100 (בלי ניצולת)
+let lineYieldReady = false;
+const lineYieldOf = (s, meta) => (meta.prep === "raw" ? 100 : Number(meta.lineYield) > 0 && Number(meta.lineYield) < 100 ? Number(meta.lineYield) : lineYieldReady ? 100 : (Number(s.item.yield_pct) > 0 && Number(s.item.yield_pct) < 100 ? Number(s.item.yield_pct) : 100));
+
 async function openRecipeModal(existing, container, draft = null) {
+    lineYieldReady = (await getSetting(LINE_YIELD_FLAG, "")) === "done";
     resetPickerMemory();
     setLearnedDensities(await getSetting("unit_density", {})); // כוס/כף של מוצר שנקבע בממיר
     const sources = await ingredientSources();
@@ -820,7 +826,7 @@ async function openRecipeModal(existing, container, draft = null) {
     function addRow(prefill) {
         const id = rowCounter++;
         const um = prefill && prefill.um ? prefill.um : null;
-        rowMeta.set(id, { um, eggPart: (prefill && prefill.egg_part) || "whole", eggSize: null, eggUnit: "g", pct: (prefill && (prefill.pct_mode || prefill.est_mode)) || null, prep: prefill && (prefill.prep === "raw" || prefill.prep === "proc") ? prefill.prep : null });
+        rowMeta.set(id, { um, lineYield: prefill && Number(prefill.line_yield) > 0 ? Number(prefill.line_yield) : null, eggPart: (prefill && prefill.egg_part) || "whole", eggSize: null, eggUnit: "g", pct: (prefill && (prefill.pct_mode || prefill.est_mode)) || null, prep: prefill && (prefill.prep === "raw" || prefill.prep === "proc") ? prefill.prep : null });
         const row = h(`
             <div class="item-row-inputs" id="ing-row-${id}">
                 ${um && um.manual ? `<div class="field" style="margin:0 0 6px;"><input type="text" id="ing-name-${id}" placeholder="שם הרכיב, לא במערכת" value="${escapeHtml(um.name || "")}"></div>` : um ? `<div class="hint-warn" id="ing-um-${id}" style="margin-top:0;">
@@ -840,7 +846,7 @@ async function openRecipeModal(existing, container, draft = null) {
                 ${um ? "" : `<select id="ing-mode-${id}" style="width:auto;font-size:12px;padding:2px 6px;margin:2px 0;">${modeOptionsHtml((prefill && (prefill.pct_mode || prefill.est_mode)) || "", (sources.find((x) => String(x.id) === String(prefill && prefill.pantry_item_id)) || {}).item)}</select><input type="text" inputmode="decimal" id="ing-pw-${id}" placeholder="גרם ליחידה" style="display:none;width:100px;font-size:12px;margin:2px 4px;">`}
                 <div class="line-total" id="ing-line-${id}"></div>
                 <button type="button" class="chip" id="ing-prep-${id}" style="display:none;margin:2px 0;"></button><div class="hint" id="ing-ng-${id}" style="display:none;margin:2px 0;"></div>
-                <div id="ing-wbox-${id}" style="display:none;background:var(--accent-soft);color:var(--text);border-radius:8px;padding:8px;margin:4px 0;"><div class="hint" style="margin:0 0 6px;">הכמות בשורה היא המשקל אחרי ניקוי. העלות מחושבת לפי מחיר הקנייה, והאחוז נשמר במוצר.</div><div class="form-row"><div class="field"><label>ניצולת באחוזים</label><input type="text" inputmode="decimal" id="ing-wp-${id}"></div></div><div class="hint" style="margin:0 0 4px;">או משקל המוצר לפני ואחרי ניקוי, בגרמים</div><div class="form-row"><div class="field"><label>לפני</label><input type="text" inputmode="decimal" id="ing-wb-${id}"></div><div class="field"><label>אחרי</label><input type="text" inputmode="decimal" id="ing-wa-${id}"></div></div><div class="error-msg" id="ing-we-${id}"></div><div style="display:flex;gap:6px;flex-wrap:wrap;"><button type="button" class="btn btn-primary btn-small" id="ing-ws-${id}">שמירה</button><button type="button" class="btn btn-secondary btn-small" id="ing-wn-${id}">ללא ניצולת בשורה זו</button></div></div>
+                <div id="ing-wbox-${id}" style="display:none;background:var(--accent-soft);color:var(--text);border-radius:8px;padding:8px;margin:4px 0;"><div class="hint" style="margin:0 0 6px;">הכמות בשורה היא המשקל אחרי ניקוי. העלות מחושבת לפי מחיר הקנייה, והאחוז נשמר בשורה.</div><div class="form-row"><div class="field"><label>ניצולת באחוזים</label><input type="text" inputmode="decimal" id="ing-wp-${id}"></div></div><div class="hint" style="margin:0 0 4px;">או משקל המוצר לפני ואחרי ניקוי, בגרמים</div><div class="form-row"><div class="field"><label>לפני</label><input type="text" inputmode="decimal" id="ing-wb-${id}"></div><div class="field"><label>אחרי</label><input type="text" inputmode="decimal" id="ing-wa-${id}"></div></div><div class="error-msg" id="ing-we-${id}"></div><div style="display:flex;gap:6px;flex-wrap:wrap;"><button type="button" class="btn btn-primary btn-small" id="ing-ws-${id}">שמירה</button><button type="button" class="btn btn-secondary btn-small" id="ing-wn-${id}">ללא ניצולת בשורה זו</button></div></div>
                 <div class="hint" id="ing-echo-${id}" style="margin:2px 0;"></div>
                 <div id="ing-egg-${id}" style="display:none;margin:6px 0;">
                     <div class="seg" id="ing-part-${id}">${EGG_PARTS.map(([k]) => `<button type="button" data-part="${k}">${EGG_PART_UI[k]}</button>`).join("")}</div>
@@ -887,18 +893,17 @@ async function openRecipeModal(existing, container, draft = null) {
                 const sel = selNow();
                 if (!sel) return;
                 if (wbox.style.display !== "none") { wbox.style.display = "none"; return; }
-                const y = Number(sel.item.yield_pct);
+                const y = lineYieldOf(sel, rowMeta.get(id));
                 row.querySelector(`#ing-wp-${id}`).value = y > 0 && y < 100 ? String(+y.toFixed(1)) : "";
-                const wb = Number(sel.item.weight_before), wa = Number(sel.item.weight_after);
-                row.querySelector(`#ing-wb-${id}`).value = wb > 0 && wa > 0 ? String(wb) : "";
-                row.querySelector(`#ing-wa-${id}`).value = wb > 0 && wa > 0 ? String(wa) : "";
+                row.querySelector(`#ing-wb-${id}`).value = "";
+                row.querySelector(`#ing-wa-${id}`).value = "";
                 werr.style.display = "none";
                 wbox.style.display = "";
             });
             // האחוז והמשקלים הם שתי דרכים לאותו נתון: עריכה של אחד מנקה את השני
             row.querySelector(`#ing-wp-${id}`).addEventListener("input", () => { row.querySelector(`#ing-wb-${id}`).value = ""; row.querySelector(`#ing-wa-${id}`).value = ""; });
             [`#ing-wb-${id}`, `#ing-wa-${id}`].forEach((sel) => row.querySelector(sel).addEventListener("input", () => { row.querySelector(`#ing-wp-${id}`).value = ""; }));
-            row.querySelector(`#ing-wn-${id}`).addEventListener("click", () => { rowMeta.get(id).prep = "raw"; wbox.style.display = "none"; recalc(); });
+            row.querySelector(`#ing-wn-${id}`).addEventListener("click", () => { rowMeta.get(id).prep = "raw"; rowMeta.get(id).lineYield = null; wbox.style.display = "none"; recalc(); });
             row.querySelector(`#ing-ws-${id}`).addEventListener("click", async () => {
                 const sel = selNow();
                 if (!sel) return;
@@ -911,6 +916,13 @@ async function openRecipeModal(existing, container, draft = null) {
                 } else {
                     if (!(pct > 0 && pct < 100)) return fail("יש להזין ניצולת באחוזים, בין 0 ל-100");
                     yieldPct = Math.round(pct * 100) / 100;
+                }
+                if (lineYieldReady) { // הניצולת נשמרת בשורה בלבד, לא במוצר
+                    const m = rowMeta.get(id); m.lineYield = yieldPct; m.prep = "proc";
+                    wbox.style.display = "none";
+                    toast("הניצולת נשמרה בשורה");
+                    recalc();
+                    return;
                 }
                 try {
                     await setLineYield(sel.id, { yieldPct, weightBefore: before != null ? before : "", weightAfter: after != null ? after : "" });
@@ -1196,7 +1208,7 @@ async function openRecipeModal(existing, container, draft = null) {
                 const show = !!(s && !subRec && !egg && !count && !s.item.parent_id && !s.item.is_frozen);
                 prepEl.style.display = show ? "" : "none";
                 if (!show) { const wb = overlay.querySelector(`#ing-wbox-${id}`); if (wb) wb.style.display = "none"; }
-                if (show) { const y = Number(s.item.yield_pct); prepEl.textContent = y > 0 && y < 100 && yieldApplies(s.item, meta.prep) ? `ניצולת ${+y.toFixed(1)}%${s.item.yield_est ? " מוערכת" : ""}` : "ניצולת"; }
+                if (show) { const y = lineYieldOf(s, meta); prepEl.textContent = y > 0 && y < 100 ? `ניצולת ${+y.toFixed(1)}%` : "ניצולת"; }
             }
             { // משקל יחידה: מוצג כשבוחרים "יחידות לפי משקל יחידה", ממולא ממה ששמור במוצר או מהטבלה, ונשמר במוצר כשמשנים
                 const pwEl = overlay.querySelector(`#ing-pw-${id}`);
@@ -1215,7 +1227,8 @@ async function openRecipeModal(existing, container, draft = null) {
             const qty = egg ? egg.grams : count ? textToCount(rawText) || 0 : pm ? pctRes.map.get(id) || 0 : em ? estGrams(id).g : textToGrams(rawText) || 0;
             { // נטו (אחרי ניקוי) וברוטו (מה שמזמינים), כשניצולת חלה בשורה
                 const ngEl = overlay.querySelector(`#ing-ng-${id}`);
-                const yy = s ? Number(s.item.yield_pct) : 0;
+                const elig = !!(s && !subRec && !egg && !count && !s.item.parent_id && !s.item.is_frozen);
+                const yy = elig ? lineYieldOf(s, meta) : s ? Number(s.item.yield_pct) : 0;
                 const on = !!(ngEl && s && !subRec && !egg && !count && !s.item.parent_id && !s.item.is_frozen && yy > 0 && yy < 100 && yieldApplies(s.item, meta.prep) && qty > 0);
                 if (ngEl) { ngEl.style.display = on ? "" : "none"; if (on) ngEl.textContent = `נטו ${weightText(qty)}, ברוטו ${weightText(qty / (yy / 100))}`; }
             }
@@ -1241,7 +1254,8 @@ async function openRecipeModal(existing, container, draft = null) {
                     eggGroups.set(s.id, g);
                     lineEl.textContent = "";
                 } else {
-                    const cost = calcItemCost(pricePerGram(rowForLine(s.item, meta.prep)), qty);
+                    const eligLine = !count && !s.item.parent_id && !s.item.is_frozen;
+                    const cost = calcItemCost(pricePerGram(rowForLine(s.item, meta.prep, eligLine ? lineYieldOf(s, meta) : undefined)), qty);
                     lineEl.innerHTML = money(cost) + (s.item.price_missing ? ' <span class="muted">אין מחיר</span>' : "");
                     total += cost;
                 }
@@ -1399,8 +1413,9 @@ async function openRecipeModal(existing, container, draft = null) {
             if (egg && meta.eggSize) eggSizeChanges.set(egg.s.id, meta.eggSize);
             const techEl = overlay.querySelector(`#ing-tech-${id}`), technique = techEl ? techEl.value.trim() : "";
             const rawPrep = meta && meta.prep && ss && !egg && !countRow && Number(ss.item.yield_pct) !== 100 ? { prep: meta.prep } : {};
+            const lineY = lineYieldReady && meta && ss && !egg && !countRow && !ss.item.parent_id && !ss.item.is_frozen ? { line_yield: lineYieldOf(ss, meta) } : {};
             if (pantry_item_id.startsWith("r") && quantity_g) items.push({ sub_recipe_id: Number(pantry_item_id.slice(1)), quantity_g, ...pctPart, ...(technique ? { technique } : {}) });
-            else if (pantry_item_id && quantity_g) items.push({ pantry_item_id, quantity_g, ...(egg ? { egg_part: egg.part } : {}), ...rawPrep, ...pctPart, ...(technique ? { technique } : {}) });
+            else if (pantry_item_id && quantity_g) items.push({ pantry_item_id, quantity_g, ...(egg ? { egg_part: egg.part } : {}), ...rawPrep, ...lineY, ...pctPart, ...(technique ? { technique } : {}) });
             else if (meta && meta.um && meta.um.manual) {
                 // רכיב שהוקלד ידנית ועדיין לא בחומרי הגלם: נשמר בטיוטה עם הכמות בגרמים (אם הוזנה)
                 const nm = String(meta.um.name || "").trim();
