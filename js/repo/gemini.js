@@ -7,6 +7,20 @@ const DELAYS = [2000, 5000]; // המתנה בין ניסיונות באותו מ
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// תשובה תקינה = יש בה טקסט. תשובה 200 בלי טקסט (חסימה, עצירה באמצע, תקלה זמנית) היא תקלה, ולכן נשלחת שוב
+export const EMPTY_ATTEMPTS = 4;
+const EMPTY_DELAYS = [1000, 2000, 3000];
+async function readJson(res) { try { return await res.clone().json(); } catch (e) { return null; } }
+export async function hasContent(res) {
+    const j = await readJson(res), c = j && j.candidates && j.candidates[0];
+    return !!(c && c.content && Array.isArray(c.content.parts) && c.content.parts.some((p) => p && typeof p.text === "string" && p.text.trim()));
+}
+export async function emptyReason(res) {
+    const j = await readJson(res), c = j && j.candidates && j.candidates[0];
+    return (j && j.promptFeedback && j.promptFeedback.blockReason) || (c && c.finishReason) || "no content";
+}
+const emptyResponse = (reason, attempts) => new Response(JSON.stringify({ error: { message: `empty response after ${attempts} attempts: ${reason}` } }), { status: 502, headers: { "Content-Type": "application/json" } });
+
 // קריאה מהירה לסריקות (חשבונית, מתכון, תווית, דף ספירה): בלי "חשיבה" ארוכה לפני התשובה, ותשובת JSON ישירה.
 // לכל משפחת מודלים שדה אחר: 3.x = thinkingLevel, 2.5-flash = thinkingBudget. lite כבר בלי חשיבה. מודל לא מוכר: JSON בלבד.
 export function fastGenerationConfig(model) {
@@ -19,9 +33,19 @@ export const withFast = (body, model) => ({ ...body, generationConfig: { ...(bod
 
 // body: אובייקט הבקשה (contents...). onRetry(info) נקרא לפני כל המתנה/מעבר מודל. מחזיר Response (תקין או האחרון שנכשל)
 // networkError: אם אין חיבור בכלל אחרי כל הניסיונות - נזרקת שגיאה עם .network = true
-export async function geminiFetch(apiKey, body, { onRetry, models = GEMINI_MODELS, fetchImpl = fetch, delays = DELAYS, fast = false } = {}) {
+export async function geminiFetch(apiKey, body, { onRetry, models = GEMINI_MODELS, fetchImpl = fetch, delays = DELAYS, fast = false, emptyDelays = EMPTY_DELAYS } = {}) {
     if (apiKey === AGENT_SENTINEL) { // דרך עוזר AI: מחזיר 402 (מגבלה יומית) או 503 (עמוס); בלי לגעת במפתח בצד הלקוח
-        try { return await agentFetch(fast ? { ...body, fast: true } : body, fetchImpl); } catch (e) { const err = new Error("network"); err.network = true; throw err; }
+        let reason = "no content";
+        for (let n = 0; n < EMPTY_ATTEMPTS; n++) {
+            let res;
+            // הניסיון הראשון במצב מהיר (אם התבקש). אחריו בלי מצב מהיר, כי הוא אחד הגורמים האפשריים לתשובה ריקה
+            try { res = await agentFetch(fast && n === 0 ? { ...body, fast: true } : body, fetchImpl); } catch (e) { const err = new Error("network"); err.network = true; throw err; }
+            if (!res.ok || (await hasContent(res))) return res; // שגיאה אמיתית (402, 413, 503...) מטופלת אצל הקורא
+            reason = await emptyReason(res);
+            if (onRetry) onRetry({ model: "agent", attempt: n + 1, reason: "empty" });
+            if (n < EMPTY_ATTEMPTS - 1) await sleep(emptyDelays[n] != null ? emptyDelays[n] : 3000);
+        }
+        return emptyResponse(reason, EMPTY_ATTEMPTS);
     }
     let last = null;
     let networkFailures = 0;
