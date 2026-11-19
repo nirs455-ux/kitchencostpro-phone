@@ -13,7 +13,8 @@ import { pricePerGram, itemCost as calcItemCost, effectivePrice, isCountItem } f
 import { rowForLine, yieldApplies, estimateYield } from "../yieldKb.js";
 import { h, openModal, closeModal, confirmDialog, toast, escapeHtml, money, busy, attemptClose, info, cur, curLabel, takeFlag, layerOpened, layerClosed } from "../ui.js";
 import { openImagePicker } from "../imagePicker.js";
-import { scanRecipeImage, suggestRecipeBase } from "../repo/scanRepo.js";
+import { scanRecipeImage, scanRecipeBatch, suggestRecipeBase } from "../repo/scanRepo.js";
+import { openBatchReview } from "./recipesBatchPage.js";
 import { getSetting, setSetting } from "../repo/settingsRepo.js";
 import { LINE_YIELD_FLAG } from "../repo/lineYieldMigration.js";
 import { getAgentKey } from "../agent.js";
@@ -176,8 +177,21 @@ export async function renderRecipesPage(container) {
 export async function scanRecipeFile(file, container) {
     const apiKey = await getAgentKey();
     crumb(`scan start ${file && file.type} ${file && Math.round(file.size / 1024)}KB`);
-    openModal('<div style="text-align:center;padding:24px;color:#666;">קורא את המתכון...</div>');
+    const loading = openModal('<div style="text-align:center;padding:24px;color:#666;">קורא את המתכון...</div>');
     try {
+        // קובץ עם הרבה מתכונים: סקירה סגורה וייבוא כטיוטות. תמונה או מתכון אחד ממשיכים בקריאה הרגילה
+        let batch = null;
+        try {
+            batch = await scanRecipeBatch(apiKey, file, (p) => {
+                const m = loading.querySelector(".modal");
+                if (m) m.innerHTML = `<div style="text-align:center;padding:24px;color:#666;">${p.phase === "titles" ? `נמצאו ${p.total} מתכונים. קורא...` : `נקרא ${p.done} מתוך ${p.total}`}</div>`;
+            });
+        } catch (e) { crumb("batch scan skipped " + String(e && e.message).slice(0, 60)); }
+        if (batch && batch.drafts.length) {
+            closeModal();
+            openBatchReview(batch, () => renderRecipesPage(container));
+            return;
+        }
         const draft = await scanRecipeImage(apiKey, file);
         crumb("scan got draft model=" + (draft.model || "?"));
         closeModal();

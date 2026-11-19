@@ -12,6 +12,8 @@ import { prepareParts } from "../filePrep.js";
 import { buildBasePrompt, parseBaseAnswer } from "../bakers.js";
 import { NON_FOOD_CATEGORIES } from "../constants.js";
 import { recipeScanPrompt, buildRecipeDraft } from "../recipeParse.js";
+import { readFileContent } from "../fileText.js";
+import { TITLES_PROMPT, batchPrompt, parseTitles, chunkTitles, parseBatch, BATCH_SIZE, MULTI_MIN_CHARS, MULTI_MIN_PDF_BYTES } from "../recipesBatch.js";
 import { getRecipeCategories } from "./recipeCategories.js";
 import { invoicePromptWithPantry, mergeDiscountLines, computeStockFactor, toFloat, cleanVatTotals } from "../invoiceParse.js";
 import { LABEL_SCAN_PROMPT, parseLabelAnswer } from "../labelParse.js";
@@ -436,3 +438,75 @@ export async function suggestRecipeBase(apiKey, recipeName, items) {
         return null;
     }
 }
+
+// קובץ עם הרבה מתכונים (Word / PDF / טקסט): קודם רשימת שמות, ואז קריאה של כמה מתכונים בכל פעם. מחזיר null כשזה לא קובץ מרובה מתכונים
+// (תמונה, או מתכון אחד), ואז הקורא ממשיך בקריאה הרגילה. שום דבר לא נשמר. onProgress({ phase, done, total }).
+export async function scanRecipeBatch(apiKey, file, onProgress = () => {}) {
+    if (!apiKey) throw new Error("עוזר AI לא זמין כרגע.");
+    const buffer = await file.arrayBuffer();
+    const info = await readFileContent(buffer, file.name || "", file.type || "");
+    let parts;
+    if (info.kind === "pdf") {
+        if (buffer.byteLength < MULTI_MIN_PDF_BYTES || buffer.byteLength > 18 * 1024 * 1024) return null;
+        parts = [{ inline_data: { mime_type: "application/pdf", data: bufferToBase64(buffer) } }];
+    } else if (info.kind !== "image" && info.kind !== "pdf") {
+        const text = (info.text || "").trim();
+        if (text.length < MULTI_MIN_CHARS) return null;
+        parts = [{ text: "תוכן המסמך:\n" + text.slice(0, 300000) }];
+    } else return null;
+
+    const titles = parseTitles(await askJson(apiKey, TITLES_PROMPT, parts));
+    if (titles.length < 2) return null;
+    onProgress({ phase: "titles", done: 0, total: titles.length });
+    const categories = await getRecipeCategories();
+    const pantry = (await dbGetAll("pantryItems")).filter((r) => !NON_FOOD_CATEGORIES.has(r.category));
+    const drafts = [], failed = [];
+    let stop = null;
+    const groups = chunkTitles(titles);
+    for (let g = 0; g < groups.length; g++) {
+        if (stop) { failed.push(...groups[g]); continue; }
+        try {
+            for (const rec of parseBatch(await askJson(apiKey, batchPrompt(groups[g], categories), parts))) {
+                const d = buildRecipeDraft(rec, pantry, categories);
+                if (d.name && d.ingredients.length) drafts.push(d);
+            }
+            onProgress({ phase: "read", done: Math.min((g + 1) * BATCH_SIZE, titles.length), total: titles.length });
+        } catch (e) {
+            failed.push(...groups[g]);
+            if (e && e.status === 402) stop = e.message; // מכסה יומית: עוצרים ומציגים מה שנקרא
+        }
+    }
+    return { drafts, titles, failed, stopped: stop };
+}
+
+function bufferToBase64(buffer) {
+    const bytes = new Uint8Array(buffer);
+    let bin = "";
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    return btoa(bin);
+}
+
+// קריאה אחת ל-Gemini שמחזירה JSON. שגיאת מכסה (402) נושאת status
+async function askJson(apiKey, prompt, parts) {
+    let response;
+    try {
+        response = await geminiFetch(apiKey, { contents: [{ parts: [{ text: prompt }, ...parts] }] }, { fast: true });
+    } catch (e) {
+        throw new Error("אין חיבור לאינטרנט או שהשרת לא זמין. נסה שוב בעוד רגע.");
+    }
+    if (!response.ok) {
+        if (await agentDown(response)) throw new Error(AGENT_DOWN_MSG);
+        const err = new Error(response.status === 402 ? "הגעת למגבלה היומית של עוזר AI. אפשר להמשיך מחר." : `שגיאה מה-API (${response.status})`);
+        err.status = response.status;
+        throw err;
+    }
+    try {
+        const result = await response.json();
+        let text = result.candidates[0].content.parts[0].text.trim();
+        if (text.startsWith("```")) { text = text.split("```")[1]; if (text.startsWith("json")) text = text.slice(4); }
+        return JSON.parse(text.trim());
+    } catch (e) {
+        throw new Error(unreadableMessage(e));
+    }
+}
+
