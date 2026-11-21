@@ -175,7 +175,7 @@ export function cur() { return currencySymbol.length > 1 ? currencySymbol + " " 
 export function curLabel() { return currencySymbol; }
 
 export function money(v) {
-    return `${cur()}${(Number(v) || 0).toFixed(2)}`;
+    return `\u2066${cur()}${(Number(v) || 0).toFixed(2)}\u2069`; // LRI..PDI: המחיר מבודד, לא מתהפך בתוך עברית
 }
 
 export function escapeHtml(s) {
@@ -228,4 +228,25 @@ if (typeof document !== "undefined") {
 export function setFlag(key) { try { sessionStorage.setItem("kcp_flag_" + key, "1"); } catch (e) { /* לא קריטי */ } }
 export function takeFlag(key) {
     try { const k = "kcp_flag_" + key; const v = sessionStorage.getItem(k); sessionStorage.removeItem(k); return v === "1"; } catch (e) { return false; }
+}
+
+// תוויות: שדה עם <label> שלידו (בלי for) מקבל קישור, ושדה עם placeholder בלבד מקבל שם לקורא מסך. רץ אחרי כל שינוי במסך.
+let _fieldId = 0;
+export function linkLabels(root = document) {
+    root.querySelectorAll(".field").forEach((f) => {
+        const l = f.querySelector(":scope > label:not([for])");
+        const c = f.querySelector("input:not([type=hidden]):not([type=checkbox]):not([type=radio]), select, textarea");
+        if (l && c && !l.contains(c)) { if (!c.id) c.id = "kf" + (++_fieldId); l.htmlFor = c.id; }
+    });
+    root.querySelectorAll("input[placeholder]:not([aria-label]), textarea[placeholder]:not([aria-label])").forEach((c) => {
+        if (!(c.labels && c.labels.length)) c.setAttribute("aria-label", c.getAttribute("placeholder"));
+    });
+}
+if (typeof document !== "undefined" && typeof MutationObserver !== "undefined") {
+    let pending = false;
+    new MutationObserver(() => {
+        if (pending) return;
+        pending = true;
+        requestAnimationFrame(() => { pending = false; try { linkLabels(); } catch (e) { /* לא קריטי */ } });
+    }).observe(document.documentElement, { childList: true, subtree: true });
 }

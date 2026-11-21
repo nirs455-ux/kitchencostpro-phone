@@ -10,10 +10,16 @@ export function normalizePhoneIL(raw) {
     return d;
 }
 
+// הודעה בעברית: סימן כיוון (RLM) בתחילת כל שורה, כדי ששורה שמתחילה במספר או באנגלית לא תתהפך (פסיקים, אחוזים, יחידות)
+export function rtlLines(text) {
+    const t = String(text || "");
+    return /[\u0590-\u05FF]/.test(t) ? t.split("\n").map((l) => (l.trim() ? "\u200F" + l : l)).join("\n") : t;
+}
+
 // קישור לוואטסאפ. עם טלפון: פותח צ'אט עם הספק; בלי טלפון: בוחרים איש קשר. הטקסט מוגבל כדי שהקישור לא יהיה ארוך מדי.
 export function whatsappUrl(text, phone = "") {
     const p = normalizePhoneIL(phone);
-    const t = encodeURIComponent(String(text || "").slice(0, 3500));
+    const t = encodeURIComponent(rtlLines(String(text || "").slice(0, 3500)));
     return p ? `https://wa.me/${p}?text=${t}` : `https://wa.me/?text=${t}`;
 }
 
@@ -21,7 +27,7 @@ export function whatsappUrl(text, phone = "") {
 export const MAIL_BODY_MAX = 1800;
 export function mailtoUrl(email, subject, body) {
     const to = encodeURIComponent(String(email || "").trim()).replace(/%40/g, "@").replace(/%2C/gi, ",");
-    return `mailto:${to}?subject=${encodeURIComponent(subject || "")}&body=${encodeURIComponent(String(body || "").slice(0, MAIL_BODY_MAX))}`;
+    return `mailto:${to}?subject=${encodeURIComponent(subject || "")}&body=${encodeURIComponent(rtlLines(String(body || "").slice(0, MAIL_BODY_MAX)))}`;
 }
 
 // כמות בגרמים -> טקסט לקריאה ("600 גרם" / '1.25 ק"ג')
