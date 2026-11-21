@@ -865,10 +865,12 @@ async function openRecipeModal(existing, container, draft = null) {
     }
     const weightText = (g) => (g >= 1000 ? `${+(g / 1000).toFixed(2)} ק"ג` : `${g < 100 ? +g.toFixed(1) : Math.round(g)} גרם`);
 
+    // שורת ביצים שנכתבה בספירה: מציגים כמה ביצים (לפי הגודל והחלק), לא גרמים
+    const eggCountOf = (p) => { if (p.egg_n > 0) return p.egg_n; const s = sources.find((x) => x.id === p.pantry_item_id); return s ? Math.round((Number(p.quantity_g) / partGrams(eggSizeOf(s.item), p.egg_part || "whole")) * 100) / 100 : p.quantity_g; };
     function addRow(prefill) {
         const id = rowCounter++;
         const um = prefill && prefill.um ? prefill.um : null;
-        rowMeta.set(id, { um, lineYield: prefill && Number(prefill.line_yield) > 0 ? Number(prefill.line_yield) : null, eggPart: (prefill && prefill.egg_part) || "whole", eggSize: null, eggUnit: "g", pct: (prefill && (prefill.pct_mode || prefill.est_mode)) || null, prep: prefill && (prefill.prep === "raw" || prefill.prep === "proc") ? prefill.prep : null });
+        rowMeta.set(id, { um, lineYield: prefill && Number(prefill.line_yield) > 0 ? Number(prefill.line_yield) : null, eggPart: (prefill && prefill.egg_part) || "whole", eggSize: null, eggUnit: prefill && prefill.egg_unit === "unit" ? "unit" : "g", pct: (prefill && (prefill.pct_mode || prefill.est_mode)) || null, prep: prefill && (prefill.prep === "raw" || prefill.prep === "proc") ? prefill.prep : null });
         const row = h(`
             <div class="item-row-inputs" id="ing-row-${id}">
                 ${um && um.manual ? `<div class="field" style="margin:0 0 6px;"><input type="text" id="ing-name-${id}" placeholder="שם הרכיב, לא במערכת" value="${escapeHtml(um.name || "")}"></div>` : um ? `<div class="hint-warn" id="ing-um-${id}" style="margin-top:0;">
@@ -882,7 +884,7 @@ async function openRecipeModal(existing, container, draft = null) {
                         <option value="">${um ? "בחר מוצר מחומרי הגלם..." : "בחר מרכיב..."}</option>
                         ${selectOptions(prefill ? (prefill.sub_recipe_id != null ? "r" + prefill.sub_recipe_id : prefill.pantry_item_id) : null)}
                     </select>
-                    <input type="text" inputmode="decimal" id="ing-qty-${id}" placeholder="${isGramMode() ? "גרם" : 'ק"ג'}" style="width:80px;" value="${prefill && prefill.pct_mode ? countToText(prefill.pct) : prefill && prefill.est_mode ? countToText(prefill.est_n) : prefill && prefill.quantity_g != null ? (prefill.unit_count ? countToText(prefill.quantity_g) : gramsToKgText(prefill.quantity_g)) : (um && gramsFromOriginal(um, null) != null ? gramsToKgText(gramsFromOriginal(um, null)) : "")}">
+                    <input type="text" inputmode="decimal" id="ing-qty-${id}" placeholder="${isGramMode() ? "גרם" : 'ק"ג'}" style="width:80px;" value="${prefill && prefill.pct_mode ? countToText(prefill.pct) : prefill && prefill.est_mode ? countToText(prefill.est_n) : prefill && prefill.quantity_g != null ? (prefill.unit_count ? countToText(prefill.quantity_g) : prefill.egg_unit === "unit" ? countToText(eggCountOf(prefill)) : gramsToKgText(prefill.quantity_g)) : (um && gramsFromOriginal(um, null) != null ? gramsToKgText(gramsFromOriginal(um, null)) : "")}">
                     <button type="button" class="remove-row-btn" data-remove="${id}" aria-label="הסר שורה">✕</button>
                 </div>
                 ${um ? "" : `<select id="ing-mode-${id}" style="width:auto;font-size:12px;padding:2px 6px;margin:2px 0;">${modeOptionsHtml((prefill && (prefill.pct_mode || prefill.est_mode)) || "", (sources.find((x) => String(x.id) === String(prefill && prefill.pantry_item_id)) || {}).item)}</select><input type="text" inputmode="decimal" id="ing-pw-${id}" placeholder="גרם ליחידה" style="display:none;width:100px;font-size:12px;margin:2px 4px;">`}
@@ -1346,7 +1348,7 @@ async function openRecipeModal(existing, container, draft = null) {
         for (const ing of draft.ingredients) {
             if (ing.blank) { addRow(); continue; }
             addRow({
-                pantry_item_id: ing.pantry_item_id, quantity_g: ing.quantity_g, est_mode: ing.est_mode, est_n: ing.est_n,
+                pantry_item_id: ing.pantry_item_id, quantity_g: ing.quantity_g, est_mode: ing.est_mode, est_n: ing.est_n, egg_unit: ing.egg_unit, egg_part: ing.egg_part, egg_n: ing.egg_n,
                 um: ing.pantry_item_id ? null : { name: ing.original_name, quantity: ing.original_quantity, unit: ing.original_unit },
                 read: ing.pantry_item_id ? ing.original_name : null,
             });
@@ -1457,7 +1459,7 @@ async function openRecipeModal(existing, container, draft = null) {
             const rawPrep = meta && meta.prep && ss && !egg && !countRow && Number(ss.item.yield_pct) !== 100 ? { prep: meta.prep } : {};
             const lineY = lineYieldReady && meta && ss && !egg && !countRow && !ss.item.parent_id && !ss.item.is_frozen ? { line_yield: lineYieldOf(ss, meta) } : {};
             if (pantry_item_id.startsWith("r") && quantity_g) items.push({ sub_recipe_id: Number(pantry_item_id.slice(1)), quantity_g, ...pctPart, ...(technique ? { technique } : {}) });
-            else if (pantry_item_id && quantity_g) items.push({ pantry_item_id, quantity_g, ...(egg ? { egg_part: egg.part } : {}), ...rawPrep, ...lineY, ...pctPart, ...(technique ? { technique } : {}) });
+            else if (pantry_item_id && quantity_g) items.push({ pantry_item_id, quantity_g, ...(egg ? { egg_part: egg.part, ...(meta && meta.eggUnit === "unit" ? { egg_unit: "unit" } : {}) } : {}), ...rawPrep, ...lineY, ...pctPart, ...(technique ? { technique } : {}) });
             else if (meta && meta.um && meta.um.manual) {
                 // רכיב שהוקלד ידנית ועדיין לא בחומרי הגלם: נשמר בטיוטה עם הכמות בגרמים (אם הוזנה)
                 const nm = String(meta.um.name || "").trim();

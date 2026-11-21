@@ -4,6 +4,7 @@ import { getCloseMatches } from "./fuzzyMatch.js";
 import { smartMatch, quantityInName, cleanName, sizeInName, formWordConflict, coreTokens, tokenMatch } from "./nameMatch.js";
 import { unitWeightG, juiceInfo, juiceFruitName, gramsFromJuiceMl } from "./produceKb.js";
 import { RECIPE_CATEGORIES } from "./constants.js";
+import { isEggProduct, eggSizeOf, partGrams } from "./eggs.js";
 
 // נוזלים: 1 מ"ל = 1 גרם (כמו בממשק המתכונים הקיים)
 export const RECIPE_UNIT_GRAMS = { g: 1, kg: 1000, ml: 1, l: 1000, tbsp: 15, tsp: 5, cup: 240 };
@@ -115,9 +116,13 @@ export function buildRecipeDraft(parsed, pantryItems, categories = RECIPE_CATEGO
         }
 
         let quantityG = null;
+        let eggUnit = false; // "2 ביצים": נשארות ביצים (ספירה), המשקל נשמר רק בשביל העלות
         if (qty !== null && qty > 0) {
             if (unit in RECIPE_UNIT_GRAMS) {
                 quantityG = round2(qty * RECIPE_UNIT_GRAMS[unit]);
+            } else if (unit === "unit" && match && isEggProduct(match)) {
+                quantityG = round2(qty * (Number(match.unit_amount) > 0 ? Number(match.unit_amount) : partGrams(eggSizeOf(match), "whole"))); // משקל הביצה במוצר אם קיים (העלות לפי מחיר ביצה), אחרת לפי הגודל
+                eggUnit = true;
             } else if (unit === "unit" && match && match.unit_type === "unit" && match.unit_amount) {
                 quantityG = round2(qty * match.unit_amount);
             }
@@ -137,6 +142,7 @@ export function buildRecipeDraft(parsed, pantryItems, categories = RECIPE_CATEGO
             original_quantity: qty,
             original_unit: unit,
             quantity_g: quantityG,
+            ...(eggUnit ? { egg_unit: "unit", egg_part: "whole", egg_n: round2(qty) } : {}),
             pantry_item_id: match ? match.id : null,
             matched_name: match ? match.name : null,
             fuzzy,

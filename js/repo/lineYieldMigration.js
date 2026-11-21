@@ -8,7 +8,7 @@ import { resolveRecipeItems } from "./recipesRepo.js";
 
 export const LINE_YIELD_FLAG = "line_yield_v1"; // "done" | "blocked"
 
-const toResolveInput = (r) => ({ pantry_item_id: r.pantry_item_id, sub_recipe_id: r.sub_recipe_id, quantity_g: r.quantity_g, egg_part: r.egg_part, prep: r.prep, line_yield: r.line_yield });
+const toResolveInput = (r) => ({ pantry_item_id: r.pantry_item_id, sub_recipe_id: r.sub_recipe_id, quantity_g: r.quantity_g, egg_part: r.egg_part, egg_unit: r.egg_unit, prep: r.prep, line_yield: r.line_yield });
 
 // מחזיר את השורות שצריכות line_yield (העתקות עם הערך), בלי לכתוב
 export function planLineYield(items, pantryById) {
