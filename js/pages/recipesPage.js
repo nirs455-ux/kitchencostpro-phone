@@ -105,11 +105,15 @@ export async function renderRecipesPage(container) {
         if (!shown.length) { list.innerHTML = `<div class="empty-state">${q ? "לא נמצא מתכון תואם." : "אין מתכונים בקטגוריה הזו."}</div>`; return; }
         const searching = !!normalize(q);
         const showEmpty = !searching && recipeFilter === "all" && !isStaffMode();
-        const groups = orderCategories([...shown.map((r) => r.category), ...(showEmpty ? savedCats : [])]).map((cat) => {
+        // קטגוריות עם מתכונים קודם, מהרבה לפחות; הריקות בסוף. בתוך אותו מספר: הסדר הרגיל
+        const baseOrder = orderCategories([...shown.map((r) => r.category), ...(showEmpty ? savedCats : [])]);
+        const cnt = new Map(baseOrder.map((c) => [c, shown.filter((r) => r.category === c).length]));
+        const rank = new Map(baseOrder.map((c, i) => [c, i]));
+        const groups = [...baseOrder].sort((a, b) => (cnt.get(b) > 0) - (cnt.get(a) > 0) || cnt.get(b) - cnt.get(a) || rank.get(a) - rank.get(b)).map((cat) => {
             const inCat = shown.filter((r) => r.category === cat);
             const empty = document.createElement("div");
             empty.className = "empty-state"; empty.style.padding = "8px 14px"; empty.textContent = "אין מתכונים בקטגוריה הזו.";
-            return { key: "rc:" + cat, title: cat, ic: "📖", tint: "var(--brand-soft)", count: inCat.length, rows: inCat.length ? inCat.map((r) => renderRecipeRow(r, container)) : [empty] };
+            return { key: "rc:" + cat, title: cat, ic: "📖", tint: "var(--brand-soft)", count: inCat.length, dim: inCat.length === 0, rows: inCat.length ? inCat.map((r) => renderRecipeRow(r, container)) : [empty] };
         });
         list.appendChild(groupsEl(groups, rcOpen, searching, (k) => { if (rcOpen.has(k)) rcOpen.delete(k); else rcOpen.add(k); draw(); }));
     };

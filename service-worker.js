@@ -1,4 +1,4 @@
-const CACHE_NAME = "kcp-v168";
+const CACHE_NAME = "kcp-v169";
 const NET_TIMEOUT_MS = 4000;
 const ASSETS = [
     "./",
