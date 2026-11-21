@@ -1,7 +1,7 @@
 // ייבוא קובץ עם הרבה מתכונים: פרומפטים, פענוח, והמרת טיוטה לנתוני שמירה. טהור (בלי רשת/DB), נבדק ב-tests/recipe_batch.verify.mjs.
 import { isEggProduct } from "./eggs.js";
 
-export const BATCH_SIZE = 5; // כמה מתכונים נקראים בכל קריאה
+export const BATCH_SIZE = 2; // כמה מתכונים נקראים בכל קריאה (קטן, כדי שהתשובה לא תיחתך במתכונים ארוכים)
 export const MULTI_MIN_CHARS = 2500; // טקסט קצר מזה נחשב מתכון אחד: בלי קריאת זיהוי נוספת
 export const MULTI_MIN_PDF_BYTES = 120000;
 
@@ -57,7 +57,7 @@ export function importData(draft, pantryById, lineYieldReady, { allAsDraft = fal
         const qty = Number(ing.quantity_g);
         if (!allAsDraft && ing.pantry_item_id && qty > 0) {
             const p = pantryById.get(ing.pantry_item_id);
-            items.push({ pantry_item_id: ing.pantry_item_id, quantity_g: qty, ...(ing.est_mode ? { est_mode: ing.est_mode, est_n: ing.est_n } : {}), ...(lineYieldReady && lineEligible(p) ? { line_yield: 100 } : {}) });
+            items.push({ pantry_item_id: ing.pantry_item_id, quantity_g: qty, ...(ing.est_mode ? { est_mode: ing.est_mode, est_n: ing.est_n } : {}), ...(ing.egg_unit === "unit" && ing.egg_part ? { egg_part: ing.egg_part, egg_unit: "unit" } : {}), ...(lineYieldReady && lineEligible(p) ? { line_yield: 100 } : {}) });
         } else {
             drafts.push({ name: ing.original_name, quantity: ing.original_quantity ?? null, unit: ing.original_unit ?? null });
         }

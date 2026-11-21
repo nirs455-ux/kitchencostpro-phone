@@ -460,23 +460,36 @@ export async function scanRecipeBatch(apiKey, file, onProgress = () => {}) {
     onProgress({ phase: "titles", done: 0, total: titles.length });
     const categories = await getRecipeCategories();
     const pantry = (await dbGetAll("pantryItems")).filter((r) => !NON_FOOD_CATEGORIES.has(r.category));
-    const drafts = [], failed = [];
+    const drafts = [], failed = [], reasons = {};
     let stop = null;
     const groups = chunkTitles(titles);
+    const readTitles = async (list) => {
+        for (const rec of parseBatch(await askJson(apiKey, batchPrompt(list, categories), parts))) {
+            const d = buildRecipeDraft(rec, pantry, categories);
+            if (d.name && d.ingredients.length) drafts.push(d);
+        }
+    };
     for (let g = 0; g < groups.length; g++) {
         if (stop) { failed.push(...groups[g]); continue; }
         try {
-            for (const rec of parseBatch(await askJson(apiKey, batchPrompt(groups[g], categories), parts))) {
-                const d = buildRecipeDraft(rec, pantry, categories);
-                if (d.name && d.ingredients.length) drafts.push(d);
-            }
-            onProgress({ phase: "read", done: Math.min((g + 1) * BATCH_SIZE, titles.length), total: titles.length });
+            await readTitles(groups[g]);
         } catch (e) {
-            failed.push(...groups[g]);
-            if (e && e.status === 402) stop = e.message; // מכסה יומית: עוצרים ומציגים מה שנקרא
+            if (e && e.status === 402) { stop = e.message; failed.push(...groups[g]); } // מכסה יומית: עוצרים ומציגים מה שנקרא
+            else if (groups[g].length < 2) { failed.push(groups[g][0]); reasons[groups[g][0]] = (e && e.message) || "שגיאה"; }
+            else {
+                // הקבוצה נכשלה: ניסיון חוזר, מתכון אחד בכל פעם
+                for (const t of groups[g]) {
+                    if (stop) { failed.push(t); continue; }
+                    try { await readTitles([t]); } catch (e2) {
+                        failed.push(t); reasons[t] = (e2 && e2.message) || "שגיאה";
+                        if (e2 && e2.status === 402) stop = e2.message;
+                    }
+                }
+            }
         }
+        onProgress({ phase: "read", done: Math.min((g + 1) * BATCH_SIZE, titles.length), total: titles.length });
     }
-    return { drafts, titles, failed, stopped: stop };
+    return { drafts, titles, failed, reasons, stopped: stop };
 }
 
 function bufferToBase64(buffer) {

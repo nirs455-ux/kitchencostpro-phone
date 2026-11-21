@@ -12,11 +12,12 @@ const missingCount = (d) => d.ingredients.filter((i) => !i.pantry_item_id).lengt
 
 // result: { drafts, failed, stopped }. onDone: נקרא אחרי ייבוא (רענון הרשימה)
 export function openBatchReview(result, onDone) {
-    const { drafts, failed = [], stopped = null } = result;
+    const { drafts, failed = [], stopped = null, reasons = {} } = result;
+    const reasonList = [...new Set(failed.map((n) => reasons[n]).filter(Boolean))].slice(0, 2).join(" | ");
     const ov = openModal(`
         <h2>נמצאו ${drafts.length} מתכונים</h2>
         <div class="hint">כל מתכון נשמר כטיוטה. לחיצה על שורה פותחת אותו. רכיבים שלא נמצאו בחומרי הגלם נשמרים בטיוטה להשלמה.</div>
-        ${failed.length ? `<div class="hint-warn">${stopped ? escapeHtml(stopped) + " " : ""}לא נקראו ${failed.length} מתכונים: ${escapeHtml(failed.slice(0, 8).join(", "))}${failed.length > 8 ? "..." : ""}. אפשר להעלות את הקובץ שוב אחר כך. מתכונים שכבר יובאו ידולגו.</div>` : ""}
+        ${failed.length ? `<div class="hint-warn">${stopped ? escapeHtml(stopped) + " " : ""}לא נקראו ${failed.length} מתכונים: ${escapeHtml(failed.slice(0, 8).join(", "))}${failed.length > 8 ? "..." : ""}.${reasonList ? " סיבה: " + escapeHtml(reasonList) + "." : ""} אפשר להעלות את הקובץ שוב אחר כך. מתכונים שכבר יובאו ידולגו.</div>` : ""}
         <label class="checkbox-field"><input type="checkbox" id="rb-all" checked><span>בחר הכול</span></label>
         <div id="rb-list">${drafts.map((d, i) => `
             <div class="card" style="margin:0 0 6px;" data-i="${i}">
