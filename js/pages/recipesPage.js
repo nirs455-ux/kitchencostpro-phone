@@ -66,6 +66,7 @@ function gramsFromOriginal(um, item) {
     if (item && (um.unit === "cup" || um.unit === "tbsp" || um.unit === "tsp") && densityFor(item.name)) return Math.round(convertToGrams({ qty: um.quantity, unit: um.unit, name: item.name }).grams * 100) / 100;
     if (um.unit in RECIPE_UNIT_GRAMS) return Math.round(um.quantity * RECIPE_UNIT_GRAMS[um.unit] * 100) / 100;
     if (um.unit === "unit" && item && item.unit_type === "unit" && item.unit_amount) return Math.round(um.quantity * item.unit_amount * 100) / 100;
+    if (um.unit === "unit" && (!item || item.unit_type === "weight")) { const w = unitWeightG(um.name); if (w) return Math.round(um.quantity * w * 100) / 100; } // יחידות של מוצר שנמכר במשקל (שיני שום): הערכה לפי השם שנכתב
     return null;
 }
 
@@ -744,7 +745,7 @@ function scanNoticeHtml(draft) {
 // שלב אחד לכל הרכיבים שלא נמצאו בחומרי הגלם: שם, קטגוריה, נמדד ב- ומחיר (לא חובה). מחזיר Map לפי מזהה שורה, או null אם ביטל
 function askMissingIngredients(todo, srcBlob = null, readInfo = {}) {
     return new Promise((resolve) => {
-        const unitOf = (um) => (um.unit === "ml" || um.unit === "l" ? "liter" : um.unit === "unit" ? "unit" : "weight");
+        const unitOf = (um) => (um.unit === "ml" || um.unit === "l" ? "liter" : um.unit === "unit" ? (unitWeightG(um.name) ? "weight" : "unit") : "weight"); // מוצר שיש לו משקל ליחידה בטבלה (שום, צ'ילי...) נמכר במשקל
         const cats = Object.keys(CATEGORY_GROUPS);
         const keyOfName = (x) => String(x.um.name || "").trim().toLowerCase();
         const groups = [...todo.reduce((m, x) => m.set(keyOfName(x), [...(m.get(keyOfName(x)) || []), x]), new Map()).values()]; // אותו שם פעמיים: כרטיס אחד

@@ -10,6 +10,12 @@ export function sizeInName(raw) {
 
 const UNIT_WORDS = new Set(["גרם", "גר", "קג", "קילו", "קילוגרם", "מל", "ליטר", "ל", "כף", "כפות", "כפית", "כפיות", "כוס", "כוסות", "יחידות", "יחידה", "יח"]);
 
+// מילות ספירה ואריזה ("4 שיני שום", "צרור פטרוזיליה"): לא חלק משם חומר הגלם, ולא חוסמות התאמה
+const COUNT_WORDS = new Set(["שן", "שיני", "שיניים", "צרור", "צרורות", "אגודה", "אגודת", "חבילת", "ראש", "ראשי", "גבעול", "גבעולי", "של"]);
+// מילות צורה: מבדילות בין מוצרים שונים (זרעי כוסברה אינם כוסברה, אבקת שום אינה שום). מוצר במזווה שיש בשמו מילת צורה שלא כתובה במתכון לא מתאים
+export const FORM_WORDS = new Set(["זרעי", "זרעים", "גרעיני", "אבקת", "אבקה", "שמן", "מיץ", "רוטב", "ממרח", "משחת", "רסק", "תמצית", "קליפת", "שורש", "שורשי", "ענפי"]);
+export const formWordConflict = (queryName, itemName) => { const q = parseNameParts(queryName).tokens; return parseNameParts(itemName).tokens.some((u) => FORM_WORDS.has(u) && !q.includes(u)); };
+
 // מפרק שם לחלקים: מילים (בלי מספרים ויחידות), אחוז (ריכוז) אם יש, ומספר ראשון שנשאר (כמות שנכתבה בתוך השם)
 export function parseNameParts(raw) {
     let s = String(raw || "").toLowerCase();
@@ -19,7 +25,7 @@ export function parseNameParts(raw) {
     let num = null;
     s = s.replace(/\d+(?:[.,]\d+)?/g, (m) => { if (num == null) num = parseFloat(m.replace(",", ".")); return " "; });
     s = s.replace(/["'`׳״]/g, "").replace(/[()\[\],;:/\\\-–־_.*+]/g, " ");
-    const tokens = s.split(/\s+/).filter((t) => t && !UNIT_WORDS.has(t) && !SIZE_WORDS[t]);
+    const tokens = s.split(/\s+/).filter((t) => t && !UNIT_WORDS.has(t) && !SIZE_WORDS[t] && !COUNT_WORDS.has(t));
     return { tokens, pct, num };
 }
 
@@ -64,6 +70,7 @@ function matchParts(q, items) {
     for (const it of items) {
         const p = parseNameParts(it.name);
         if (!p.tokens.length) continue;
+        if (p.tokens.some((u) => FORM_WORDS.has(u) && !q.tokens.includes(u))) continue; // זרעי/אבקת/שמן... שלא כתובים במתכון: מוצר אחר
         if (!q.tokens.every((t) => p.tokens.some((u) => tokenMatch(t, u)))) continue;
         const mp = p.tokens.filter((u) => q.tokens.some((t) => tokenMatch(t, u))).length;
         let score = mp / p.tokens.length;

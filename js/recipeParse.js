@@ -1,7 +1,7 @@
 // הופך JSON שחילץ ה-AI מתמונת מתכון לטיוטה: כמויות לגרם, והתאמת כל מרכיב למוצר בחומרי הגלם.
 // טהור (בלי רשת/DB) - משקף את build_recipe_draft ב-main.py, ונבדק מול אותו קלט בדיוק.
 import { getCloseMatches } from "./fuzzyMatch.js";
-import { smartMatch, quantityInName, cleanName, sizeInName } from "./nameMatch.js";
+import { smartMatch, quantityInName, cleanName, sizeInName, formWordConflict } from "./nameMatch.js";
 import { unitWeightG, juiceInfo, juiceFruitName, gramsFromJuiceMl } from "./produceKb.js";
 import { RECIPE_CATEGORIES } from "./constants.js";
 
@@ -106,7 +106,7 @@ export function buildRecipeDraft(parsed, pantryItems, categories = RECIPE_CATEGO
         }
         if (!match) {
             const close = getCloseMatches(key, [...byName.keys()], 1, 0.7);
-            if (close.length) {
+            if (close.length && !formWordConflict(ingName, byName.get(close[0]).name)) {
                 match = byName.get(close[0]);
                 fuzzy = true;
             }
@@ -124,7 +124,7 @@ export function buildRecipeDraft(parsed, pantryItems, categories = RECIPE_CATEGO
         // "6 עגבניות בינוניות" ובחומרי הגלם עגבניות בק"ג: מעריכים משקל לפי ממוצע (קטנה/בינונית/גדולה)
         if (!est && unit === "unit" && qty > 0 && match && match.unit_type === "weight") {
             const size = sizeInName(String((ing && ing.name) || ""));
-            const w = unitWeightG(match.name, size);
+            const w = unitWeightG(String((ing && ing.name) || ingName), size) || unitWeightG(match.name, size); // קודם השם שנכתב (שן שום 4 גרם), ואחריו שם המוצר (שום 50 גרם)
             if (w) est = { est_mode: "est_" + size, est_n: qty, grams: round2(qty * w) };
         }
         if (est) quantityG = est.grams;
