@@ -51,6 +51,18 @@ export async function ensureRecipeCategory(name) {
     if (!list.some((c) => same(c, n))) await setSetting(KEY, [...list, n.slice(0, MAX_LEN)]);
 }
 
+// מעביר מתכונים (לפי מזהים) לקטגוריה. קטגוריה חדשה נוספת לרשימה. משנה רק את הקטגוריה, לא את העלות
+export async function moveRecipesToCategory(ids, category) {
+    const n = clean(category);
+    if (!n) throw new Error("יש להזין שם לקטגוריה");
+    if (n.length > MAX_LEN) throw new Error("שם הקטגוריה ארוך מדי");
+    await ensureRecipeCategory(n);
+    const set = new Set(ids.map(Number));
+    let moved = 0;
+    for (const r of await dbGetAll("recipes")) if (set.has(r.id) && !same(r.category, n)) { await dbPut("recipes", { ...r, category: n }); moved++; }
+    return moved;
+}
+
 export async function renameRecipeCategory(oldName, newName) {
     if (same(oldName, FALLBACK_CATEGORY)) throw new Error("אי אפשר לשנות את הקטגוריה כללי");
     const list = await getRecipeCategories();

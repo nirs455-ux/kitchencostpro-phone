@@ -5,7 +5,8 @@ import { toast, confirmDialog, escapeHtml } from "./ui.js";
 // host: האלמנט שמעליו מוסיפים את שורת הכפתורים. listEl: אלמנט שמכיל את השורות (נשאר גם כשהשורות מצטיירות מחדש).
 // rowSel: סלקטור של שורה. idOf(row): מזהה (או null לשורה שאי אפשר למחוק). nameOf(row): שם להצגה באישור.
 // remove(ids): מוחק. refresh(): מצייר מחדש אחרי מחיקה. noun: "מתכונים", "ספקים" וכו'.
-export function attachBulk({ host, listEl, rowSel, idOf, nameOf, remove, refresh, noun, verb = "מחק", done = "נמחקו" }) {
+// move (לא חובה): { label, pick(): Promise<יעד|null>, apply(ids, יעד), done(n, יעד): טקסט } מוסיף כפתור העברה ליד המחיקה
+export function attachBulk({ host, listEl, rowSel, idOf, nameOf, remove, refresh, noun, verb = "מחק", done = "נמחקו", move = null }) {
     let on = false;
     const sel = new Set();
     const bar = document.createElement("div");
@@ -15,7 +16,7 @@ export function attachBulk({ host, listEl, rowSel, idOf, nameOf, remove, refresh
     const sticky = document.createElement("div");
     sticky.className = "px-bulk mgr-only";
     sticky.style.display = "none";
-    sticky.innerHTML = `<b data-b="n"></b><button type="button" class="btn btn-danger btn-small" data-b="del">${verb}</button><button type="button" class="btn btn-secondary btn-small" data-b="off">ביטול</button>`;
+    sticky.innerHTML = `<b data-b="n"></b>${move ? `<button type="button" class="btn btn-primary btn-small" data-b="move">${move.label}</button>` : ""}<button type="button" class="btn btn-danger btn-small" data-b="del">${verb}</button><button type="button" class="btn btn-secondary btn-small" data-b="off">ביטול</button>`;
     host.insertAdjacentElement("beforebegin", bar);
     listEl.insertAdjacentElement("afterend", sticky);
     const q = (el, k) => el.querySelector(`[data-b="${k}"]`);
@@ -27,6 +28,7 @@ export function attachBulk({ host, listEl, rowSel, idOf, nameOf, remove, refresh
         sticky.style.display = on ? "flex" : "none";
         q(sticky, "n").textContent = sel.size ? `נבחרו ${sel.size}` : `בחר ${noun}`;
         q(sticky, "del").disabled = !sel.size;
+        if (move) q(sticky, "move").disabled = !sel.size;
         for (const r of rows()) r.classList.toggle("sel", on && sel.has(String(idOf(r))));
     };
     // שורות שמצטיירות מחדש מקבלות שוב את הסימון
@@ -47,6 +49,15 @@ export function attachBulk({ host, listEl, rowSel, idOf, nameOf, remove, refresh
     q(bar, "on").onclick = () => { on = true; sel.clear(); mark(); };
     q(bar, "all").onclick = () => { for (const r of rows()) sel.add(String(idOf(r))); mark(); };
     q(sticky, "off").onclick = () => { on = false; sel.clear(); mark(); };
+    if (move) q(sticky, "move").onclick = async () => {
+        if (!sel.size) return;
+        const target = await move.pick();
+        if (!target) return;
+        const ids = [...sel];
+        try { await move.apply(ids, target); toast(move.done(ids.length, target)); } catch (err) { toast(err.message || "ההעברה נכשלה"); }
+        on = false; sel.clear(); mark();
+        await refresh();
+    };
     q(sticky, "del").onclick = async () => {
         if (!sel.size) return;
         const ids = [...sel];

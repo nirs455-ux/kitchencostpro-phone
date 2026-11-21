@@ -37,7 +37,7 @@ import { assignAutoSubs, subOf } from "../autoGroups.js";
 import { guessCategory } from "../guessCategory.js";
 import { smartMatch } from "../nameMatch.js";
 import { crumb } from "../errorLog.js";
-import { getRecipeCategories, addRecipeCategory, renameRecipeCategory, deleteRecipeCategory, recipeCategoryCounts, FALLBACK_CATEGORY } from "../repo/recipeCategories.js";
+import { getRecipeCategories, addRecipeCategory, moveRecipesToCategory, renameRecipeCategory, deleteRecipeCategory, recipeCategoryCounts, FALLBACK_CATEGORY } from "../repo/recipeCategories.js";
 import { unitWeightG, juiceInfo, gramsFromJuiceMl, fruitsFromJuiceMl } from "../produceKb.js";
 import { factorFor, scaleRecipe, fmtQty, UNITS, convertUnits, convertToGrams, setLearnedDensities, densityFor, densityFromUnitGrams, learnKey } from "../generator.js";
 import { recipeEggSummary, eggSummaryText, allocateEggCosts, isEggProduct, eggSizeOf, partGrams, eggBreakdown, EGG_SIZES, EGG_PARTS, EGG_PART_UI } from "../eggs.js";
@@ -79,6 +79,7 @@ export function collapseRecipes() { rcOpen.clear(); }
 export async function renderRecipesPage(container) {
     const recipes = await listRecipesWithItems();
     recipes.sort((a, b) => a.category.localeCompare(b.category, "he") || a.name.localeCompare(b.name, "he"));
+    const savedCats = await getRecipeCategories(); // גם קטגוריות ריקות מוצגות, כדי אפשר יהיה להעביר אליהן
     const draftCount = recipes.filter((r) => r.status === "draft").length;
     let q = "";
 
@@ -92,7 +93,8 @@ export async function renderRecipesPage(container) {
         <div id="recipes-list"></div><button class="fab-add mgr-only" id="btn-add">+</button>`;
     container.querySelectorAll("[data-rf]").forEach((b) => { b.onclick = () => { recipeFilter = b.dataset.rf; renderRecipesPage(container); }; });
     const list = container.querySelector("#recipes-list");
-    if (recipes.length) attachBulk({ host: list, listEl: list, rowSel: ".px-row", idOf: (r) => r.dataset.bid ?? null, nameOf: (r) => (r.querySelector(".px-name") || {}).textContent, noun: "מתכונים", remove: async (ids) => { for (const id of ids) await deleteRecipe(Number(id)); }, refresh: () => renderRecipesPage(container) });
+    if (recipes.length) attachBulk({ host: list, listEl: list, rowSel: ".px-row", idOf: (r) => r.dataset.bid ?? null, nameOf: (r) => (r.querySelector(".px-name") || {}).textContent, noun: "מתכונים", remove: async (ids) => { for (const id of ids) await deleteRecipe(Number(id)); }, refresh: () => renderRecipesPage(container),
+        move: { label: "העבר לקטגוריה", pick: () => pickRecipeCategory(savedCats), apply: (ids, cat) => moveRecipesToCategory(ids, cat), done: (n, cat) => `הועברו ${n} מתכונים אל ${cat}` } });
 
 
     const draw = () => {
@@ -102,10 +104,13 @@ export async function renderRecipesPage(container) {
         if (recipes.length === 0) { list.innerHTML = '<div class="empty-state">אין עדיין מתכונים - לחץ על + או סרוק מתכון מקובץ.</div>'; return; }
         if (!shown.length) { list.innerHTML = `<div class="empty-state">${q ? "לא נמצא מתכון תואם." : "אין מתכונים בקטגוריה הזו."}</div>`; return; }
         const searching = !!normalize(q);
-        const groups = orderCategories(shown.map((r) => r.category)).map((cat) => ({
-            key: "rc:" + cat, title: cat, ic: "📖", tint: "var(--brand-soft)",
-            rows: shown.filter((r) => r.category === cat).map((r) => renderRecipeRow(r, container)),
-        }));
+        const showEmpty = !searching && recipeFilter === "all" && !isStaffMode();
+        const groups = orderCategories([...shown.map((r) => r.category), ...(showEmpty ? savedCats : [])]).map((cat) => {
+            const inCat = shown.filter((r) => r.category === cat);
+            const empty = document.createElement("div");
+            empty.className = "empty-state"; empty.style.padding = "8px 14px"; empty.textContent = "אין מתכונים בקטגוריה הזו.";
+            return { key: "rc:" + cat, title: cat, ic: "📖", tint: "var(--brand-soft)", count: inCat.length, rows: inCat.length ? inCat.map((r) => renderRecipeRow(r, container)) : [empty] };
+        });
         list.appendChild(groupsEl(groups, rcOpen, searching, (k) => { if (rcOpen.has(k)) rcOpen.delete(k); else rcOpen.add(k); draw(); }));
     };
     const qEl = container.querySelector("#rc-q");
@@ -202,6 +207,20 @@ export async function scanRecipeFile(file, container) {
         const overlay = openModal(`<h2>שגיאה בסריקה</h2><div class="error-msg" style="display:block;">${escapeHtml(e.message)}</div><div class="modal-actions"><button class="btn btn-secondary" id="err-close">סגור</button></div>`);
         overlay.querySelector("#err-close").onclick = closeModal;
     }
+}
+
+// בחירת קטגוריה יעד להעברת מתכונים: קיימת (גם ריקה) או חדשה. מחזיר את השם, או null אם בוטל
+function pickRecipeCategory(cats) {
+    return new Promise((resolve) => {
+        const ov = openModal(`<h2>העבר לקטגוריה</h2>
+            <div class="pk-chips" style="flex-wrap:wrap;">${cats.map((c) => `<button type="button" class="chip" data-pc="${escapeHtml(c)}">${escapeHtml(c)}</button>`).join("")}</div>
+            <div class="form-row" style="margin-top:10px;"><div class="field"><input type="text" id="pc-new" maxlength="30" placeholder="קטגוריה חדשה"></div><button type="button" class="btn btn-primary" id="pc-add" style="align-self:flex-end;">הוסף</button></div>
+            <div class="modal-actions"><button type="button" class="btn btn-secondary" id="pc-cancel">ביטול</button></div>`);
+        const done = (v) => { closeModal(); resolve(v); };
+        ov.querySelectorAll("[data-pc]").forEach((b) => { b.onclick = () => done(b.dataset.pc); });
+        ov.querySelector("#pc-add").onclick = () => { const v = ov.querySelector("#pc-new").value.replace(/\s+/g, " ").trim(); if (v) done(v); };
+        ov.querySelector("#pc-cancel").onclick = () => done(null);
+    });
 }
 
 function renderRecipeRow(r, container) {
