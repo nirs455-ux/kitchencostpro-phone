@@ -180,7 +180,7 @@ async function openDishModal(existing, container) {
                         ${sources.map((s, i) => `<option value="${i}" ${selected && sources[i] === selected ? "selected" : ""}>${s.indent ? "↳ " : ""}${escapeHtml(s.name)}</option>`).join("")}
                     </select>
                     <input type="text" inputmode="decimal" id="dish-qty-${id}" placeholder="${isGramMode() ? "גרם" : 'ק"ג'}" style="width:80px;" value="${prefill ? (selected && isCountSrc(selected) ? countToText(prefill.quantity_g) : gramsToKgText(prefill.quantity_g)) : ""}">
-                    <button type="button" class="remove-row-btn" data-remove="${id}">✕</button>
+                    <button type="button" class="remove-row-btn" data-remove="${id}" aria-label="הסר שורה">✕</button>
                 </div>
                 <div class="line-total" id="dish-line-${id}"></div>
                 <div class="hint" id="dish-echo-${id}" style="margin:2px 0;"></div>

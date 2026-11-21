@@ -36,7 +36,7 @@ export function openRestaurantPicker() {
                 <button type="button" class="btn btn-small ${r.fav ? "btn-primary" : "btn-secondary"}" data-fav="${r.id}" aria-label="${escapeHtml("מועדפת")}">★</button>
                 <span style="flex:1;min-width:0;cursor:pointer;${r.id === activeId ? "font-weight:700;" : ""}" data-go="${r.id}">${escapeHtml(displayName(r))}${r.id === activeId ? " ✓" : ""}</span>
                 <button type="button" class="btn btn-secondary btn-small" data-ren="${r.id}">✎</button>
-                ${r.id !== FIRST_ID && r.id !== activeId ? `<button type="button" class="btn btn-secondary btn-small" data-del="${r.id}">🗑</button>` : ""}</div>`).join("")}</div>
+                ${r.id !== FIRST_ID && r.id !== activeId ? `<button type="button" class="btn btn-secondary btn-small" data-del="${r.id}" aria-label="מחק">🗑</button>` : ""}</div>`).join("")}</div>
             <div class="btn-row" style="margin-top:10px;flex-wrap:wrap;gap:6px;">
                 <button type="button" class="btn btn-primary btn-small" id="rp-new">＋ ${escapeHtml("מסעדה חדשה")}</button>
                 <button type="button" class="btn btn-secondary btn-small" id="rp-drive">☁️ ${escapeHtml("שחזור מדרייב")}</button>

@@ -96,7 +96,7 @@ export async function renderPantryProducts(container) {
         <div id="px-chips"></div>
         <div id="pantry-list"></div>
         <div class="px-bulk" id="px-bulk" style="display:none;"><b id="px-bulk-n"></b><button type="button" class="btn btn-primary btn-small" id="px-bulk-move">העבר לקטגוריה</button><button type="button" class="btn btn-danger btn-small" id="px-bulk-del">מחק</button><button type="button" class="btn btn-secondary btn-small" id="px-bulk-cancel">ביטול</button></div>
-        <button class="fab-add" id="btn-add">+</button>`;
+        <button class="fab-add" id="btn-add" aria-label="הוסף">+</button>`;
     const list = container.querySelector("#pantry-list");
     const chipsEl = container.querySelector("#px-chips");
 

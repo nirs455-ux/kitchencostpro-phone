@@ -490,3 +490,18 @@ html, body { overscroll-behavior-y: none; }
 body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 input, textarea, select, pre, code, .selectable, [contenteditable] { -webkit-user-select: text; user-select: text; }
 .uc-wrap { display: flex; flex-direction: column; gap: 6px; }
+
+/* ---- נגישות ושימושיות בטלפון (v173): שדות 16px (בלי קפיצת זום), יעדי מגע 44px, ניגודיות בערכה כהה, פוקוס, תנועה מופחתת ---- */
+.field input, .field select, .field textarea, .px-top input[type=search], .pk-search { font-size: 16px; }
+.top-icon, .st-icon { min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
+.item-row-inputs .remove-row-btn { min-width: 44px; min-height: 44px; }
+.btn-small { min-height: 40px; }
+.pg-back { width: 44px; height: 44px; border-radius: 22px; }
+.bottom-nav button { font-size: 11px; }
+:root[data-theme="dark"] .btn-danger, :root[data-theme="dark"] .btn-accent { color: #0f1115; }
+.modal:focus { outline: none; }
+button:focus-visible, .chip:focus-visible, .pick-btn:focus-visible, .pk-btn:focus-visible, .pk-opt:focus-visible, [role=button]:focus-visible, a:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+input[type=number], input[type=tel], input[type=email], input[type=url], input[inputmode=decimal], input[inputmode=numeric] { direction: ltr; }
+:root[dir=rtl] input[type=number], :root[dir=rtl] input[type=tel], :root[dir=rtl] input[type=email], :root[dir=rtl] input[type=url], :root[dir=rtl] input[inputmode=decimal], :root[dir=rtl] input[inputmode=numeric] { text-align: right; }
+:root[dir=rtl] input[type=number]::placeholder, :root[dir=rtl] input[inputmode=decimal]::placeholder { direction: rtl; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; } }

@@ -39,7 +39,7 @@ export async function renderSalesTab(container) {
     const saveBtn = container.querySelector("#sl-save");
     const drawPending = () => {
         if (!pendEl) return;
-        pendEl.innerHTML = pending.map((l, i) => `<div class="card-row" style="padding:6px 4px;border-bottom:1px solid var(--border,#0001);"><span><b>${escapeHtml(l.name)}</b><br><span class="muted">${l.quantity} ${l.source_type === "recipe" ? "גרם" : "מנות"} · ${SALES_LINE_LABELS[l.line_type]}</span></span><button type="button" class="btn btn-secondary btn-small" data-rm="${i}">✕</button></div>`).join("");
+        pendEl.innerHTML = pending.map((l, i) => `<div class="card-row" style="padding:6px 4px;border-bottom:1px solid var(--border,#0001);"><span><b>${escapeHtml(l.name)}</b><br><span class="muted">${l.quantity} ${l.source_type === "recipe" ? "גרם" : "מנות"} · ${SALES_LINE_LABELS[l.line_type]}</span></span><button type="button" class="btn btn-secondary btn-small" data-rm="${i}" aria-label="מחק">✕</button></div>`).join("");
         pendEl.querySelectorAll("[data-rm]").forEach((b) => { b.onclick = () => { pending.splice(Number(b.dataset.rm), 1); drawPending(); }; });
         saveBtn.disabled = !pending.length;
         saveBtn.textContent = pending.length ? `שמירת דוח מכירות (${pending.length})` : "שמירת דוח מכירות";

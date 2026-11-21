@@ -91,7 +91,7 @@ export async function renderRecipesPage(container) {
             <button type="button" class="chip ${recipeFilter === "all" ? "active" : ""}" data-rf="all">הכול (${recipes.length})</button>
             <button type="button" class="chip ${recipeFilter === "ready" ? "active" : ""}" data-rf="ready">מוכנים (${recipes.length - draftCount})</button>
             <button type="button" class="chip ${recipeFilter === "draft" ? "active" : ""}" data-rf="draft">טיוטות (${draftCount})</button></div>` : ""}
-        <div id="recipes-list"></div><button class="fab-add mgr-only" id="btn-add">+</button>`;
+        <div id="recipes-list"></div><button class="fab-add mgr-only" id="btn-add" aria-label="הוסף">+</button>`;
     container.querySelectorAll("[data-rf]").forEach((b) => { b.onclick = () => { recipeFilter = b.dataset.rf; renderRecipesPage(container); }; });
     const list = container.querySelector("#recipes-list");
     if (recipes.length) attachBulk({ host: list, listEl: list, rowSel: ".px-row", idOf: (r) => r.dataset.bid ?? null, nameOf: (r) => (r.querySelector(".px-name") || {}).textContent, noun: "מתכונים", remove: async (ids) => { for (const id of ids) await deleteRecipe(Number(id)); }, refresh: () => renderRecipesPage(container),
@@ -883,7 +883,7 @@ async function openRecipeModal(existing, container, draft = null) {
                         ${selectOptions(prefill ? (prefill.sub_recipe_id != null ? "r" + prefill.sub_recipe_id : prefill.pantry_item_id) : null)}
                     </select>
                     <input type="text" inputmode="decimal" id="ing-qty-${id}" placeholder="${isGramMode() ? "גרם" : 'ק"ג'}" style="width:80px;" value="${prefill && prefill.pct_mode ? countToText(prefill.pct) : prefill && prefill.est_mode ? countToText(prefill.est_n) : prefill && prefill.quantity_g != null ? (prefill.unit_count ? countToText(prefill.quantity_g) : gramsToKgText(prefill.quantity_g)) : (um && gramsFromOriginal(um, null) != null ? gramsToKgText(gramsFromOriginal(um, null)) : "")}">
-                    <button type="button" class="remove-row-btn" data-remove="${id}">✕</button>
+                    <button type="button" class="remove-row-btn" data-remove="${id}" aria-label="הסר שורה">✕</button>
                 </div>
                 ${um ? "" : `<select id="ing-mode-${id}" style="width:auto;font-size:12px;padding:2px 6px;margin:2px 0;">${modeOptionsHtml((prefill && (prefill.pct_mode || prefill.est_mode)) || "", (sources.find((x) => String(x.id) === String(prefill && prefill.pantry_item_id)) || {}).item)}</select><input type="text" inputmode="decimal" id="ing-pw-${id}" placeholder="גרם ליחידה" style="display:none;width:100px;font-size:12px;margin:2px 4px;">`}
                 <div class="line-total" id="ing-line-${id}"></div>

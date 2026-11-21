@@ -42,6 +42,11 @@ export function dropLayers() {
     if (currentModalCleanup) { try { currentModalCleanup(); } catch (e) { /* ignore */ } currentModalCleanup = null; }
     layerActive = false;
 }
+if (typeof window !== "undefined") window.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    const ov = document.querySelector("#modal-root .modal-overlay");
+    if (ov && !document.querySelector(".picker")) attemptClose(ov);
+});
 if (typeof window !== "undefined") window.addEventListener("popstate", () => {
     if (ignorePops > 0) { ignorePops--; return; }
     if (!layerActive) return; // חזור רגיל: ניווט בין מסכים
@@ -56,7 +61,7 @@ if (typeof window !== "undefined") window.addEventListener("popstate", () => {
 export function openModal(innerHtml, { onClose, page = false } = {}) {
     closeModal();
     const root = document.getElementById("modal-root");
-    const overlay = h(`<div class="modal-overlay open ${page ? "page" : ""}"><div class="modal ${page ? "page-modal" : ""}">${innerHtml}</div></div>`);
+    const overlay = h(`<div class="modal-overlay open ${page ? "page" : ""}"><div class="modal ${page ? "page-modal" : ""}" role="dialog" aria-modal="true" tabindex="-1">${innerHtml}</div></div>`);
     // כל הקלדה/שינוי בחלון מסמנים אותו כ"מלוכלך" - סגירה בלחיצה בחוץ או ב"ביטול" תשאל קודם
     overlay.__dirty = false;
     overlay.addEventListener("input", () => { overlay.__dirty = true; });
@@ -64,7 +69,9 @@ export function openModal(innerHtml, { onClose, page = false } = {}) {
     overlay.addEventListener("click", (e) => {
         if (e.target === overlay) attemptClose(overlay);
     });
+    overlay.__opener = document.activeElement;
     root.appendChild(overlay);
+    try { overlay.querySelector(".modal").focus({ preventScroll: true }); } catch (e) { /* לא קריטי */ }
     currentModalCleanup = onClose || null;
     layerOpened();
     return overlay;
@@ -123,7 +130,9 @@ export function toastAction(msg, label, onClick, ms = 10000) {
 
 export function closeModal() {
     const root = document.getElementById("modal-root");
+    const opener = (root.querySelector(".modal-overlay") || {}).__opener;
     root.innerHTML = "";
+    if (opener && opener.isConnected && typeof opener.focus === "function") { try { opener.focus({ preventScroll: true }); } catch (e) { /* לא קריטי */ } }
     if (currentModalCleanup) {
         try { currentModalCleanup(); } catch (e) { /* ignore */ }
         currentModalCleanup = null;

@@ -156,7 +156,7 @@ export async function openOrderModal(supplier, onChanged, startTab = "order") {
                 <div style="flex:2;min-width:0;font-weight:600;">${escapeHtml(l.name)}</div>
                 <button type="button" class="btn btn-secondary btn-small" data-up="${i}" ${i === 0 ? "disabled" : ""}>↑</button>
                 <button type="button" class="btn btn-secondary btn-small" data-down="${i}" ${i === book.list.length - 1 ? "disabled" : ""}>↓</button>
-                <button type="button" class="btn btn-danger btn-small" data-del="${i}">✕</button>
+                <button type="button" class="btn btn-danger btn-small" data-del="${i}" aria-label="מחק">✕</button>
             </div><div class="top-line" style="margin-top:4px;">
                 <input type="text" inputmode="decimal" data-dq="${i}" value="${escapeHtml(l.qty)}" placeholder="כמות רגילה" style="width:42%;">
                 <input type="text" data-du="${i}" value="${escapeHtml(l.unit)}" placeholder="יחידה (למשל ארגז)" style="width:50%;">

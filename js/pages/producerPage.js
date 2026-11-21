@@ -109,7 +109,7 @@ function openProductModal(existing, recipes, onSaved, presetRecipeId = null, pan
             const row = h(`<div class="item-row-inputs"><div class="top-line">
                 <button type="button" class="pick-btn ${item || legacy ? "" : "pk-empty"}" data-pi="${i}" style="flex:2;">${escapeHtml(label)}</button>
                 <input type="text" inputmode="decimal" data-pq="${i}" value="${r.qty || ""}" placeholder="יחידות" style="width:80px;">
-                <button type="button" class="remove-row-btn" data-pr="${i}">✕</button></div></div>`);
+                <button type="button" class="remove-row-btn" data-pr="${i}" aria-label="הסר שורה">✕</button></div></div>`);
             row.querySelector("[data-pi]").onclick = () => {
                 if (!packs.length) { toast("עוד אין אריזות. הגדר אותן בדף היצרן, בשורה \"אריזות\"."); return; }
                 openIngredientPicker({
