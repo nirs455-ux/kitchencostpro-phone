@@ -4,7 +4,8 @@ import { openModal, closeModal, escapeHtml } from "../ui.js";
 import { openImagePicker } from "../imagePicker.js";
 import { getAgentKey } from "../agent.js";
 import { scanCountSheet } from "../repo/scanRepo.js";
-import { countSheetHtml, parseCountAnswer, parseSpoken, suspicious, spokenQty } from "../countAssist.js";
+import { countSheetHtml, countSheetText, parseCountAnswer, parseSpoken, suspicious, spokenQty } from "../countAssist.js";
+import { whatsappUrl } from "../shareText.js";
 
 const fmt = (n) => String(+Number(n).toFixed(3));
 
@@ -16,9 +17,16 @@ export function openCountSheet(rows, date) {
         <div class="muted" style="margin-bottom:8px;">דף עם כל המוצרים לפי הסדר, ועמודה ריקה לכתיבת הכמות. מדפיסים, סופרים בעט, ואז מצלמים את הדף ("📷 צילום דף"). בחר אילו קבוצות להדפיס:</div>
         <div class="chips" id="cs-cats">${cats.map((c) => `<span class="chip active" data-c="${escapeHtml(c)}">${escapeHtml(c)}</span>`).join("")}</div>
         <div class="error-msg"></div>
-        <div class="modal-actions"><button type="button" class="btn btn-secondary" id="cs-cancel">סגור</button><button type="button" class="btn btn-primary" id="cs-print">🖨️ הדפס / שמור PDF</button></div>`);
+        <div class="modal-actions"><button type="button" class="btn btn-secondary" id="cs-cancel">סגור</button><button type="button" class="btn btn-secondary" id="cs-wa">💬 שלח בוואטסאפ</button><button type="button" class="btn btn-primary" id="cs-print">🖨️ הדפס / שמור PDF</button></div>`);
     ov.querySelectorAll("#cs-cats .chip").forEach((c) => { c.onclick = () => c.classList.toggle("active"); });
     ov.querySelector("#cs-cancel").onclick = closeModal;
+    ov.querySelector("#cs-wa").onclick = () => {
+        const sel = new Set([...ov.querySelectorAll("#cs-cats .chip.active")].map((c) => c.dataset.c));
+        const err = ov.querySelector(".error-msg");
+        if (!sel.size) { err.textContent = "בחר לפחות קבוצה אחת"; err.style.display = "block"; return; }
+        const text = countSheetText(rows, { date: date.split("-").reverse().join("/"), cats: sel });
+        if (!window.open(whatsappUrl(text), "_blank", "noopener")) { err.textContent = "הדפדפן חסם את פתיחת הדף. אפשר חלונות קופצים לאתר ונסה שוב."; err.style.display = "block"; }
+    };
     ov.querySelector("#cs-print").onclick = () => {
         const sel = new Set([...ov.querySelectorAll("#cs-cats .chip.active")].map((c) => c.dataset.c));
         const err = ov.querySelector(".error-msg");

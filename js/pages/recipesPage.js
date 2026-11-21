@@ -439,7 +439,7 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
             </tbody></table>
             <div class="card-row" style="margin:8px 0;"><span>סה"כ גולמי</span><b>${fmtPct(pv.totalPct)}% · ${pv.totalGrams} גרם</b></div>
             ${r.final_weight > 0 && !r.is_auto_weight ? `<div class="hint">משקל סופי אחרי בישול וסינון: <b>${Math.round(r.final_weight)} גרם</b> (ניצולת ${Math.round((r.final_weight / r.items.reduce((n, i) => n + (i.unit_count ? 0 : Number(i.quantity_g) || 0), 0)) * 100)}%). האחוזים כאן הם מהמשקל הגולמי של הרכיבים.</div>` : '<div class="hint">המשקלים כאן הם גולמיים (סכום הרכיבים). אם יש ירידה בבישול או בסינון, מזינים משקל סופי בעריכת המתכון.</div>'}
-            <div class="btn-row"><button type="button" class="btn btn-secondary btn-small" id="p-copy">📋 העתק</button><button type="button" class="btn btn-secondary btn-small" id="p-print">🖨 הדפס</button></div>`
+            <div class="btn-row"><button type="button" class="btn btn-secondary btn-small" id="p-copy">📋 העתק</button><button type="button" class="btn btn-secondary btn-small" id="p-wa">💬 שלח בוואטסאפ</button><button type="button" class="btn btn-secondary btn-small" id="p-print">🖨 הדפס</button></div>`
             : '<div class="hint-warn">אין רכיבים עם כמות.</div>';
         } else if (tab === "nutri") {
             const fin = r.final_weight > 0 && !r.is_auto_weight ? r.final_weight : 0;
@@ -499,6 +499,7 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
             ${sc.eggs.map((e) => `<div class="hint-warn" style="background:var(--brand-soft);color:var(--text);">${escapeHtml(eggSummaryText(e))}</div>`).join("")}
             <div class="btn-row">
                 <button type="button" class="btn btn-secondary btn-small" id="g-copy">📋 העתק</button>
+                <button type="button" class="btn btn-secondary btn-small" id="g-wa">💬 שלח בוואטסאפ</button>
                 <button type="button" class="btn btn-secondary btn-small" id="g-print">🖨 הדפס</button>
             </div>` : '<div class="hint-warn">הזן מקדם או משקל גדולים מ-0.</div>'}`;
         } else {
@@ -583,6 +584,8 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
         overlay.querySelectorAll("#p-mode [data-pm]").forEach((bt2) => { bt2.onclick = () => { pctMode = bt2.dataset.pm; scaleGrams = null; draw(); }; });
         const pCopy = overlay.querySelector("#p-copy");
         if (pCopy) pCopy.onclick = async () => { try { await navigator.clipboard.writeText(bakersText()); toast("הועתק"); } catch (e) { toast("לא הצלחתי להעתיק"); } };
+        const pWa = overlay.querySelector("#p-wa");
+        if (pWa) pWa.onclick = () => { if (!window.open(whatsappUrl(bakersText()), "_blank", "noopener")) toast("הדפדפן חסם את פתיחת הדף. אפשר חלונות קופצים לאתר ונסה שוב."); };
         const pPrint = overlay.querySelector("#p-print");
         if (pPrint) pPrint.onclick = () => printLabel(r.name + " - באחוזים", bakersText());
 
@@ -640,6 +643,7 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
             const sc = f ? scaleRecipe(r.items, f, rows, { round: gen.round }) : null;
             const genText = () => [`${r.name} (פי ${+f.toFixed(3)})`, ...[...sc.rows].sort((a, b) => b.grams - a.grams).map((o) => `${nameOf(o)}${o.egg_part && o.egg_part !== "whole" ? " (" + EGG_PART_UI[o.egg_part] + ")" : ""}: ${o.unit_count ? o.grams + " יחידות" : fmtQty(o.grams)}`), `סה"כ: ${fmtQty(sc.totalGrams)}`, ...sc.eggs.map(eggSummaryText)].join("\n");
             bind("#g-copy", "onclick", async () => { try { await navigator.clipboard.writeText(genText()); toast("הועתק"); } catch (e) { toast("לא הצלחתי להעתיק"); } });
+            bind("#g-wa", "onclick", () => { if (!window.open(whatsappUrl(genText()), "_blank", "noopener")) toast("הדפדפן חסם את פתיחת הדף. אפשר חלונות קופצים לאתר ונסה שוב."); });
             bind("#g-print", "onclick", () => printLabel(r.name + " - מוגדל", genText()));
         }
 

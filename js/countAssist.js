@@ -35,6 +35,18 @@ tr{page-break-inside:avoid}
 </body></html>`;
 }
 
+// רשימת הספירה כטקסט לשליחה בהודעה: קבוצה, ואז שורה לכל מוצר עם היחידה והצפוי (אם יש)
+export function countSheetText(rows, { date = "", cats = null, title = "דף ספירת מלאי" } = {}) {
+    const use = rows.filter((r) => !cats || !cats.size || cats.has(r.cat));
+    const out = [`${title}${date ? " " + date : ""}`];
+    let last = null;
+    for (const r of use) {
+        if (r.cat !== last) { out.push("", `*${r.cat}*`); last = r.cat; }
+        out.push(`${r.n}. ${r.name} (${r.unit})${r.expected == null || r.expected === "" ? "" : " - צפוי " + r.expected}`);
+    }
+    return out.join("\n");
+}
+
 // ---------- קריאת דף בכתב יד (Gemini) ----------
 export const COUNT_SCAN_PROMPT = `You are reading a photo of a handwritten inventory count sheet (Hebrew). The sheet is a printed table with columns: # (row number), product name, unit, expected quantity (printed), counted quantity (filled in BY HAND, last column). There may be several categories.
 For EVERY row that has a handwritten number in the counted column, return it. Skip rows whose counted cell is empty. NEVER copy the printed expected quantity as the counted value. Numbers may use a decimal point or comma ("4.5" or "4,5"); "½" means .5. If a handwritten number is hard to read, still give your best reading and set "uncertain" to true.
