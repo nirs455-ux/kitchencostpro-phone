@@ -18,6 +18,8 @@ import { textToGrams, gramsToKgText, describeQty, qtyWarning, isGramMode } from 
 import { matchesDeep, normalize, orderCategories } from "./ingredientPicker.js";
 import { getFilter } from "../filters.js";
 import { assignAutoSubs, subOf } from "../autoGroups.js";
+import { openPantryCategories, pickPantryTarget } from "./pantryCategoriesModal.js";
+import { movePantryItems } from "../repo/pantryCategories.js";
 import { effectivePrice } from "../formulas.js";
 import { buildInventoryView } from "../repo/inventoryRepo.js";
 import { openPriceHistory } from "./priceHistoryModal.js";
@@ -90,10 +92,10 @@ export async function renderPantryProducts(container) {
     container.innerHTML = `
         <div class="px-top"><input type="search" id="px-q" placeholder="חיפוש מוצר..." autocomplete="off">
             <div class="seg px-view"><button type="button" data-v="cats" class="${view === "cats" ? "active" : ""}">קטגוריות</button><button type="button" data-v="list" class="${view === "list" ? "active" : ""}">רשימה</button></div></div>
-        <div class="btn-row" style="margin:6px 0;"><button type="button" class="btn btn-secondary btn-small" id="px-sel">מחיקה מרובה</button><button type="button" class="btn btn-secondary btn-small" id="px-dups">כפילויות</button><button type="button" class="btn btn-secondary btn-small" id="px-all" style="display:none;">בחר את כל המוצגים</button></div>
+        <div class="btn-row" style="margin:6px 0;"><button type="button" class="btn btn-secondary btn-small" id="px-sel">מחיקה מרובה</button><button type="button" class="btn btn-secondary btn-small" id="px-dups">כפילויות</button><button type="button" class="btn btn-secondary btn-small" id="px-cats">🗂 קטגוריות</button><button type="button" class="btn btn-secondary btn-small" id="px-all" style="display:none;">בחר את כל המוצגים</button></div>
         <div id="px-chips"></div>
         <div id="pantry-list"></div>
-        <div class="px-bulk" id="px-bulk" style="display:none;"><b id="px-bulk-n"></b><button type="button" class="btn btn-danger btn-small" id="px-bulk-del">מחק</button><button type="button" class="btn btn-secondary btn-small" id="px-bulk-cancel">ביטול</button></div>
+        <div class="px-bulk" id="px-bulk" style="display:none;"><b id="px-bulk-n"></b><button type="button" class="btn btn-primary btn-small" id="px-bulk-move">העבר לקטגוריה</button><button type="button" class="btn btn-danger btn-small" id="px-bulk-del">מחק</button><button type="button" class="btn btn-secondary btn-small" id="px-bulk-cancel">ביטול</button></div>
         <button class="fab-add" id="btn-add">+</button>`;
     const list = container.querySelector("#pantry-list");
     const chipsEl = container.querySelector("#px-chips");
@@ -109,6 +111,7 @@ export async function renderPantryProducts(container) {
         bulkEl.style.display = selMode ? "flex" : "none";
         container.querySelector("#px-bulk-n").textContent = sel.size ? `נבחרו ${sel.size}` : "בחר מוצרים";
         container.querySelector("#px-bulk-del").disabled = !sel.size;
+        container.querySelector("#px-bulk-move").disabled = !sel.size;
         list.classList.toggle("px-selecting", selMode);
         container.querySelector("#btn-add").style.display = selMode ? "none" : "";
         list.querySelectorAll(".px-row").forEach((r) => r.classList.toggle("sel", selMode && sel.has(Number(r.dataset.id))));
@@ -143,12 +146,16 @@ export async function renderPantryProducts(container) {
         } else {
             const searching = !!normalize(q) || selMode; // במחיקה מרובה הכול פתוח
             if (!rows.length) { list.innerHTML = '<div class="empty-state">לא נמצא מוצר תואם.</div>'; return; }
-            for (const cat of orderCategories(rows.map((r) => r.category))) {
+            // קטגוריות עם מוצרים בסדר הרגיל, והריקות (מעומעמות) בסוף
+            const used = orderCategories(rows.map((r) => r.category));
+            const empties = searching ? [] : orderCategories(Object.keys(CATEGORY_GROUPS)).filter((c) => !used.includes(c));
+            for (const cat of [...used, ...empties]) {
                 const inCat = rows.filter((r) => r.category === cat);
                 const open = searching || pxOpen.has("c:" + cat);
                 const [ic] = catStyle(cat);
-                const sec = h(`<div class="px-sec"><div class="px-sh" data-k="c:${escapeHtml(cat)}"><span class="px-ic" style="background:${catStyle(cat)[1]};">${ic}</span><b>${escapeHtml(cat)}</b><span class="px-cnt">${inCat.length}</span><span class="px-chev">${open ? "▾" : "◂"}</span></div></div>`);
+                const sec = h(`<div class="px-sec"${inCat.length ? "" : ' style="opacity:.55;"'}><div class="px-sh" data-k="c:${escapeHtml(cat)}"><span class="px-ic" style="background:${catStyle(cat)[1]};">${ic}</span><b>${escapeHtml(cat)}</b><span class="px-cnt">${inCat.length}</span><span class="px-chev">${open ? "▾" : "◂"}</span></div></div>`);
                 if (open) {
+                    if (!inCat.length) sec.appendChild(h('<div class="empty-state" style="padding:8px 14px;">אין מוצרים בקטגוריה הזו.</div>'));
                     const subs = [...new Set(inCat.map((r) => subOf(r)))];
                     const hasSubs = subs.some(Boolean);
                     for (const sub of subs.sort((a, b) => a.localeCompare(b, "he"))) {
@@ -175,6 +182,14 @@ export async function renderPantryProducts(container) {
     container.querySelectorAll(".px-view [data-v]").forEach((b) => { b.onclick = async () => { view = b.dataset.v; await setSetting("pantry_view", view); renderPantryProducts(container); }; });
     container.querySelector("#btn-add").onclick = () => openPantryModal(null, container);
     container.querySelector("#px-dups").onclick = () => openDuplicatesModal(() => renderPantryProducts(container));
+    container.querySelector("#px-cats").onclick = () => openPantryCategories(() => renderPantryProducts(container));
+    container.querySelector("#px-bulk-move").onclick = async () => {
+        if (!sel.size) return;
+        const target = await pickPantryTarget();
+        if (!target) return;
+        try { const n = await movePantryItems([...sel], target.category, target.sub); toast(`הועברו ${sel.size} מוצרים אל ${target.category}${target.sub ? " / " + target.sub : ""}`); } catch (e) { toast(e.message); }
+        renderPantryProducts(container);
+    };
     container.querySelector("#px-sel").onclick = () => { selMode = true; sel.clear(); draw(); };
     container.querySelector("#px-bulk-cancel").onclick = () => { selMode = false; sel.clear(); draw(); };
     container.querySelector("#px-all").onclick = () => { list.querySelectorAll(".px-row").forEach((r) => sel.add(Number(r.dataset.id))); syncBulk(); };

@@ -15,6 +15,7 @@ import { initCloud, getCloudStatus } from "./cloud/cloudGlue.js";
 import { getSetting, setSetting } from "./repo/settingsRepo.js";
 import { freezeEstimatedLines } from "./repo/pantryRepo.js";
 import { migrateLineYield } from "./repo/lineYieldMigration.js";
+import { loadPantryCategories } from "./repo/pantryCategories.js";
 import { dbGetAll } from "./db.js";
 import { downloadExport } from "./export.js";
 import { applyTheme } from "./theme.js";
@@ -153,6 +154,7 @@ try { await openDB(); } catch (e) {
 window.addEventListener("kcp-db-blocked", () => toastAction("האפליקציה פתוחה גם בלשונית אחרת", "רענן", () => location.reload(), 60000));
 await initLocale();
 await loadAddons(); // אילו תוספות פעילות (לפני שהמסכים מצוירים)
+try { await loadPantryCategories(); } catch (e) { /* נשארת רשימת ברירת המחדל */ } // קטגוריות חומרי הגלם שהמשתמש ניהל
 // סמל מטבע וכו' לפני שהמסכים מצוירים
 if (!(await getSetting("est_yield_default_v139", false))) { try { await freezeEstimatedLines(); await setSetting("est_yield_default_v139", true); } catch (e) { /* נסיון חוזר בהפעלה הבאה */ } }
 try { await migrateLineYield(); } catch (e) { /* ניסיון חוזר בהפעלה הבאה */ } // ניצולת עוברת לשורות המתכון, בלי לשנות אף עלות (נבדק לפני כתיבה)

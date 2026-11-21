@@ -84,6 +84,7 @@ export async function addPantryItem(data) {
         if (est) { yieldPct = est; yieldEst = true; }
     }
 
+    if (data.category && !(data.category in CATEGORY_GROUPS)) data = { ...data, category: "כללי" }; // קטגוריה שנמחקה: כללי
     if (!name || !(data.category in CATEGORY_GROUPS) || !UNIT_TYPES.includes(data.unit_type)) {
         throw new Error("נתונים חסרים או שגויים");
     }
@@ -172,6 +173,7 @@ export async function updatePantryItem(id, data) {
         return;
     }
 
+    if (data.category && !(data.category in CATEGORY_GROUPS)) data = { ...data, category: "כללי" }; // קטגוריה שנמחקה: כללי
     if (!(data.category in CATEGORY_GROUPS) || !UNIT_TYPES.includes(data.unit_type)) {
         throw new Error("נתונים חסרים או שגויים");
     }

@@ -169,7 +169,7 @@ export async function applyScannedInvoice({ items, supplierId, invoiceDate, imag
             unitType = existing.unit_type;
             if (!existing.parent_id) {
                 category = it.category || existing.category;
-                if (!(category in CATEGORY_GROUPS)) throw new Error(`${where}: קטגוריה לא תקינה עבור '${name}'`);
+                if (!(category in CATEGORY_GROUPS)) category = "כללי"; // קטגוריה שנמחקה
             }
         } else {
             category = it.category;
