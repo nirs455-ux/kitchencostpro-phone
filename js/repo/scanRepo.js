@@ -3,7 +3,7 @@
 import { dbGetAll, dbGet, dbPut } from "../db.js";
 import { geminiFetch } from "./gemini.js";
 import { estimateYield } from "../yieldKb.js";
-import { matchPantryName, sameWords, conflicts, safePair, findSameNew, normName } from "../scanMatch.js";
+import { matchPantryName, sameWords, conflicts, safePair, findSameNew, normName, suggestPantry } from "../scanMatch.js";
 import { CATEGORY_GROUPS, UNIT_TYPES } from "../constants.js";
 import { saveInvoice, validateInvoicePayload } from "./suppliersRepo.js";
 import { getSetting, setSetting } from "./settingsRepo.js";
@@ -131,6 +131,7 @@ export async function scanInvoiceImage(apiKey, file, onRetry) {
             matched_category: match ? match.category : null,
             matched_price: match ? match.price : null,
             matched_unit_type: match ? match.unit_type : null,
+            suggestions: match ? [] : suggestPantry(name, pantryRows).map((s) => { const r = pantryRows.find((x) => x.id === s.id); return { ...s, category: r.category, unit_type: r.unit_type }; }),
         });
     }
 

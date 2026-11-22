@@ -338,6 +338,8 @@ export async function openScanModal({ supplierAware, onDone, initialFile = null 
                     ${nameEmpty ? '<div class="hint-warn">חסר שם מוצר - הזן שם, או לחץ "הסר שורה" אם זו לא שורת מוצר (למשל מבצע).</div>' : ""}
                     <div class="field"><label>שם מוצר</label><input type="text" id="scan-name-${idx}" value="${escapeHtml(it.name)}"></div>
                     ${it.auto_matched ? `<div class="hint">זוהה כ-"${escapeHtml(it.auto_matched)}" שבחומרי הגלם</div>` : ""}
+                    ${it._manual ? `<div class="hint">חובר ל-"${escapeHtml(it._manual)}" לפי בחירתך. השם יישמר לפעם הבאה. <button type="button" class="btn btn-secondary btn-small" data-unlink="${idx}">זה מוצר חדש</button></div>` : ""}
+                    ${!it.matched_pantry_item_id && it.suggestions && it.suggestions.length ? `<div class="hint">אולי זה אחד מחומרי הגלם האלה? לחיצה מחברת אליו:</div><div class="pk-chips" style="flex-wrap:wrap;">${it.suggestions.map((s, k) => `<button type="button" class="chip" data-sug="${idx}:${k}">${escapeHtml(s.name)}${s.unpriced ? " (בלי מחיר)" : ` (${cur()}${Number(s.price).toFixed(2)})`}</button>`).join("")}</div>` : ""}
                     <div class="field"><label>כמות</label><input type="number" step="any" id="scan-qty-${idx}" value="${it.quantity}"></div>
                     <div class="field">
                         <label>מחיר יחידה${priceChanged ? " - שונה מהמחיר הקיים!" : ""}</label>
@@ -402,6 +404,19 @@ export async function openScanModal({ supplierAware, onDone, initialFile = null 
                 row.querySelector(`#scan-pack-${idx}`).addEventListener("input", updatePreview);
                 row.querySelector(`#scan-pack-unit-${idx}`).addEventListener("change", updatePreview);
             }
+            row.querySelectorAll("[data-sug]").forEach((b) => { b.onclick = () => {
+                captureInputs();
+                const [i, k] = b.dataset.sug.split(":").map(Number);
+                const s = scannedItems[i].suggestions[k];
+                Object.assign(scannedItems[i], { matched_pantry_item_id: s.id, matched_category: s.category, matched_price: s.price, matched_unit_type: s.unit_type, auto_matched: null, _manual: s.name });
+                renderResults();
+            }; });
+            const unlinkBtn = row.querySelector("[data-unlink]");
+            if (unlinkBtn) unlinkBtn.onclick = () => {
+                captureInputs();
+                Object.assign(it, { matched_pantry_item_id: null, matched_category: null, matched_price: null, matched_unit_type: null, _manual: null });
+                renderResults();
+            };
             const promoBtn = row.querySelector("[data-promo]");
             if (promoBtn) promoBtn.onclick = () => {
                 captureInputs();

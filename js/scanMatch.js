@@ -74,6 +74,28 @@ export function matchPantryName(name, pantryRows, aliases = {}, aiName = null) {
     return out;
 }
 
+// מילות דרגה, חלק ואריזה שלא מבדילות בין מוצרים ("מס' 9", "חלק")
+const SUGGEST_NOISE = new Set(["מס", "חלק", "ארגז", "אריזה", "יח", "קג", "ק", "ג", "גר", "של", "עם", "בלי"]);
+const coreStems = (s) => [...new Set(stemsOf(s).filter((w) => w.length > 1 && !SUGGEST_NOISE.has(w)))];
+
+// הצעות לשורה בחשבונית שלא הותאמה: חומרי גלם שחולקים איתה מילה מהותית. רק הצעה, לא התאמה. מוצר בלי מחיר קודם.
+// כל מילות המוצר מופיעות בשורה ("אסאדו" בתוך "אסאדו עגל מס' 9 חלק") = הצעה חזקה; חלק מהמילים = הצעה חלשה.
+export function suggestPantry(name, pantryRows, limit = 4) {
+    const q = coreStems(name);
+    if (!q.length) return [];
+    const out = [];
+    for (const r of pantryRows) {
+        if (r.parent_id) continue;
+        const p = coreStems(r.name);
+        if (!p.length) continue;
+        const shared = p.filter((w) => q.includes(w)).length;
+        if (!shared || shared / p.length < 0.5) continue;
+        if (conflicts(name, r.name) || pctOf(name) !== pctOf(r.name)) continue;
+        out.push({ id: r.id, name: r.name, price: r.price, strong: shared === p.length, shared, unpriced: !(Number(r.price) > 0) });
+    }
+    return out.sort((a, b) => (b.strong - a.strong) || (b.shared - a.shared) || (b.unpriced - a.unpriced) || a.name.length - b.name.length).slice(0, limit);
+}
+
 // מוצר חדש שנוצר כבר באותה סריקה ושם זהה או אותן מילים: list = [{ name, id }]
 export function findSameNew(name, list) {
     const k = normName(name);
