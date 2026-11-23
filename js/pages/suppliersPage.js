@@ -366,7 +366,7 @@ function openInvoiceModal(existing, suppliers, pantryItems, container) {
                 </select>
             </div>
         </div>
-        <div class="card" style="background:var(--brand-soft);">
+        <div>
             ${existing && existing.petty_cash ? "" : '<button type="button" class="btn-link" id="f-petty-show">＋ קופה קטנה</button>'}
             <div class="checkbox-field" id="f-petty-wrap" style="${existing && existing.petty_cash ? "" : "display:none;"}"><input type="checkbox" id="f-petty" ${existing && existing.petty_cash ? "checked" : ""}>
                 <label for="f-petty">קופה קטנה ${info("עובד קנה בדרך וקיבל החזר במזומן, והביא קבלה. אפשר לסמן מי רכש ואם הוחזר לו.")}</label></div>
@@ -433,8 +433,6 @@ function openInvoiceModal(existing, suppliers, pantryItems, container) {
                     <div class="field" style="margin:0;"><label>כמה שילמת (סה"כ)</label>
                         <input type="number" step="any" inputmode="decimal" id="inv-line-${id}" value="${prefill && !prefill.no_price ? (prefill.line_total ?? Math.round(prefill.quantity * prefill.unit_price * 100) / 100) : ""}"></div>
                 </div>
-                <div class="checkbox-field" style="margin-top:6px;"><input type="checkbox" id="inv-np-${id}" ${prefill && prefill.no_price ? "checked" : ""}><label for="inv-np-${id}">בלי מחיר בחשבונית (אשלים אחר כך)</label></div>
-                <div class="checkbox-field" id="inv-upd-wrap-${id}" style="display:none;"><input type="checkbox" id="inv-upd-${id}" ${existing && !(prefill && prefill.no_price) ? "" : "checked"}><label for="inv-upd-${id}">עדכן את המחיר בחומרי הגלם לפי השורה הזו</label></div>
                 <div class="hint" id="inv-pk-prev-${id}" style="margin:6px 0;font-weight:600;"></div>
                 ${prefill && prefill.stock_factor ? `<div class="hint">כל יחידה בחשבונית = ${Math.round(prefill.stock_factor * 1000) / 1000} יחידות מלאי (נשמר מהסריקה)</div>` : ""}
                 <details style="margin-top:4px;">
@@ -466,17 +464,12 @@ function openInvoiceModal(existing, suppliers, pantryItems, container) {
         const fmt = (x, d) => String(+x.toFixed(d));
         // השדה שהוזן אחרון (מחיר / סכום) נשאר כמו שהוזן; שינוי כמות מחשב מחדש את השדה השני
         let locked = "price";
-        const npEl = row.querySelector(`#inv-np-${id}`);
-        const updWrap = row.querySelector(`#inv-upd-wrap-${id}`);
-        npEl.addEventListener("change", () => { if (npEl.checked) { priceEl.value = ""; totalEl.value = ""; recalc(); } });
         priceEl.addEventListener("input", () => {
-            npEl.checked = false;
             locked = "price";
             if (num(qtyEl) > 0 && !isNaN(num(priceEl))) totalEl.value = (num(qtyEl) * num(priceEl)).toFixed(2);
             recalc();
         });
         totalEl.addEventListener("input", () => {
-            npEl.checked = false;
             locked = "total";
             if (num(qtyEl) > 0 && !isNaN(num(totalEl))) priceEl.value = fmt(num(totalEl) / num(qtyEl), 4);
             recalc();
@@ -526,7 +519,7 @@ function openInvoiceModal(existing, suppliers, pantryItems, container) {
             let price = num(priceEl);
             if (isNaN(price) && q > 0 && !isNaN(num(totalEl))) price = num(totalEl) / q;
             if (!ut) {
-                row.querySelector(`#inv-pk-prev-${id}`).textContent = !isNaN(price) && price > 0 ? `מחיר ליחידה: ${cur()}${price.toFixed(2)}` : "";
+                row.querySelector(`#inv-pk-prev-${id}`).textContent = "";
                 return;
             }
             const { factor, error } = computeStockFactor(ut, parseFloat(row.querySelector(`#inv-case-${id}`).value) || null,
@@ -546,20 +539,18 @@ function openInvoiceModal(existing, suppliers, pantryItems, container) {
             const old = p && p.price != null ? ` (בחומרי הגלם כרגע: ${cur()}${Number(p.price).toFixed(2)})` : "";
             const packs = q > 0 ? q : 1;
             const unitsText = ut === "unit" && (factor || 1) > 1 && q > 0 ? `${packs === 1 ? "אריזה אחת" : packs + " אריזות"} × ${+(factor).toFixed(3)} = ${+(packs * factor).toFixed(3)} יחידות. ` : "";
-            prev.textContent = !isNaN(price) && price > 0 ? `${unitsText}מחיר בחומרי הגלם: ${cur()}${(price / (factor || 1)).toFixed(2)} ל${label}${old}` : "";
+            prev.textContent = unitsText.trim();
         };
         for (const el of [qtyEl, priceEl, totalEl, row.querySelector(`#inv-case-${id}`), row.querySelector(`#inv-pack-${id}`)]) el.addEventListener("input", updatePreview);
         packSel.addEventListener("change", updatePreview);
         pantrySel.addEventListener("change", () => {
             // factor שנשמר בשורה שייך למוצר הקודם - מחליפים מוצר = מתחילים מחדש
             if (row.dataset.factorPantry !== pantrySel.value) row.dataset.stockFactor = "";
-            syncNew(); syncPack(); syncUpd();
+            syncNew(); syncPack();
         });
         utSel.addEventListener("change", () => { syncNew(); syncPack(); });
-        const syncUpd = () => { updWrap.style.display = pantrySel.value && pantrySel.value !== "__new__" ? "flex" : "none"; };
         syncNew();
         syncPack();
-        syncUpd();
 
         // ---- קישור אוטומטי לחומרי הגלם לפי השם (בלי לגלול ברשימה) ----
         const nameEl = row.querySelector(`#inv-name-${id}`);
@@ -724,6 +715,13 @@ function openInvoiceModal(existing, suppliers, pantryItems, container) {
             el.textContent = msg;
             el.style.display = "block";
         };
+        // המחיר בחומרי הגלם מתעדכן רק אם אין חשבונית חדשה יותר של אותו מוצר
+        const invDate = overlay.querySelector("#f-date").value;
+        const latestInv = new Map();
+        for (const inv of await listInvoicesWithItems()) {
+            if (existing && inv.id === existing.id) continue;
+            for (const li of inv.items) if (li.pantry_item_id && (inv.invoice_date || "") > (latestInv.get(li.pantry_item_id) || "")) latestInv.set(li.pantry_item_id, inv.invoice_date || "");
+        }
         for (const row of box.querySelectorAll(".item-row-inputs")) {
             const id = row.id.replace("inv-row-", "");
             const product_name = overlay.querySelector(`#inv-name-${id}`).value;
@@ -731,11 +729,11 @@ function openInvoiceModal(existing, suppliers, pantryItems, container) {
             const unit_price = overlay.querySelector(`#inv-price-${id}`).value;
             const line_total = overlay.querySelector(`#inv-line-${id}`).value;
             const sel = overlay.querySelector(`#inv-pantry-${id}`).value;
-            const noPrice = overlay.querySelector(`#inv-np-${id}`).checked && !unit_price && !line_total;
-            if (!(product_name && quantity && (unit_price || line_total || noPrice))) {
-                if (product_name || quantity || unit_price || line_total) return showErr(`שורה לא מלאה: ${product_name || "(ללא שם)"} - מלא שם, כמות ומחיר (או סכום), או הסר את השורה`);
+            if (!(product_name && quantity)) {
+                if (product_name || quantity || unit_price || line_total) return showErr(`שורה לא מלאה: ${product_name || "(ללא שם)"} - מלא שם וכמות, או הסר את השורה`);
                 continue;
             }
+            const noPrice = !unit_price && !line_total; // בלי מחיר: נשמרת כך, ואפשר להשלים אחר כך
             const item = { product_name, quantity, unit_price, line_total, pantry_item_id: sel === "__new__" ? null : sel || null, stock_factor: row.dataset.stockFactor || null, ...(noPrice ? { no_price: true } : {}) };
 
             // סוג יחידה, גודל אריזה וארגז -> stock_factor (יחידות חומרי גלם ביחידה אחת של השורה)
@@ -771,7 +769,7 @@ function openInvoiceModal(existing, suppliers, pantryItems, container) {
                 if (newProducts.some((np) => np.item.product_name.trim().toLowerCase() === key)) return showErr(`'${product_name}' מופיע פעמיים כמוצר חדש`);
                 if (!(q > 0) || Number.isNaN(pantryPrice)) return showErr("כמות/מחיר לא תקינים");
                 newProducts.push({ item, category, unitType, unitAmount, price: pantryPrice });
-            } else if (existingPantry && overlay.querySelector(`#inv-upd-${id}`).checked && q > 0 && Number.isFinite(pantryPrice) && pantryPrice > 0 && overlay.querySelector("#f-doctype").value === "invoice") {
+            } else if (existingPantry && !(latestInv.get(existingPantry.id) > invDate) && q > 0 && Number.isFinite(pantryPrice) && pantryPrice > 0 && overlay.querySelector("#f-doctype").value === "invoice") {
                 priceUpdates.push({ id: existingPantry.id, price: pantryPrice });
                 const oldPrice = Number(existingPantry.price);
                 if (oldPrice > 0 && (pantryPrice / oldPrice > 5 || pantryPrice / oldPrice < 0.2)) {
