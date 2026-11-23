@@ -314,11 +314,12 @@ export async function openScanModal({ supplierAware, onDone, initialFile = null 
             const unitPriceNum = parseFloat(it.unit_price) || 0;
             const defFactor = it.default_factor > 0 && !it._pack && !it._case ? it.default_factor : 1;
             const cmpPrice = unitPriceNum / defFactor; // מחיר ליחידת חומרי גלם
-            const relChange = it.matched_pantry_item_id && it.matched_price > 0 ? Math.abs(cmpPrice - it.matched_price) / it.matched_price : 0;
+            const relChange = it.matched_pantry_item_id && it.matched_price > 0 && unitPriceNum > 0 ? Math.abs(cmpPrice - it.matched_price) / it.matched_price : 0;
             const priceChanged = it.matched_pantry_item_id && it.matched_price != null && relChange >= 0.01;
             const ut = rowUnit(it);
             const packUnits = ut === "liter" ? [["l", "ליטר"], ["ml", 'מ"ל']] : [["kg", 'ק"ג'], ["g", "גרם"]];
             const nameEmpty = !String(it.name || "").trim();
+            const noPrice = it.unit_price === null || it.unit_price === undefined || String(it.unit_price).trim() === "";
             // חריגות שכדאי לבדוק (המחיר בחומרי הגלם הוא ליחידת חומרי גלם, לכן לא משווים כשיש גודל אריזה/ארגז)
             const flags = [];
             if (it.matched_pantry_item_id && it.matched_price > 0 && unitPriceNum > 0 && !it._pack && !it._case) {
@@ -332,7 +333,7 @@ export async function openScanModal({ supplierAware, onDone, initialFile = null 
                 flags.push("השם מופיע יותר מפעם אחת בקבלה - ייתכן שצריך לאחד שורות");
             }
             // שורה "תקינה" = מוכרת בחומרי הגלם, בלי חריגות ובלי שינוי מחיר מעל 5% - מוסתרת, ורק מה שדורש תשומת לב מוצג
-            const needsAttention = !it.matched_pantry_item_id || nameEmpty || flags.length > 0 || relChange >= 0.05;
+            const needsAttention = !it.matched_pantry_item_id || nameEmpty || noPrice || flags.length > 0 || relChange >= 0.05;
             if (needsAttention) attentionCount++; else okCount++;
             const row = h(`
                 <div class="item-row-inputs" data-ok="${needsAttention ? 0 : 1}" style="${needsAttention ? "" : "display:none;"}${priceChanged ? "border-color:var(--danger);background:#fdecea;" : ""}">
@@ -346,6 +347,7 @@ export async function openScanModal({ supplierAware, onDone, initialFile = null 
                     ${it.discount_applied ? `<div class="hint">כולל מבצע: הנחה ${cur()}${it.discount_applied.toFixed(2)} שולבה במחיר (מחיר מחירון ${cur()}${Number(it.list_unit_price).toFixed(2)} ליחידה)</div>` : ""}
                     ${flags.map((f) => `<div class="hint-warn">⚠ ${escapeHtml(f)}</div>`).join("")}
                     ${nameEmpty ? '<div class="hint-warn">חסר שם מוצר - הזן שם, או לחץ "הסר שורה" אם זו לא שורת מוצר (למשל מבצע).</div>' : ""}
+                    ${noPrice ? '<div class="hint-warn">אין מחיר בחשבונית. השורה תישמר בלי מחיר, ואפשר להשלים אותו אחר כך.</div>' : ""}
                     <div class="field"><label>שם מוצר</label><input type="text" id="scan-name-${idx}" value="${escapeHtml(it.name)}"></div>
                     ${it.auto_matched ? `<div class="hint">זוהה כ-"${escapeHtml(it.auto_matched)}" שבחומרי הגלם</div>` : ""}
                     ${askSupplier(it) ? `<div class="hint-warn">${it.known_suppliers.map((id) => escapeHtml(supplierName(id))).join(", ")} כבר מספק את המוצר הזה. זה ספק נוסף למוצר?</div>
@@ -356,7 +358,7 @@ export async function openScanModal({ supplierAware, onDone, initialFile = null 
                     <div class="field"><label>כמות</label><input type="number" step="any" id="scan-qty-${idx}" value="${it.quantity}"></div>
                     <div class="field">
                         <label>מחיר יחידה${priceChanged ? " - שונה מהמחיר הקיים!" : ""}</label>
-                        <input type="number" step="any" id="scan-price-${idx}" value="${it.unit_price}" style="${priceChanged ? "border-color:var(--danger);color:var(--danger);font-weight:700;" : ""}">
+                        <input type="number" step="any" id="scan-price-${idx}" value="${it.unit_price ?? ""}" style="${priceChanged ? "border-color:var(--danger);color:var(--danger);font-weight:700;" : ""}">
                         ${priceChanged ? `<div class="hint" style="color:var(--danger);">מחיר קודם: ${cur()}${it.matched_price.toFixed(2)} → מחיר חדש: ${cur()}${cmpPrice.toFixed(2)}${defFactor !== 1 ? " (לפי האריזה מהקנייה הקודמת)" : ""}</div>` : ""}
                     </div>
                     <div class="field">

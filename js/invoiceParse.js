@@ -14,7 +14,7 @@ export const INVOICE_SCAN_PROMPT =
     '    {"name": "שם המוצר בעברית", "quantity": 1.0, "unit_price": 10.0, "line_total": 10.0, "is_discount": false, "category_guess": "ירקניה", "unit_guess": "weight"}\n' +
     "  ]\n" +
     "}\n" +
-    "quantity ו-unit_price חייבים להיות מספרים. line_total הוא הסכום שמודפס בשורה (יכול להיות שלילי). " +
+    "quantity חייב להיות מספר (הכמות או המשקל המודפסים בשורה). unit_price הוא מספר, או null אם בשורה לא מודפס מחיר ולא סכום: אל תעתיק לשדה המחיר את הכמות או המשקל, ואל תמציא מחיר. line_total הוא הסכום שמודפס בשורה (יכול להיות שלילי). " +
     "אם לא ניתן לקרוא שורה בבירור - דלג עליה. אל תמציא נתונים שלא מופיעים בתמונה.\n" +
     "שורת מבצע/הנחה שמתייחסת למוצר מסוים (למשל 'מבצע 3 ב-50' או שורה עם סכום שלילי מתחת למוצר): " +
     "החזר אותה כשורה נפרדת עם is_discount=true ו-line_total=סכום ההנחה כפי שמודפס (שלילי). " +
@@ -100,7 +100,7 @@ export function mergeDiscountLines(items) {
         if (!it || typeof it !== "object" || Array.isArray(it)) continue;
         const name = String(it.name ?? "").trim();
         const qty = toFloat(it.quantity);
-        const price = toFloat(it.unit_price);
+        let price = toFloat(it.unit_price);
         const lineTotal = toFloat(it.line_total);
         const amount = lineTotal !== null ? lineTotal : (qty !== null && price !== null ? qty * price : null);
         const negative = (amount !== null && amount < 0) || (price !== null && price < 0);
@@ -118,7 +118,9 @@ export function mergeDiscountLines(items) {
             }
             continue;
         }
-        if (qty === null || price === null) { skipped++; continue; }
+        if (qty === null) { skipped++; continue; }
+        // בלי מחיר ליחידה אבל יש סכום שורה: המחיר נגזר ממנו. בלי שניהם: השורה נשמרת בלי מחיר (null) ולא נזרקת
+        if (price === null && lineTotal !== null && qty > 0) price = round(lineTotal / qty, 4);
         const cat = String(it.category_guess ?? "").trim();
         const unit = String(it.unit_guess ?? "").trim();
         merged.push({
@@ -129,7 +131,7 @@ export function mergeDiscountLines(items) {
         });
     }
     for (const m of merged) {
-        if (m.discount_applied && m.quantity > 0) {
+        if (m.discount_applied && m.quantity > 0 && m.unit_price !== null) {
             m.list_unit_price = m.unit_price;
             m.unit_price = round(Math.max(m.quantity * m.unit_price - m.discount_applied, 0) / m.quantity, 4);
         }

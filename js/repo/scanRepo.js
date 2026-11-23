@@ -153,7 +153,8 @@ export async function applyScannedInvoice({ items, supplierId, invoiceDate, imag
         const name = (it.name || "").trim();
         if (!name) throw new Error(`${where}: יש למלא שם מוצר, או להסיר את השורה`);
         const quantity = parseFloat(it.quantity);
-        const unitPrice = parseFloat(it.unit_price);
+        const noPrice = it.unit_price === null || it.unit_price === undefined || String(it.unit_price).trim() === ""; // אין מחיר בחשבונית
+        const unitPrice = noPrice ? 0 : parseFloat(it.unit_price);
         if (!Number.isFinite(quantity) || !Number.isFinite(unitPrice)) throw new Error(`${where}: כמות/מחיר לא תקינים עבור '${name}'`);
         if (quantity <= 0 || unitPrice < 0) throw new Error(`${where}: כמות חייבת להיות גדולה מ-0 ומחיר לא שלילי עבור '${name}'`);
 
@@ -196,8 +197,8 @@ export async function applyScannedInvoice({ items, supplierId, invoiceDate, imag
         // לא הוזנה אריזה/ארגז: משתמשים באלה של הקנייה הקודמת של אותו מוצר
         if (existing && !unitsPerCase && !packageSize && it.default_factor > 0) factor = it.default_factor;
         const stockFactor = factor && factor !== 1 ? factor : null;
-        const pantryPrice = unitPrice / (factor || 1);
-        plan.push({ it, orig: (it.orig_name || "").trim(), name, quantity, unitPrice, existing, category, unitType, unitAmount, pantryPrice, stockFactor });
+        const pantryPrice = noPrice ? 0 : unitPrice / (factor || 1);
+        plan.push({ it, noPrice, orig: (it.orig_name || "").trim(), name, quantity, unitPrice, existing, category, unitType, unitAmount, pantryPrice, stockFactor });
     }
 
     // אימות חשבונית (ספק/תאריך) לפני כל כתיבה - אחרת מוצרים כבר נכתבו וה-חשבונית נכשלת
@@ -207,7 +208,7 @@ export async function applyScannedInvoice({ items, supplierId, invoiceDate, imag
         // אימות מלא (שנה סבירה, סכומים) לפני שמחירי חומרי הגלם משתנים: טעות OCR בשנה לא משאירה מחירים מעודכנים בלי חשבונית
         await validateInvoicePayload({
             supplier_id: supplierId, invoice_date: invoiceDate, document_type: "invoice", petty_cash: pettyCash, purchaser,
-            items: plan.map((p) => ({ product_name: p.name, quantity: p.quantity, unit_price: p.unitPrice, stock_factor: p.stockFactor })),
+            items: plan.map((p) => ({ product_name: p.name, quantity: p.quantity, unit_price: p.noPrice ? "" : p.unitPrice, stock_factor: p.stockFactor, ...(p.noPrice ? { no_price: true } : {}) })),
         });
     }
 
@@ -232,9 +233,9 @@ export async function applyScannedInvoice({ items, supplierId, invoiceDate, imag
         if (p.existing) {
             const newer = invoiceDate && (latestDate.get(p.existing.id) || "") > invoiceDate;
             if (newer) keptPrice.push(p.existing.name);
-            let price = newer ? p.existing.price : p.pantryPrice;
+            let price = newer || p.noPrice ? p.existing.price : p.pantryPrice; // שורה בלי מחיר לא נוגעת במחיר הקיים
             let suppliers = p.existing.suppliers || null;
-            if (!newer && !p.existing.parent_id) {
+            if (!newer && !p.noPrice && !p.existing.parent_id) {
                 // מוצר עם כמה ספקים: מחיר לכל ספק, והמחיר שנשמר הוא הממוצע. "ספק נוסף" רק כשהמשתמש אישר
                 const sp = nextSupplierPrice(p.existing, supplierId, p.pantryPrice, { additional: p.it.supplier_mode === "add", previousId: (p.it.known_suppliers || [])[0] });
                 price = sp.price; suppliers = sp.suppliers;
@@ -251,14 +252,14 @@ export async function applyScannedInvoice({ items, supplierId, invoiceDate, imag
             pantryItemId = await dbPut("pantryItems", {
                 name: p.name, category: p.category, subcategory: null, unit_type: p.unitType, unit_amount: p.unitAmount,
                 price: p.pantryPrice, yield_pct: 100, weight_before: null, weight_after: null,
-                is_frozen: isFrozen, parent_id: null, ...estYieldFields(p.name, p.unitType, isFrozen),
+                is_frozen: isFrozen, parent_id: null, ...(p.noPrice ? { price_missing: true } : {}), ...estYieldFields(p.name, p.unitType, isFrozen),
             });
             createdNew.push({ name: p.name, id: pantryItemId });
         }
         resolvedPantryIds.push(pantryItemId);
         const finalName = p.existing ? p.existing.name : p.name;
         if (p.orig && normName(p.orig) !== normName(finalName) && safePair(p.orig, finalName)) aliasPairs.push([p.orig.toLowerCase(), pantryItemId]);
-        invoiceLineItems.push({ product_name: p.name, quantity: p.quantity, unit_price: p.unitPrice, pantry_item_id: pantryItemId, stock_factor: p.stockFactor });
+        invoiceLineItems.push({ product_name: p.name, quantity: p.quantity, unit_price: p.noPrice ? "" : p.unitPrice, pantry_item_id: pantryItemId, stock_factor: p.stockFactor, ...(p.noPrice ? { no_price: true } : {}) });
     }
 
     let invoiceId = null;
