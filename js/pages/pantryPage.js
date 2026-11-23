@@ -1,6 +1,6 @@
 import { bindUnitChoice } from "../unitChoice.js";
 import { listTopLevelPantryItems, addPantryItem, updatePantryItem, deletePantryItem, getDeleteInfo, deleteConfirmText, dropPantrySupplier } from "../repo/pantryRepo.js";
-import { listSuppliers } from "../repo/suppliersRepo.js";
+import { listSuppliers, listInvoicesWithItems, kegBalances } from "../repo/suppliersRepo.js";
 import { CATEGORY_GROUPS, UNIT_TYPES, UNIT_TYPE_LABELS } from "../constants.js";
 import { h, openModal, closeModal, confirmDialog, toast, escapeHtml, busy, attemptClose, info, cur, curLabel } from "../ui.js";
 import { openScanModal } from "./scanModal.js";
@@ -75,6 +75,7 @@ export async function renderPantryProducts(container) {
     const root = container.parentElement; // כל עמוד חומרי הגלם (לשוניות + תוכן), לרענון אחרי מעבר ללשונית אחרת
     const items = assignAutoSubs(await listTopLevelPantryItems()); // תתי-קטגוריות אוטומטיות לפי תחילת השם (צ'ילי, שום...)
     const all = await dbGetAll("pantryItems");
+    const kegs = kegBalances(await listInvoicesWithItems()); // חביות חוזרות אצלנו (שורת סיכום בקטגוריית בר)
     const kids = new Map();
     for (const c of all) if (c.parent_id) kids.set(c.parent_id, [...(kids.get(c.parent_id) || []), c]);
     const lastBought = new Map();
@@ -156,6 +157,10 @@ export async function renderPantryProducts(container) {
                 const [ic] = catStyle(cat);
                 const sec = h(`<div class="px-sec"${inCat.length ? "" : ' style="opacity:.55;"'}><div class="px-sh" data-k="c:${escapeHtml(cat)}"><span class="px-ic" style="background:${catStyle(cat)[1]};">${ic}</span><b>${escapeHtml(cat)}</b><span class="px-cnt">${inCat.length}</span><span class="px-chev">${open ? "▾" : "◂"}</span></div></div>`);
                 if (open) {
+                    if (cat === "בר" && kegs.size) {
+                        const kc = [...kegs.values()].reduce((n, b) => n + b.count, 0), kv = [...kegs.values()].reduce((n, b) => n + b.value, 0);
+                        sec.appendChild(h(`<div class="hint" style="padding:8px 14px;">חביות חוזרות אצלך: ${kc}, ${kegs.size === 1 ? "אצל ספק אחד" : "אצל " + kegs.size + " ספקים"}. פיקדון ${cur()}${kv.toFixed(2)}. הפירוט והחזרה בכרטיס הספק.</div>`));
+                    }
                     if (!inCat.length) sec.appendChild(h('<div class="empty-state" style="padding:8px 14px;">אין מוצרים בקטגוריה הזו.</div>'));
                     const subs = [...new Set(inCat.map((r) => subOf(r)))];
                     const hasSubs = subs.some(Boolean);

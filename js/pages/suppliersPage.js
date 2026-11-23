@@ -1,5 +1,5 @@
 import { listSuppliers, addSupplier, renameSupplier, deleteSupplier, getSupplierDeleteInfo, listInvoicesWithItems, saveInvoice, validateInvoicePayload, deleteInvoice, monthlySummaryBySupplier,
-    priceChanges, monthlyReport, invoicesToCsv, pettyCashOwed, markAllPettyCashReimbursed, setPettyReimbursed, findDuplicateInvoice } from "../repo/suppliersRepo.js";
+    priceChanges, monthlyReport, invoicesToCsv, pettyCashOwed, markAllPettyCashReimbursed, setPettyReimbursed, findDuplicateInvoice, kegBalances } from "../repo/suppliersRepo.js";
 import { listTopLevelPantryItems } from "../repo/pantryRepo.js";
 import { createPantryItemFromInvoice } from "../repo/scanRepo.js";
 import { CATEGORY_GROUPS, UNIT_TYPES, UNIT_TYPE_LABELS } from "../constants.js";
@@ -41,6 +41,7 @@ export function setSuppliersView(tab, filter = {}) {
 export async function renderSuppliersPage(container) {
     const suppliers = await listSuppliers();
     const invoices = await listInvoicesWithItems();
+    const kegs = kegBalances(invoices);
     const pantryItems = await listTopLevelPantryItems();
     const owed = await pettyCashOwed();
     const alerts = await priceChanges({ thresholdPct: 10, sinceDays: 30 });
@@ -278,6 +279,7 @@ export async function renderSuppliersPage(container) {
             row.onclick = () => {
                 const overlay = openModal(`
                     <h2>${escapeHtml(s.name)}</h2>
+                    ${kegs.get(s.id) ? `<div class="card-row"><span>חביות אצלך</span><b>${kegs.get(s.id).count} · ${money(kegs.get(s.id).value)}</b></div><button type="button" class="btn btn-secondary btn-block" id="s-keg" style="margin-bottom:8px;">↩ החזרתי חביות</button>` : ""}
                     <div class="modal-actions" style="flex-wrap:wrap;">
                         <button type="button" class="btn btn-primary" id="s-order">📦 הזמנות</button>
                         <button type="button" class="btn btn-secondary" id="s-show">הצג חשבוניות</button>
@@ -285,6 +287,8 @@ export async function renderSuppliersPage(container) {
                     </div>
                     <div class="modal-actions"><button type="button" class="btn btn-secondary" id="s-close">סגור</button></div>`);
                 overlay.querySelector("#s-close").onclick = closeModal;
+                const kegBtn = overlay.querySelector("#s-keg");
+                if (kegBtn) kegBtn.onclick = () => { closeModal(); openKegReturnModal(s, kegs.get(s.id), rerender); };
                 overlay.querySelector("#s-order").onclick = () => { closeModal(); openOrderModal(s, rerender); };
                 overlay.querySelector("#s-show").onclick = () => { closeModal(); uiFilter = { q: "", mode: "all", month: "", supplier: String(s.id) }; uiTab = "invoices"; rerender(); };
                 overlay.querySelector("#s-del").onclick = async () => {
@@ -306,6 +310,29 @@ export async function renderSuppliersPage(container) {
     }
 
     showTab(uiTab);
+}
+
+// החזרת חביות לספק: נרשמת כזיכוי (פיקדון חבית), והכמות אצלנו יורדת
+function openKegReturnModal(s, bal, rerender) {
+    const overlay = openModal(`
+        <h2>החזרת חביות - ${escapeHtml(s.name)}</h2>
+        <div class="field"><label>כמה חביות הוחזרו</label><input type="number" min="1" max="${bal.count}" step="1" id="k-n" value="${bal.count}"></div>
+        <div class="field"><label>תאריך</label><input type="date" id="k-date" value="${todayLocal()}"></div>
+        <div class="hint-warn" id="k-err" style="display:none;"></div>
+        <div class="modal-actions"><button type="button" class="btn btn-primary" id="k-save">שמור</button><button type="button" class="btn btn-secondary" id="k-cancel">ביטול</button></div>`);
+    overlay.querySelector("#k-cancel").onclick = closeModal;
+    overlay.querySelector("#k-save").onclick = busy(async () => {
+        const n = parseFloat(overlay.querySelector("#k-n").value);
+        const err = overlay.querySelector("#k-err");
+        if (!(n > 0) || n > bal.count) { err.textContent = `מספר החביות חייב להיות בין 1 ל-${bal.count}`; err.style.display = "block"; return; }
+        try {
+            await saveInvoice(null, { supplier_id: s.id, invoice_date: overlay.querySelector("#k-date").value, document_type: "credit",
+                items: [{ product_name: "החזרת פיקדון חבית", quantity: n, unit_price: Math.round((bal.value / bal.count) * 100) / 100, deposit: "keg" }] });
+            closeModal();
+            toast("נשמר");
+            rerender();
+        } catch (e) { err.textContent = e.message; err.style.display = "block"; }
+    });
 }
 
 function openSupplierModal(container) {
@@ -406,7 +433,7 @@ function openInvoiceModal(existing, suppliers, pantryItems, container) {
     function addRow(prefill) {
         const id = rowCounter++;
         const row = h(`
-            <div class="item-row-inputs" id="inv-row-${id}" data-stock-factor="${prefill && prefill.stock_factor ? prefill.stock_factor : ""}" data-factor-pantry="${prefill && prefill.pantry_item_id ? prefill.pantry_item_id : ""}">
+            <div class="item-row-inputs" id="inv-row-${id}" data-stock-factor="${prefill && prefill.stock_factor ? prefill.stock_factor : ""}" data-factor-pantry="${prefill && prefill.pantry_item_id ? prefill.pantry_item_id : ""}" data-deposit="${prefill && prefill.deposit ? prefill.deposit : ""}">
                 <div class="top-line" style="margin-bottom:6px;">
                     <input type="text" id="inv-name-${id}" list="inv-pantry-names" autocomplete="off" placeholder="שם מוצר" style="flex:1;min-width:0;" value="${prefill ? escapeHtml(prefill.product_name) : ""}">
                     <button type="button" class="remove-row-btn" data-remove="${id}" aria-label="הסר שורה">✕</button>
@@ -734,7 +761,7 @@ function openInvoiceModal(existing, suppliers, pantryItems, container) {
                 continue;
             }
             const noPrice = !unit_price && !line_total; // בלי מחיר: נשמרת כך, ואפשר להשלים אחר כך
-            const item = { product_name, quantity, unit_price, line_total, pantry_item_id: sel === "__new__" ? null : sel || null, stock_factor: row.dataset.stockFactor || null, ...(noPrice ? { no_price: true } : {}) };
+            const item = { product_name, quantity, unit_price, line_total, pantry_item_id: sel === "__new__" ? null : sel || null, stock_factor: row.dataset.stockFactor || null, ...(noPrice ? { no_price: true } : {}), ...(row.dataset.deposit ? { deposit: row.dataset.deposit } : {}) };
 
             // סוג יחידה, גודל אריזה וארגז -> stock_factor (יחידות חומרי גלם ביחידה אחת של השורה)
             let unitType = null;

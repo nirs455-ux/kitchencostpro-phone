@@ -103,7 +103,7 @@ export async function suggestOrderLines(supplierId) {
     const groups = new Map();
     for (const it of await dbGetAll("invoiceItems")) {
         const inv = byId.get(it.invoice_id);
-        if (!inv) continue;
+        if (!inv || it.deposit) continue; // פיקדון לא מוצר להזמנה
         const name = txt(it.product_name);
         const p = it.pantry_item_id ? pantry.get(it.pantry_item_id) : null;
         const factor = it.stock_factor && Number(it.stock_factor) !== 1 ? Number(it.stock_factor) : null;

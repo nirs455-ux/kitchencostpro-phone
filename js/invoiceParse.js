@@ -85,6 +85,13 @@ export function totalsReference(vat, printedTotal) {
     return null;
 }
 
+// שורת פיקדון: חבית/מכל = חוזר לספק (keg), כל פיקדון אחר = בקבוקים שלא חוזרים (bottle). null = לא פיקדון
+export function detectDeposit(name) {
+    const n = String(name ?? "");
+    if (!/פיקדון|פקדון/.test(n)) return null;
+    return /חבית|חביות|מכל|קג/.test(n) ? "keg" : "bottle";
+}
+
 const round = (x, d) => Math.round(x * 10 ** d) / 10 ** d;
 
 // שורה שלילית היא הנחה רק אם סומנה כהנחה, בלי שם, או ששמה אומר הנחה/מבצע. אחרת זו החזרה/זיכוי של מוצר.

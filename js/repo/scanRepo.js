@@ -15,7 +15,7 @@ import { recipeScanPrompt, buildRecipeDraft } from "../recipeParse.js";
 import { readFileContent } from "../fileText.js";
 import { TITLES_PROMPT, batchPrompt, parseTitles, chunkTitles, parseBatch, BATCH_SIZE, MULTI_MIN_CHARS, MULTI_MIN_PDF_BYTES } from "../recipesBatch.js";
 import { getRecipeCategories } from "./recipeCategories.js";
-import { invoicePromptWithPantry, mergeDiscountLines, computeStockFactor, toFloat, cleanVatTotals } from "../invoiceParse.js";
+import { invoicePromptWithPantry, mergeDiscountLines, computeStockFactor, toFloat, cleanVatTotals, detectDeposit } from "../invoiceParse.js";
 import { LABEL_SCAN_PROMPT, parseLabelAnswer } from "../labelParse.js";
 import { COUNT_SCAN_PROMPT } from "../countAssist.js";
 import { THAW_SCAN_PROMPT, parseThawAnswer } from "../thaw.js";
@@ -126,7 +126,7 @@ export async function scanInvoiceImage(apiKey, file, onRetry) {
         const { match, auto } = matchPantryName(name, pantryRows, aliases, it.pantry_match);
 
         enrichedItems.push({
-            name, orig_name: name, quantity, unit_price: unitPrice, qty_fixed: !!it.qty_fixed,
+            name, orig_name: name, quantity, unit_price: unitPrice, qty_fixed: !!it.qty_fixed, deposit: detectDeposit(name),
             guess_category: it.category_guess || null, guess_unit: it.unit_guess || null,
             default_factor: match ? lastFactor.get(match.id) || null : null,
             discount_applied: it.discount_applied || 0, list_unit_price: it.list_unit_price ?? null,
@@ -157,6 +157,8 @@ export async function applyScannedInvoice({ items, supplierId, invoiceDate, imag
         const unitPrice = noPrice ? 0 : parseFloat(it.unit_price);
         if (!Number.isFinite(quantity) || !Number.isFinite(unitPrice)) throw new Error(`${where}: כמות/מחיר לא תקינים עבור '${name}'`);
         if (quantity <= 0 || unitPrice < 0) throw new Error(`${where}: כמות חייבת להיות גדולה מ-0 ומחיר לא שלילי עבור '${name}'`);
+
+        if (it.deposit === "keg" || it.deposit === "bottle") { plan.push({ it, deposit: it.deposit, noPrice, name, quantity, unitPrice, stockFactor: null }); continue; } // פיקדון: נשמר רק בחשבונית, לא בחומרי הגלם
 
         const unitsPerCase = it.units_per_case === "" || it.units_per_case == null ? null : parseFloat(it.units_per_case);
         const packageSize = it.package_size === "" || it.package_size == null ? null : parseFloat(it.package_size);
@@ -208,7 +210,7 @@ export async function applyScannedInvoice({ items, supplierId, invoiceDate, imag
         // אימות מלא (שנה סבירה, סכומים) לפני שמחירי חומרי הגלם משתנים: טעות OCR בשנה לא משאירה מחירים מעודכנים בלי חשבונית
         await validateInvoicePayload({
             supplier_id: supplierId, invoice_date: invoiceDate, document_type: "invoice", petty_cash: pettyCash, purchaser,
-            items: plan.map((p) => ({ product_name: p.name, quantity: p.quantity, unit_price: p.noPrice ? "" : p.unitPrice, stock_factor: p.stockFactor, ...(p.noPrice ? { no_price: true } : {}) })),
+            items: plan.map((p) => ({ product_name: p.name, quantity: p.quantity, unit_price: p.noPrice ? "" : p.unitPrice, stock_factor: p.stockFactor, ...(p.noPrice ? { no_price: true } : {}), ...(p.deposit ? { deposit: p.deposit } : {}) })),
         });
     }
 
@@ -228,6 +230,10 @@ export async function applyScannedInvoice({ items, supplierId, invoiceDate, imag
     }
     const keptPrice = [];
     for (const p of plan) {
+        if (p.deposit) {
+            invoiceLineItems.push({ product_name: p.name, quantity: p.quantity, unit_price: p.noPrice ? "" : p.unitPrice, pantry_item_id: null, deposit: p.deposit, ...(p.noPrice ? { no_price: true } : {}) });
+            continue;
+        }
         const isFrozen = p.it.is_frozen ? 1 : 0;
         let pantryItemId;
         if (p.existing) {

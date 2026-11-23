@@ -101,7 +101,7 @@ function parseInvoicePayload(data) {
         if (pantryItemId) pantryItemId = parseInt(pantryItemId, 10);
         const sf = parseFloat(it.stock_factor);
         const stockFactor = Number.isFinite(sf) && sf > 0 && sf !== 1 ? sf : null;
-        resolved.push({ product_name: name, quantity: qty, unit_price: unitPrice, line_total: lineTotal, pantry_item_id: pantryItemId, stock_factor: stockFactor, ...(noPrice ? { no_price: true } : {}) });
+        resolved.push({ product_name: name, quantity: qty, unit_price: unitPrice, line_total: lineTotal, pantry_item_id: pantryItemId, stock_factor: stockFactor, ...(noPrice ? { no_price: true } : {}), ...(it.deposit === "keg" || it.deposit === "bottle" ? { deposit: it.deposit } : {}) });
     }
     return {
         supplier_id: supplierId, invoice_date: invoiceDate, document_type: documentType, items: resolved, total: Math.round(total * 100) / 100,
@@ -244,7 +244,7 @@ export async function listSupplierProducts(supplierId) {
     const groups = new Map();
     for (const it of await dbGetAll("invoiceItems")) {
         const inv = byId.get(it.invoice_id);
-        if (!inv) continue;
+        if (!inv || it.deposit) continue;
         const key = it.pantry_item_id ? `p${it.pantry_item_id}` : `n${String(it.product_name || "").trim().toLowerCase()}`;
         if (key === "n") continue;
         const g = groups.get(key) || { key, pantry_item_id: it.pantry_item_id || null, name: String(it.product_name || "").trim(), count: 0, last_date: "", last_qty: null, last_price: null };
@@ -376,4 +376,25 @@ export async function markAllPettyCashReimbursed() {
 export async function findDuplicateInvoice({ supplierId, date, total, excludeId = null }) {
     const list = await dbGetByIndex("invoices", "supplier_id", parseInt(supplierId, 10));
     return list.find((i) => !i.deleted_at && i.id !== excludeId && i.invoice_date === date && Math.abs(i.total_amount - total) < 0.01) || null;
+}
+
+// חביות חוזרות אצלנו לכל ספק: שורות פיקדון חבית בחשבוניות פחות החזרות (זיכוי). מקבל את הפלט של listInvoicesWithItems.
+// מחזיר Map: supplier_id -> { count, value } רק לספקים שנשארו להם חביות
+export function kegBalances(invoices) {
+    const by = new Map();
+    for (const inv of invoices || []) {
+        const sign = inv.document_type === "credit" ? -1 : 1;
+        for (const it of inv.items || []) {
+            if (it.deposit !== "keg") continue;
+            const b = by.get(inv.supplier_id) || { count: 0, value: 0 };
+            b.count += sign * (Number(it.quantity) || 0);
+            b.value += sign * (Number(it.line_total) || 0);
+            by.set(inv.supplier_id, b);
+        }
+    }
+    for (const [k, b] of by) {
+        b.value = Math.round(b.value * 100) / 100;
+        if (!(b.count > 0)) by.delete(k);
+    }
+    return by;
 }
