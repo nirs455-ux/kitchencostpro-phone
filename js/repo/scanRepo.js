@@ -242,6 +242,7 @@ export async function applyScannedInvoice({ items, supplierId, invoiceDate, imag
             if (!p.existing.parent_id) Object.assign(p.existing, { price, category: p.category, is_frozen: isFrozen });
             else Object.assign(p.existing, { price, is_frozen: isFrozen });
             if (suppliers) p.existing.suppliers = suppliers; else delete p.existing.suppliers;
+            if (!newer && Number(p.pantryPrice) > 0) delete p.existing.price_missing; // החשבונית נתנה מחיר: מורידים את "חסר מחיר"
             await dbPut("pantryItems", p.existing);
             pantryItemId = p.existing.id;
         } else if (findSameNew(p.name, createdNew)) {
@@ -429,7 +430,7 @@ export async function createPantryItemFromInvoice({ name, category, unitType, un
     }
     return dbPut("pantryItems", {
         name, category, subcategory: null, unit_type: unitType, unit_amount: amount,
-        price, yield_pct: 100, weight_before: null, weight_after: null, is_frozen: 0, parent_id: null, ...estYieldFields(name, unitType, false),
+        price: Number(price) > 0 ? price : 0, yield_pct: 100, weight_before: null, weight_after: null, is_frozen: 0, parent_id: null, ...(Number(price) > 0 ? {} : { price_missing: true }), ...estYieldFields(name, unitType, false),
     });
 }
 

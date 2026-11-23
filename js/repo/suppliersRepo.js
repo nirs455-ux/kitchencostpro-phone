@@ -17,6 +17,19 @@ export async function addSupplier(name) {
     return dbPut("suppliers", { name });
 }
 
+// שינוי שם ספק (החשבוניות מצביעות על הספק לפי מזהה, אז הן מתעדכנות לבד)
+export async function renameSupplier(id, name) {
+    name = (name || "").trim();
+    if (!name) throw new Error("יש להזין שם ספק");
+    const all = await dbGetAll("suppliers");
+    const row = all.find((s) => s.id === id);
+    if (!row) throw new Error("ספק לא נמצא");
+    if (all.some((s) => s.id !== id && s.name === name)) throw new Error("ספק בשם הזה כבר קיים");
+    row.name = name;
+    await dbPut("suppliers", row);
+    return name;
+}
+
 // מה יימחק עם הספק: כמה חשבוניות ובאיזה סכום כולל.
 // חשבוניות פעילות (שלא בפח)
 export async function activeInvoices() {
@@ -73,7 +86,12 @@ function parseInvoicePayload(data) {
         let unitPrice = hasPrice ? parseFloat(it.unit_price) : null;
         let lineTotal = hasTotal ? Math.round(parseFloat(it.line_total) * 100) / 100 : null;
         if ((hasPrice && !Number.isFinite(unitPrice)) || (hasTotal && !Number.isFinite(lineTotal))) throw new Error("כמות/מחיר לא תקינים");
-        if (unitPrice === null && lineTotal === null) throw new Error("כמות/מחיר לא תקינים");
+        // שורה שהספק השמיט בה מחיר: נשמרת במפורש "בלי מחיר" (0), ולא מעדכנת מחיר בחומרי הגלם עד שמשלימים
+        let noPrice = false;
+        if (unitPrice === null && lineTotal === null) {
+            if (!it.no_price) throw new Error("כמות/מחיר לא תקינים");
+            noPrice = true; unitPrice = 0; lineTotal = 0;
+        }
         if (unitPrice === null) unitPrice = Math.round((lineTotal / qty) * 10000) / 10000;
         if (lineTotal === null) lineTotal = Math.round(qty * unitPrice * 100) / 100;
         if (unitPrice < 0 || lineTotal < 0) throw new Error("מחיר/סכום לא יכולים להיות שליליים");
@@ -83,7 +101,7 @@ function parseInvoicePayload(data) {
         if (pantryItemId) pantryItemId = parseInt(pantryItemId, 10);
         const sf = parseFloat(it.stock_factor);
         const stockFactor = Number.isFinite(sf) && sf > 0 && sf !== 1 ? sf : null;
-        resolved.push({ product_name: name, quantity: qty, unit_price: unitPrice, line_total: lineTotal, pantry_item_id: pantryItemId, stock_factor: stockFactor });
+        resolved.push({ product_name: name, quantity: qty, unit_price: unitPrice, line_total: lineTotal, pantry_item_id: pantryItemId, stock_factor: stockFactor, ...(noPrice ? { no_price: true } : {}) });
     }
     return {
         supplier_id: supplierId, invoice_date: invoiceDate, document_type: documentType, items: resolved, total: Math.round(total * 100) / 100,
@@ -231,7 +249,7 @@ export async function listSupplierProducts(supplierId) {
         if (key === "n") continue;
         const g = groups.get(key) || { key, pantry_item_id: it.pantry_item_id || null, name: String(it.product_name || "").trim(), count: 0, last_date: "", last_qty: null, last_price: null };
         g.count++;
-        if ((inv.invoice_date || "") >= g.last_date) { g.last_date = inv.invoice_date || ""; g.last_qty = it.quantity; g.last_price = it.unit_price; if (it.product_name) g.name = String(it.product_name).trim(); }
+        if ((inv.invoice_date || "") >= g.last_date) { g.last_date = inv.invoice_date || ""; g.last_qty = it.quantity; if (!it.no_price) g.last_price = it.unit_price; if (it.product_name) g.name = String(it.product_name).trim(); }
         groups.set(key, g);
     }
     return [...groups.values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, "he"));
