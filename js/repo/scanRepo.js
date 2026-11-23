@@ -126,7 +126,7 @@ export async function scanInvoiceImage(apiKey, file, onRetry) {
         const { match, auto } = matchPantryName(name, pantryRows, aliases, it.pantry_match);
 
         enrichedItems.push({
-            name, orig_name: name, quantity, unit_price: unitPrice,
+            name, orig_name: name, quantity, unit_price: unitPrice, qty_fixed: !!it.qty_fixed,
             guess_category: it.category_guess || null, guess_unit: it.unit_guess || null,
             default_factor: match ? lastFactor.get(match.id) || null : null,
             discount_applied: it.discount_applied || 0, list_unit_price: it.list_unit_price ?? null,

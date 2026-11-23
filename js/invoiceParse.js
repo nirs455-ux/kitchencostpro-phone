@@ -14,7 +14,7 @@ export const INVOICE_SCAN_PROMPT =
     '    {"name": "שם המוצר בעברית", "quantity": 1.0, "unit_price": 10.0, "line_total": 10.0, "is_discount": false, "category_guess": "ירקניה", "unit_guess": "weight"}\n' +
     "  ]\n" +
     "}\n" +
-    "quantity חייב להיות מספר (הכמות או המשקל המודפסים בשורה). unit_price הוא מספר, או null אם בשורה לא מודפס מחיר ולא סכום: אל תעתיק לשדה המחיר את הכמות או המשקל, ואל תמציא מחיר. line_total הוא הסכום שמודפס בשורה (יכול להיות שלילי). " +
+    "quantity חייב להיות מספר: הכמות או המשקל שנקנו, מעמודת הכמות בלבד (לא מעמודת תכולה או יחידות באריזה). unit_price הוא מספר, או null אם בשורה לא מודפס מחיר ולא סכום: אל תעתיק לשדה המחיר את הכמות או המשקל, ואל תמציא מחיר. line_total הוא הסכום שמודפס בשורה (יכול להיות שלילי). " +
     "אם לא ניתן לקרוא שורה בבירור - דלג עליה. אל תמציא נתונים שלא מופיעים בתמונה.\n" +
     "שורת מבצע/הנחה שמתייחסת למוצר מסוים (למשל 'מבצע 3 ב-50' או שורה עם סכום שלילי מתחת למוצר): " +
     "החזר אותה כשורה נפרדת עם is_discount=true ו-line_total=סכום ההנחה כפי שמודפס (שלילי). " +
@@ -99,7 +99,7 @@ export function mergeDiscountLines(items) {
     for (const it of items || []) {
         if (!it || typeof it !== "object" || Array.isArray(it)) continue;
         const name = String(it.name ?? "").trim();
-        const qty = toFloat(it.quantity);
+        let qty = toFloat(it.quantity);
         let price = toFloat(it.unit_price);
         const lineTotal = toFloat(it.line_total);
         const amount = lineTotal !== null ? lineTotal : (qty !== null && price !== null ? qty * price : null);
@@ -121,10 +121,17 @@ export function mergeDiscountLines(items) {
         if (qty === null) { skipped++; continue; }
         // בלי מחיר ליחידה אבל יש סכום שורה: המחיר נגזר ממנו. בלי שניהם: השורה נשמרת בלי מחיר (null) ולא נזרקת
         if (price === null && lineTotal !== null && qty > 0) price = round(lineTotal / qty, 4);
+        // כמות לא מתאימה לסכום השורה (למשל נקראה עמודת התכולה): אם הסכום חלקי המחיר הוא מספר שלם גדול מהכמות, הכמות מתוקנת
+        let qtyFixed = false;
+        if (price !== null && price > 0 && lineTotal !== null && lineTotal > 0 && qty > 0) {
+            const ratio = lineTotal / price;
+            if (Math.abs(qty * price - lineTotal) > Math.max(0.02 * lineTotal, 0.05) && ratio >= 2 && ratio > qty && Math.abs(ratio - Math.round(ratio)) <= Math.max(0.005 * ratio, 0.005 * Math.round(ratio) / price) + 0.01) { qty = Math.round(ratio); qtyFixed = true; }
+        }
         const cat = String(it.category_guess ?? "").trim();
         const unit = String(it.unit_guess ?? "").trim();
         merged.push({
             name, quantity: qty, unit_price: price, discount_applied: 0,
+            ...(qtyFixed ? { qty_fixed: true } : {}),
             category_guess: cat in CATEGORY_GROUPS ? cat : null,
             unit_guess: UNIT_TYPES.includes(unit) ? unit : null,
             ...(typeof it.pantry_match === "string" && it.pantry_match.trim() ? { pantry_match: it.pantry_match.trim() } : {}),

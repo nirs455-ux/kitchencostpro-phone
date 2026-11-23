@@ -333,7 +333,7 @@ export async function openScanModal({ supplierAware, onDone, initialFile = null 
                 flags.push("השם מופיע יותר מפעם אחת בקבלה - ייתכן שצריך לאחד שורות");
             }
             // שורה "תקינה" = מוכרת בחומרי הגלם, בלי חריגות ובלי שינוי מחיר מעל 5% - מוסתרת, ורק מה שדורש תשומת לב מוצג
-            const needsAttention = !it.matched_pantry_item_id || nameEmpty || noPrice || flags.length > 0 || relChange >= 0.05;
+            const needsAttention = !it.matched_pantry_item_id || nameEmpty || noPrice || it.qty_fixed || flags.length > 0 || relChange >= 0.05;
             if (needsAttention) attentionCount++; else okCount++;
             const row = h(`
                 <div class="item-row-inputs" data-ok="${needsAttention ? 0 : 1}" style="${needsAttention ? "" : "display:none;"}${priceChanged ? "border-color:var(--danger);background:#fdecea;" : ""}">
@@ -347,6 +347,7 @@ export async function openScanModal({ supplierAware, onDone, initialFile = null 
                     ${it.discount_applied ? `<div class="hint">כולל מבצע: הנחה ${cur()}${it.discount_applied.toFixed(2)} שולבה במחיר (מחיר מחירון ${cur()}${Number(it.list_unit_price).toFixed(2)} ליחידה)</div>` : ""}
                     ${flags.map((f) => `<div class="hint-warn">⚠ ${escapeHtml(f)}</div>`).join("")}
                     ${nameEmpty ? '<div class="hint-warn">חסר שם מוצר - הזן שם, או לחץ "הסר שורה" אם זו לא שורת מוצר (למשל מבצע).</div>' : ""}
+                    ${it.qty_fixed ? '<div class="hint-warn">הכמות תוקנה לפי סכום השורה. בדוק מול החשבונית.</div>' : ""}
                     ${noPrice ? '<div class="hint-warn">אין מחיר בחשבונית. השורה תישמר בלי מחיר, ואפשר להשלים אותו אחר כך.</div>' : ""}
                     <div class="field"><label>שם מוצר</label><input type="text" id="scan-name-${idx}" value="${escapeHtml(it.name)}"></div>
                     ${it.auto_matched ? `<div class="hint">זוהה כ-"${escapeHtml(it.auto_matched)}" שבחומרי הגלם</div>` : ""}
