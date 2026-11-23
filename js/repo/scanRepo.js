@@ -19,6 +19,7 @@ import { invoicePromptWithPantry, mergeDiscountLines, computeStockFactor, toFloa
 import { LABEL_SCAN_PROMPT, parseLabelAnswer } from "../labelParse.js";
 import { COUNT_SCAN_PROMPT } from "../countAssist.js";
 import { THAW_SCAN_PROMPT, parseThawAnswer } from "../thaw.js";
+import { nextSupplierPrice, knownSupplierIds } from "../supplierPrices.js";
 
 function fileToBase64(file) {
     return new Promise((resolve, reject) => {
@@ -101,14 +102,17 @@ export async function scanInvoiceImage(apiKey, file, onRetry) {
     const aliases = (await getSetting("scan_aliases")) || {};
     // אריזה/ארגז אחרונים שנרשמו לכל מוצר - כדי שקנייה חוזרת לא תדרוש הזנה מחדש
     const lastFactor = new Map();
+    const lastSupplier = new Map(); // הספק של החשבונית האחרונה לכל מוצר (לשאלת "ספק נוסף")
     {
-        const invDates = Object.fromEntries((await dbGetAll("invoices")).filter((i) => !i.deleted_at).map((i) => [i.id, i.invoice_date || ""]));
+        const invList = (await dbGetAll("invoices")).filter((i) => !i.deleted_at);
+        const invDates = Object.fromEntries(invList.map((i) => [i.id, i.invoice_date || ""]));
+        const invSupplier = Object.fromEntries(invList.map((i) => [i.id, i.supplier_id]));
         const lastDate = new Map();
         for (const li of await dbGetAll("invoiceItems")) {
             if (!li.pantry_item_id) continue;
             if (!(li.invoice_id in invDates)) continue;
             const d = invDates[li.invoice_id] || "";
-            if (d >= (lastDate.get(li.pantry_item_id) ?? "")) { lastDate.set(li.pantry_item_id, d); lastFactor.set(li.pantry_item_id, li.stock_factor || null); }
+            if (d >= (lastDate.get(li.pantry_item_id) ?? "")) { lastDate.set(li.pantry_item_id, d); lastFactor.set(li.pantry_item_id, li.stock_factor || null); if (invSupplier[li.invoice_id] != null) lastSupplier.set(li.pantry_item_id, invSupplier[li.invoice_id]); }
         }
     }
 
@@ -131,6 +135,7 @@ export async function scanInvoiceImage(apiKey, file, onRetry) {
             matched_category: match ? match.category : null,
             matched_price: match ? match.price : null,
             matched_unit_type: match ? match.unit_type : null,
+            known_suppliers: match ? knownSupplierIds(match, lastSupplier.get(match.id)) : [],
             suggestions: match ? [] : suggestPantry(name, pantryRows).map((s) => { const r = pantryRows.find((x) => x.id === s.id); return { ...s, category: r.category, unit_type: r.unit_type }; }),
         });
     }
@@ -227,9 +232,16 @@ export async function applyScannedInvoice({ items, supplierId, invoiceDate, imag
         if (p.existing) {
             const newer = invoiceDate && (latestDate.get(p.existing.id) || "") > invoiceDate;
             if (newer) keptPrice.push(p.existing.name);
-            const price = newer ? p.existing.price : p.pantryPrice;
+            let price = newer ? p.existing.price : p.pantryPrice;
+            let suppliers = p.existing.suppliers || null;
+            if (!newer && !p.existing.parent_id) {
+                // מוצר עם כמה ספקים: מחיר לכל ספק, והמחיר שנשמר הוא הממוצע. "ספק נוסף" רק כשהמשתמש אישר
+                const sp = nextSupplierPrice(p.existing, supplierId, p.pantryPrice, { additional: p.it.supplier_mode === "add", previousId: (p.it.known_suppliers || [])[0] });
+                price = sp.price; suppliers = sp.suppliers;
+            }
             if (!p.existing.parent_id) Object.assign(p.existing, { price, category: p.category, is_frozen: isFrozen });
             else Object.assign(p.existing, { price, is_frozen: isFrozen });
+            if (suppliers) p.existing.suppliers = suppliers; else delete p.existing.suppliers;
             await dbPut("pantryItems", p.existing);
             pantryItemId = p.existing.id;
         } else if (findSameNew(p.name, createdNew)) {

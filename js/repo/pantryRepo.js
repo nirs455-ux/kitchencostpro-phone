@@ -6,6 +6,7 @@ import { computeYieldPct, isCountItem } from "../formulas.js";
 import { estimateYield } from "../yieldKb.js";
 import { EGG_SIZES, guessEggSize } from "../eggs.js";
 import { expandToParents } from "./subRecipes.js";
+import { removeSupplier } from "../supplierPrices.js";
 
 export async function listAllPantryItems() {
     return dbGetAll("pantryItems");
@@ -198,10 +199,12 @@ export async function updatePantryItem(id, data) {
     const allowedSubs = CATEGORY_GROUPS[data.category];
     if (newSubcategory && !allowedSubs.includes(newSubcategory)) newSubcategory = null;
 
+    const oldPrice = Number(existing.price) || 0;
     Object.assign(existing, {
         name, category: data.category, subcategory: newSubcategory, unit_type: data.unit_type,
         unit_amount: unitAmount, price, is_frozen: isFrozen ? 1 : 0,
     });
+    if (existing.suppliers && Math.abs(price - oldPrice) > 0.00005) delete existing.suppliers; // מחיר שנערך ידנית מחליף את ממוצע הספקים
     if (price > 0 || isFree) delete existing.price_missing; // הושלם מחיר
     if (isFree) existing.free = true; else delete existing.free;
     if ("piece_g" in data) { const pg = data.unit_type !== "unit" ? pieceGrams(data.piece_g) : null; if (pg) existing.piece_g = pg; else delete existing.piece_g; }
@@ -209,6 +212,16 @@ export async function updatePantryItem(id, data) {
     existing.pkg_size = data.unit_type !== "unit" && parseFloat(data.pkg_size) > 0 ? parseFloat(data.pkg_size) : null;
     if (Array.isArray(data.allergens)) { existing.allergens = data.allergens; existing.allergens_auto = false; }
     await dbPut("pantryItems", existing);
+}
+
+// מסיר ספק ממוצר עם כמה ספקים; המחיר מחושב מחדש (ממוצע, או מחיר הספק היחיד שנשאר)
+export async function dropPantrySupplier(id, supplierId) {
+    const row = await dbGet("pantryItems", id);
+    if (!row || !row.suppliers) return;
+    const r = removeSupplier(row, supplierId);
+    row.price = r.price;
+    if (r.suppliers) row.suppliers = r.suppliers; else delete row.suppliers;
+    await dbPut("pantryItems", row);
 }
 
 // עדכון ניצולת/משקל/קפוא (עמוד 2 - עיבוד). מקביל ל-PUT /api/items/<id>/yield.

@@ -1,5 +1,6 @@
 import { bindUnitChoice } from "../unitChoice.js";
-import { listTopLevelPantryItems, addPantryItem, updatePantryItem, deletePantryItem, getDeleteInfo, deleteConfirmText } from "../repo/pantryRepo.js";
+import { listTopLevelPantryItems, addPantryItem, updatePantryItem, deletePantryItem, getDeleteInfo, deleteConfirmText, dropPantrySupplier } from "../repo/pantryRepo.js";
+import { listSuppliers } from "../repo/suppliersRepo.js";
 import { CATEGORY_GROUPS, UNIT_TYPES, UNIT_TYPE_LABELS } from "../constants.js";
 import { h, openModal, closeModal, confirmDialog, toast, escapeHtml, busy, attemptClose, info, cur, curLabel } from "../ui.js";
 import { openScanModal } from "./scanModal.js";
@@ -381,13 +382,23 @@ function openPantryModal(existing, container) {
             <div class="cv-row"><input type="text" inputmode="decimal" id="f-buy-qty" value=""><select id="f-buy-unit"></select></div>
             <input type="hidden" id="f-bulk" value="">
         </div>
-        <div class="field"><label id="f-price-label">מחיר קנייה (${curLabel()})</label><input type="number" step="any" id="f-price" value="${existing && !existing.free ? existing.price : ""}"><div class="hint" id="f-price-echo"></div><label class="checkbox-field" style="margin-top:8px;"><input type="checkbox" id="f-free"${existing && existing.free ? " checked" : ""}><span>ללא עלות</span></label></div>
+        <div class="field"><label id="f-price-label">מחיר קנייה (${curLabel()})</label><input type="number" step="any" id="f-price" value="${existing && !existing.free ? existing.price : ""}"><div class="hint" id="f-price-echo"></div><div id="f-suppliers"></div><label class="checkbox-field" style="margin-top:8px;"><input type="checkbox" id="f-free"${existing && existing.free ? " checked" : ""}><span>ללא עלות</span></label></div>
         <div class="error-msg"></div>
         <div class="modal-actions">
             <button class="btn btn-secondary" id="btn-cancel">ביטול</button>
             <button class="btn btn-primary" id="btn-save">שמירה</button>
         </div>
     `);
+
+    // מוצר עם כמה ספקים: מחיר כל ספק והממוצע (המחיר שבשימוש). עריכת המחיר ידנית מבטלת את הממוצע
+    if (existing && Array.isArray(existing.suppliers) && existing.suppliers.length) {
+        const box = overlay.querySelector("#f-suppliers");
+        listSuppliers().then((all) => {
+            const nameOf = (id) => (all.find((x) => x.id === Number(id)) || {}).name || "ספק";
+            box.innerHTML = `<div class="hint">המחיר הוא ממוצע של הספקים:</div>${existing.suppliers.map((s) => `<div class="card-row" style="align-items:center;gap:6px;"><span style="flex:1;">${escapeHtml(nameOf(s.supplier_id))}: ${cur()}${Number(s.price).toFixed(2)}</span><button type="button" class="btn btn-secondary btn-small" data-drop="${s.supplier_id}">הסר ספק</button></div>`).join("")}`;
+            box.querySelectorAll("[data-drop]").forEach((b) => { b.onclick = async () => { await dropPantrySupplier(existing.id, b.dataset.drop); closeModal(); renderPantryProducts(container); }; });
+        }).catch(() => {});
+    }
 
     const catSelect = overlay.querySelector("#f-category");
     const subWrap = overlay.querySelector("#f-subcategory-wrap");

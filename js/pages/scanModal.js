@@ -99,6 +99,7 @@ export async function openScanModal({ supplierAware, onDone, initialFile = null 
         const warn = overlay.querySelector("#scan-no-supplier");
         const syncWarn = () => { warn.style.display = supSel.value ? "none" : "block"; };
         supSel.addEventListener("change", syncWarn);
+        supSel.addEventListener("change", () => { if (scannedItems.length) { captureInputs(); renderResults(); } }); // שאלת "ספק נוסף" תלויה בספק שנבחר
         overlay.__syncSupplierWarn = syncWarn;
         syncWarn();
     }
@@ -255,6 +256,15 @@ export async function openScanModal({ supplierAware, onDone, initialFile = null 
     // סוג היחידה האפקטיבי של השורה (מוצר קיים - לפי חומרי הגלם; חדש - לפי הבחירה)
     const rowUnit = (it) => (it.matched_pantry_item_id ? it.matched_unit_type : it._unit || "weight");
 
+    // שאלת "ספק נוסף": מוצר מותאם שכבר ידוע לו ספק אחר, והחשבונית מספק שנבחר ושונה מהם
+    const supplierName = (id) => { const o = [...overlay.querySelectorAll("#scan-supplier option")].find((x) => x.value === String(id)); return o ? o.textContent.replace(/^➕ צור ספק חדש:\s{0,3}/, "").trim() : "ספק קודם"; };
+    const askSupplier = (it) => {
+        if (!supplierAware || !it.matched_pantry_item_id || !(it.known_suppliers && it.known_suppliers.length)) return null;
+        const sel = overlay.querySelector("#scan-supplier").value;
+        if (!sel || it.known_suppliers.includes(Number(sel))) return null;
+        return { current: sel };
+    };
+
     function renderResults() {
         overlay.querySelector("#scan-loading").style.display = "none";
         overlay.querySelector("#scan-results").style.display = "block";
@@ -338,6 +348,9 @@ export async function openScanModal({ supplierAware, onDone, initialFile = null 
                     ${nameEmpty ? '<div class="hint-warn">חסר שם מוצר - הזן שם, או לחץ "הסר שורה" אם זו לא שורת מוצר (למשל מבצע).</div>' : ""}
                     <div class="field"><label>שם מוצר</label><input type="text" id="scan-name-${idx}" value="${escapeHtml(it.name)}"></div>
                     ${it.auto_matched ? `<div class="hint">זוהה כ-"${escapeHtml(it.auto_matched)}" שבחומרי הגלם</div>` : ""}
+                    ${askSupplier(it) ? `<div class="hint-warn">${it.known_suppliers.map((id) => escapeHtml(supplierName(id))).join(", ")} כבר מספק את המוצר הזה. זה ספק נוסף למוצר?</div>
+                        <div class="btn-row" style="margin:4px 0;"><button type="button" class="btn ${it._sup === "add" ? "btn-primary" : "btn-secondary"} btn-small" data-sup="${idx}:add">כן, ספק נוסף</button><button type="button" class="btn ${it._sup === "add" ? "btn-secondary" : "btn-primary"} btn-small" data-sup="${idx}:replace">לא, במקום</button></div>
+                        ${it._sup === "add" ? `<div class="hint">מחיר חדש לפריט: ממוצע של ${cur()}${Number(it.matched_price || 0).toFixed(2)} (${escapeHtml(supplierName(it.known_suppliers[0]))}) ו-${cur()}${cmpPrice.toFixed(2)} (${escapeHtml(supplierName(askSupplier(it).current))}) = ${cur()}${((Number(it.matched_price || 0) + cmpPrice) / 2).toFixed(2)}</div>` : ""}` : ""}
                     ${it._manual ? `<div class="hint">חובר ל-"${escapeHtml(it._manual)}" לפי בחירתך. השם יישמר לפעם הבאה. <button type="button" class="btn btn-secondary btn-small" data-unlink="${idx}">זה מוצר חדש</button></div>` : ""}
                     ${!it.matched_pantry_item_id && it.suggestions && it.suggestions.length ? `<div class="hint">אולי זה אחד מחומרי הגלם האלה? לחיצה מחברת אליו:</div><div class="pk-chips" style="flex-wrap:wrap;">${it.suggestions.map((s, k) => `<button type="button" class="chip" data-sug="${idx}:${k}">${escapeHtml(s.name)}${s.unpriced ? " (בלי מחיר)" : ` (${cur()}${Number(s.price).toFixed(2)})`}</button>`).join("")}</div>` : ""}
                     <div class="field"><label>כמות</label><input type="number" step="any" id="scan-qty-${idx}" value="${it.quantity}"></div>
@@ -404,6 +417,7 @@ export async function openScanModal({ supplierAware, onDone, initialFile = null 
                 row.querySelector(`#scan-pack-${idx}`).addEventListener("input", updatePreview);
                 row.querySelector(`#scan-pack-unit-${idx}`).addEventListener("change", updatePreview);
             }
+            row.querySelectorAll("[data-sup]").forEach((b) => { b.onclick = () => { captureInputs(); const [i, mode] = b.dataset.sup.split(":"); scannedItems[Number(i)]._sup = mode; renderResults(); }; });
             row.querySelectorAll("[data-sug]").forEach((b) => { b.onclick = () => {
                 captureInputs();
                 const [i, k] = b.dataset.sug.split(":").map(Number);
@@ -504,6 +518,8 @@ export async function openScanModal({ supplierAware, onDone, initialFile = null 
             category: it.matched_pantry_item_id ? it.matched_category : overlay.querySelector(`#scan-cat-${idx}`).value,
             is_frozen: overlay.querySelector(`#scan-frozen-${idx}`).checked,
             pantry_item_id: it.matched_pantry_item_id,
+            supplier_mode: askSupplier(it) && it._sup === "add" ? "add" : null,
+            known_suppliers: it.known_suppliers || [],
             unit_type: it.matched_pantry_item_id ? undefined : overlay.querySelector(`#scan-unit-${idx}`).value,
             unit_amount: it.matched_pantry_item_id ? undefined : overlay.querySelector(`#scan-unit-amount-${idx}`).value,
         }));
