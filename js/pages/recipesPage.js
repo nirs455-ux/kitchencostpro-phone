@@ -472,10 +472,10 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
             body = `
             <div class="card">
                 <div class="card-title">הגדלה / הקטנה ${info("מכפילים את כל המתכון. עיגול נוח מעגל כמויות קטנות לערכים שקל לשקול (ביצים לא מעוגלות, כי הן נספרות בנפרד). העלות מחושבת מחדש, כולל מספר הביצים לשבירה.")}</div>
-                <div class="chips" id="g-quick">${[[0.25, "÷4"], [1 / 3, "÷3"], [0.5, "÷2"], [1, "×1"], [2, "×2"], [3, "×3"], [4, "×4"], [5, "×5"]].map(([v, l]) => `<button type="button" class="chip ${gen.mode === "factor" && Math.abs(Number(gen.value) - v) < 1e-6 ? "active" : ""}" data-q="${v}">${l}</button>`).join("")}</div>
+                <div class="chips" id="g-quick">${[[0.5, "÷2"], [2, "×2"]].map(([v, l]) => `<button type="button" class="chip ${gen.mode === "factor" && Math.abs(Number(gen.value) - v) < 1e-6 ? "active" : ""}" data-q="${v}">${l}</button>`).join("")}</div>
                 <div class="form-row">
                     <div class="field"><label>לפי</label><select id="g-mode"><option value="have" ${gen.mode === "have" ? "selected" : ""}>כמות זמינה מכל רכיב</option><option value="factor" ${gen.mode === "factor" ? "selected" : ""}>פי כמה</option><option value="weight" ${gen.mode === "weight" ? "selected" : ""}>${isGramMode() ? "משקל סופי (גרם)" : 'משקל סופי (ק"ג)'}</option></select></div>
-                    ${gen.mode === "have" ? "" : `<div class="field"><label>${gen.mode === "weight" ? (isGramMode() ? `גרם (עכשיו ${gramsToKgText(curWeight)})` : `ק"ג (עכשיו ${gramsToKgText(curWeight)})`) : "מקדם"}</label><input type="text" id="g-val" value="${gen.mode === "weight" ? gramsToKgText(gen.value) : +Number(gen.value).toFixed(4)}" inputmode="decimal"></div>`}
+                    ${gen.mode === "have" ? "" : `<div class="field"><label>${gen.mode === "weight" ? (isGramMode() ? `גרם (עכשיו ${gramsToKgText(curWeight)})` : `ק"ג (עכשיו ${gramsToKgText(curWeight)})`) : "מקדם"}</label>${gen.mode === "factor" ? `<div style="display:flex;gap:6px;"><select id="g-op" style="width:64px;flex:none;"><option value="mul">×</option><option value="div" ${Number(gen.value) > 0 && Number(gen.value) < 1 ? "selected" : ""}>÷</option></select><input type="text" id="g-val" value="${Number(gen.value) > 0 && Number(gen.value) < 1 ? +(1 / Number(gen.value)).toFixed(4) : +Number(gen.value).toFixed(4)}" inputmode="decimal"></div>` : `<input type="text" id="g-val" value="${gen.mode === "weight" ? gramsToKgText(gen.value) : +Number(gen.value).toFixed(4)}" inputmode="decimal">`}</div>`}
                 </div>
                 ${gen.mode === "have" ? `<div class="hint">רשום כמה יש לך מרכיב אחד או יותר. המערכת לוקחת את המגביל ביותר ומחשבת את כל השאר.</div>
                 ${genIngs().map((x) => `<div class="form-row"><div class="field"><label>${escapeHtml(nameOf(x.i))} <span class="muted">${gramsToKgText(x.i.quantity_g)}</span></label><input type="text" inputmode="decimal" class="g-have" data-idx="${x.idx}" value="${escapeHtml(gen.have[x.idx] || "")}" placeholder="${isGramMode() ? "גרם" : 'ק"ג'}"></div></div>`).join("")}
@@ -623,7 +623,17 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
             draw();
         });
         overlay.querySelectorAll(".g-have").forEach((inp) => { inp.onchange = () => { gen.have[inp.dataset.idx] = inp.value; draw(); }; });
-        bind("#g-val", "onchange", (e) => { gen.value = gen.mode === "weight" ? textToGrams(e.target.value) : parseFloat(String(e.target.value).replace(",", ".")); draw(); });
+        bind("#g-val", "onchange", (e) => {
+            if (gen.mode === "weight") gen.value = textToGrams(e.target.value);
+            else if (gen.mode === "factor") { const n = parseFloat(String(e.target.value).replace(",", ".")); const div = overlay.querySelector("#g-op") && overlay.querySelector("#g-op").value === "div"; gen.value = n > 0 ? (div ? 1 / n : n) : NaN; }
+            else gen.value = parseFloat(String(e.target.value).replace(",", "."));
+            draw();
+        });
+        bind("#g-op", "onchange", (e) => {
+            const n = parseFloat(String(overlay.querySelector("#g-val").value).replace(",", "."));
+            if (n > 0) gen.value = e.target.value === "div" ? 1 / n : n;
+            draw();
+        });
         bind("#g-round", "onchange", (e) => { gen.round = e.target.checked; draw(); });
         bind("#cv-box", "ontoggle", (e) => { conv.open = e.target.open; });
         bind("#cv-ing", "onchange", (e) => { conv.idx = e.target.value === "" ? null : Number(e.target.value); conv.open = true; draw(); });

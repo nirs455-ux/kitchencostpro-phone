@@ -120,6 +120,11 @@ export async function scanInvoiceImage(apiKey, file, onRetry) {
         const name = it.name;
         const quantity = it.quantity;
         const unitPrice = it.unit_price;
+        if (it.promo) {
+            // שורת מבצע/הנחה: לא מותאמת לחומרי גלם
+            enrichedItems.push({ name, orig_name: name, quantity, unit_price: unitPrice, promo: true, qty_fixed: false, deposit: null, guess_category: null, guess_unit: null, default_factor: null, discount_applied: 0, list_unit_price: null, matched_pantry_item_id: null, auto_matched: null, matched_category: null, matched_price: null, matched_unit_type: null, known_suppliers: [], suggestions: [] });
+            continue;
+        }
         // שורה בלי שם נשארת (המשתמש ימלא שם או יסיר אותה במסך הבדיקה)
 
         // שם זהה (בלי הבדלי רווחים/סימנים נסתרים) או דומה מאוד = מותאם לבד; רק דמיון בינוני נשאל
@@ -158,6 +163,7 @@ export async function applyScannedInvoice({ items, supplierId, invoiceDate, imag
         if (!Number.isFinite(quantity) || !Number.isFinite(unitPrice)) throw new Error(`${where}: כמות/מחיר לא תקינים עבור '${name}'`);
         if (quantity <= 0 || unitPrice < 0) throw new Error(`${where}: כמות חייבת להיות גדולה מ-0 ומחיר לא שלילי עבור '${name}'`);
 
+        if (it.promo) { plan.push({ it, promo: true, noPrice, name, quantity, unitPrice, stockFactor: null }); continue; } // מבצע/הנחה: שורה נפרדת בחשבונית בלבד
         if (it.deposit === "keg" || it.deposit === "bottle") { plan.push({ it, deposit: it.deposit, noPrice, name, quantity, unitPrice, stockFactor: null }); continue; } // פיקדון: נשמר רק בחשבונית, לא בחומרי הגלם
 
         const unitsPerCase = it.units_per_case === "" || it.units_per_case == null ? null : parseFloat(it.units_per_case);
@@ -210,7 +216,7 @@ export async function applyScannedInvoice({ items, supplierId, invoiceDate, imag
         // אימות מלא (שנה סבירה, סכומים) לפני שמחירי חומרי הגלם משתנים: טעות OCR בשנה לא משאירה מחירים מעודכנים בלי חשבונית
         await validateInvoicePayload({
             supplier_id: supplierId, invoice_date: invoiceDate, document_type: "invoice", petty_cash: pettyCash, purchaser,
-            items: plan.map((p) => ({ product_name: p.name, quantity: p.quantity, unit_price: p.noPrice ? "" : p.unitPrice, stock_factor: p.stockFactor, ...(p.noPrice ? { no_price: true } : {}), ...(p.deposit ? { deposit: p.deposit } : {}) })),
+            items: plan.map((p) => ({ product_name: p.name, quantity: p.quantity, unit_price: p.noPrice ? "" : p.promo ? -p.unitPrice : p.unitPrice, stock_factor: p.stockFactor, ...(p.noPrice ? { no_price: true } : {}), ...(p.deposit ? { deposit: p.deposit } : {}), ...(p.promo ? { promo: true } : {}) })),
         });
     }
 
@@ -230,6 +236,10 @@ export async function applyScannedInvoice({ items, supplierId, invoiceDate, imag
     }
     const keptPrice = [];
     for (const p of plan) {
+        if (p.promo) {
+            invoiceLineItems.push({ product_name: p.name, quantity: p.quantity, unit_price: -p.unitPrice, pantry_item_id: null, promo: true });
+            continue;
+        }
         if (p.deposit) {
             invoiceLineItems.push({ product_name: p.name, quantity: p.quantity, unit_price: p.noPrice ? "" : p.unitPrice, pantry_item_id: null, deposit: p.deposit, ...(p.noPrice ? { no_price: true } : {}) });
             continue;

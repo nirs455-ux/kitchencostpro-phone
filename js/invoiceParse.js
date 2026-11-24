@@ -16,10 +16,10 @@ export const INVOICE_SCAN_PROMPT =
     "}\n" +
     "quantity חייב להיות מספר: הכמות או המשקל שנקנו, מעמודת הכמות בלבד (לא מעמודת תכולה או יחידות באריזה). unit_price הוא מספר, או null אם בשורה לא מודפס מחיר ולא סכום: אל תעתיק לשדה המחיר את הכמות או המשקל, ואל תמציא מחיר. line_total הוא הסכום שמודפס בשורה (יכול להיות שלילי). " +
     "אם לא ניתן לקרוא שורה בבירור - דלג עליה. אל תמציא נתונים שלא מופיעים בתמונה.\n" +
-    "שורת מבצע/הנחה שמתייחסת למוצר מסוים (למשל 'מבצע 3 ב-50' או שורה עם סכום שלילי מתחת למוצר): " +
+    "שורת מבצע/הנחה נפרדת (למשל 'מבצע 3 ב-50', שורה עם סכום שלילי מתחת למוצר, או הנחה כללית על כל החשבונית): " +
     "החזר אותה כשורה נפרדת עם is_discount=true ו-line_total=סכום ההנחה כפי שמודפס (שלילי). " +
-    "אל תפחית את ההנחה בעצמך ממחיר המוצר, ואל תשנה את quantity/unit_price של המוצר עצמו. " +
-    "הנחות כלליות על כל החשבונית (מועדון, הנחה בסוף הקבלה) - אל תחזיר בכלל. בכל שאר השורות is_discount=false.\n" +
+    "אל תפחית את ההנחה בעצמך ממחיר המוצר, ואל תשנה את quantity/unit_price של המוצר עצמו. בכל שאר השורות is_discount=false.\n" +
+    "אם בשורה עצמה יש עמודות מחיר מחירון, אחוז הנחה ומחיר אחרי הנחה: unit_price הוא המחיר אחרי ההנחה (מה ששולם ליחידה), ואל תחזיר שורת הנחה נפרדת עבורה.\n" +
     "החזרה או זיכוי של מוצר (מוצר שהוחזר, פיקדון שהוחזר): שורה עם שם המוצר, is_discount=false ו-line_total שלילי כפי שמודפס.\n" +
     "category_guess: הקטגוריה המתאימה ביותר למוצר, אחת מהבאות בלבד: מהים, קצביה, ירקניה, יבשים, מחלבה, בר, מחסן (ניקיון/חד-פעמי). " +
     "unit_guess: weight אם המוצר נמכר לפי משקל, liter אם נוזל לפי נפח, unit אם נמכר ביחידות/חבילות/גבעולים.\n" +
@@ -118,11 +118,9 @@ export function mergeDiscountLines(items) {
         }
         const isDiscount = truthy(it.is_discount) || negative;
         if (isDiscount) {
+            // מבצע/הנחה: שורה נפרדת (סכום חיובי = גובה ההנחה). לא מצורפת למוצר ולא משנה את מחירו
             const discount = amount !== null ? Math.abs(amount) : (price !== null ? Math.abs(price) : 0);
-            if (merged.length && discount) {
-                const prev = merged[merged.length - 1];
-                prev.discount_applied = round(prev.discount_applied + discount, 2);
-            }
+            if (discount) merged.push({ name: name || "מבצע", quantity: 1, unit_price: round(discount, 4), discount_applied: 0, promo: true, category_guess: null, unit_guess: null });
             continue;
         }
         if (qty === null) { skipped++; continue; }
@@ -143,12 +141,6 @@ export function mergeDiscountLines(items) {
             unit_guess: UNIT_TYPES.includes(unit) ? unit : null,
             ...(typeof it.pantry_match === "string" && it.pantry_match.trim() ? { pantry_match: it.pantry_match.trim() } : {}),
         });
-    }
-    for (const m of merged) {
-        if (m.discount_applied && m.quantity > 0 && m.unit_price !== null) {
-            m.list_unit_price = m.unit_price;
-            m.unit_price = round(Math.max(m.quantity * m.unit_price - m.discount_applied, 0) / m.quantity, 4);
-        }
     }
     merged.skipped = skipped;
     merged.returns = returns;

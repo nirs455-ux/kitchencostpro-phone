@@ -106,7 +106,7 @@ export function busy(fn) {
 }
 
 // הודעה עם כפתור פעולה (למשל "בטל") שנעלמת אחרי כמה שניות
-export function toastAction(msg, label, onClick, ms = 10000) {
+export function toastAction(msg, label, onClick, ms = 4000) {
     let el = document.getElementById("toast-action");
     if (!el) {
         el = document.createElement("div");
@@ -121,6 +121,10 @@ export function toastAction(msg, label, onClick, ms = 10000) {
     el.classList.add("show");
     clearTimeout(el._t);
     el._t = setTimeout(() => el.classList.remove("show"), ms);
+    // נעלמת גם בלחיצה במקום אחר במסך (שלא תכסה את התחתית)
+    if (el._hide) document.removeEventListener("pointerdown", el._hide, true);
+    el._hide = (e) => { if (el.contains(e.target)) return; el.classList.remove("show"); document.removeEventListener("pointerdown", el._hide, true); };
+    setTimeout(() => { if (el.classList.contains("show")) document.addEventListener("pointerdown", el._hide, true); }, 400);
     btn.onclick = async () => {
         el.classList.remove("show");
         clearTimeout(el._t);

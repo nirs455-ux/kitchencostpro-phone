@@ -433,7 +433,7 @@ function openInvoiceModal(existing, suppliers, pantryItems, container) {
     function addRow(prefill) {
         const id = rowCounter++;
         const row = h(`
-            <div class="item-row-inputs" id="inv-row-${id}" data-stock-factor="${prefill && prefill.stock_factor ? prefill.stock_factor : ""}" data-factor-pantry="${prefill && prefill.pantry_item_id ? prefill.pantry_item_id : ""}" data-deposit="${prefill && prefill.deposit ? prefill.deposit : ""}">
+            <div class="item-row-inputs" id="inv-row-${id}" data-stock-factor="${prefill && prefill.stock_factor ? prefill.stock_factor : ""}" data-factor-pantry="${prefill && prefill.pantry_item_id ? prefill.pantry_item_id : ""}" data-deposit="${prefill && prefill.deposit ? prefill.deposit : ""}" data-promo="${prefill && prefill.promo ? "1" : ""}">
                 <div class="top-line" style="margin-bottom:6px;">
                     <input type="text" id="inv-name-${id}" list="inv-pantry-names" autocomplete="off" placeholder="שם מוצר" style="flex:1;min-width:0;" value="${prefill ? escapeHtml(prefill.product_name) : ""}">
                     <button type="button" class="remove-row-btn" data-remove="${id}" aria-label="הסר שורה">✕</button>
@@ -761,7 +761,7 @@ function openInvoiceModal(existing, suppliers, pantryItems, container) {
                 continue;
             }
             const noPrice = !unit_price && !line_total; // בלי מחיר: נשמרת כך, ואפשר להשלים אחר כך
-            const item = { product_name, quantity, unit_price, line_total, pantry_item_id: sel === "__new__" ? null : sel || null, stock_factor: row.dataset.stockFactor || null, ...(noPrice ? { no_price: true } : {}), ...(row.dataset.deposit ? { deposit: row.dataset.deposit } : {}) };
+            const item = { product_name, quantity, unit_price, line_total, pantry_item_id: sel === "__new__" ? null : sel || null, stock_factor: row.dataset.stockFactor || null, ...(noPrice ? { no_price: true } : {}), ...(row.dataset.deposit ? { deposit: row.dataset.deposit } : {}), ...(row.dataset.promo ? { promo: true } : {}) };
 
             // סוג יחידה, גודל אריזה וארגז -> stock_factor (יחידות חומרי גלם ביחידה אחת של השורה)
             let unitType = null;

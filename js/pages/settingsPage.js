@@ -16,6 +16,7 @@ import { t, LANGS, getLang } from "../i18n.js";
 import { renderCloudCard } from "../cloud/cloudUi.js";
 import { getUsdaKey, setUsdaKey } from "../repo/nutritionRepo.js";
 import { loadDemoData } from "../demoData.js";
+import { dbClearWorkData } from "../db.js";
 import { ADDONS, addonOn, setAddon } from "../addons.js";
 
 const setOpen = new Set(["addons"]); // אזורים פתוחים (כברירת מחדל הכול סגור, חוץ מהתוספות)
@@ -101,6 +102,7 @@ export async function renderSettingsPage(container) {
             <div class="set-body" ${setOpen.has("tools") ? "" : "hidden"}>
                 <div class="card"><button class="btn btn-secondary btn-block" id="btn-producer">🏭 יצרן: מוצרים ומדבקות</button></div>
                 <div class="card"><button class="btn btn-secondary btn-block" id="btn-demo">🧪 טען נתוני דוגמה</button></div>
+                <div class="card"><button class="btn btn-danger btn-block" id="btn-reset">🗑 איפוס מערכת</button></div>
                 <div class="card"><button class="btn btn-secondary btn-block" id="btn-files">📁 קבצים</button></div>
                 <div class="card">
             <div class="card-title">ארכיון מחוקים</div>
@@ -143,6 +145,19 @@ export async function renderSettingsPage(container) {
     container.querySelector("#btn-demo").onclick = async () => {
         if (!(await confirmDialog("להוסיף נתוני דוגמה (חומרי גלם, מתכונים, מנות, חשבונית ומוצר יצרן)?<br><br>הנתונים הקיימים שלך לא יימחקו, רק יתווספו פריטים חדשים."))) return;
         try { await loadDemoData(); toast("נתוני הדוגמה נטענו"); location.hash = "home"; } catch (e) { toast("לא הצלחתי לטעון: " + e.message); }
+    };
+    container.querySelector("#btn-reset").onclick = () => {
+        const overlay = openModal(`
+            <h2>איפוס מערכת</h2>
+            <p>זה מוחק את כל הנתונים של המסעדה הזו: חומרי גלם, מתכונים, מנות, ספקים, חשבוניות וספירות. ההגדרות והתוספות נשארות. אי אפשר לשחזר. אם הגיבוי בענן פועל, הוא יתעדכן במצב הריק.</p>
+            <div class="field"><label>כדי לאשר כתוב: מחק</label><input type="text" id="reset-word" autocomplete="off"></div>
+            <div class="modal-actions"><button type="button" class="btn btn-secondary" id="reset-no">ביטול</button><button type="button" class="btn btn-danger" id="reset-yes" disabled>מחק הכול</button></div>`);
+        const word = overlay.querySelector("#reset-word"), yes = overlay.querySelector("#reset-yes");
+        word.oninput = () => { yes.disabled = !["מחק", "delete"].includes(word.value.trim().toLowerCase()); };
+        overlay.querySelector("#reset-no").onclick = closeModal;
+        yes.onclick = async () => {
+            try { await dbClearWorkData(); closeModal(); toast("המערכת אופסה"); location.hash = "home"; location.reload(); } catch (e) { toast("לא הצלחתי לאפס: " + e.message); }
+        };
     };
     container.querySelector("#btn-producer").onclick = () => { location.hash = "producer"; };
     container.querySelector("#btn-files").onclick = () => { location.hash = "files"; };

@@ -194,6 +194,17 @@ export async function dbClearAll() {
     );
 }
 
+// איפוס מערכת: מוחק את כל נתוני העבודה (חומרי גלם, מתכונים, ספקים, חשבוניות וכו'), וההגדרות והתוספות נשארות
+export async function dbClearWorkData() {
+    const db = await openDB();
+    const names = [...Object.keys(STORES).filter((n) => n !== "settings"), ...Object.keys(EXTRA_STORES)];
+    await Promise.all(names.map((name) => new Promise((resolve, reject) => {
+        const req = tx(db, name, "readwrite").clear();
+        req.onsuccess = () => resolve();
+        req.onerror = () => reject(req.error);
+    })));
+}
+
 // מחליף את כל הנתונים בטרנזקציה אחת: או שהכול מוחלף או שכלום לא משתנה (כשל באמצע = ביטול מלא, הנתונים הישנים נשארים).
 // stores = { שם_מאגר: [שורות] }
 export async function dbReplaceAll(stores) {

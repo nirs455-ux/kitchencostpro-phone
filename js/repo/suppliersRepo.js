@@ -94,14 +94,14 @@ function parseInvoicePayload(data) {
         }
         if (unitPrice === null) unitPrice = Math.round((lineTotal / qty) * 10000) / 10000;
         if (lineTotal === null) lineTotal = Math.round(qty * unitPrice * 100) / 100;
-        if (unitPrice < 0 || lineTotal < 0) throw new Error("מחיר/סכום לא יכולים להיות שליליים");
+        if (!it.promo && (unitPrice < 0 || lineTotal < 0)) throw new Error("מחיר/סכום לא יכולים להיות שליליים");
         if (unitPrice > 1000000 || lineTotal > 100000000) throw new Error("מחיר/סכום גבוהים מדי - בדוק שלא הוזן מספר שגוי");
         total += lineTotal;
         let pantryItemId = it.pantry_item_id || null;
         if (pantryItemId) pantryItemId = parseInt(pantryItemId, 10);
         const sf = parseFloat(it.stock_factor);
         const stockFactor = Number.isFinite(sf) && sf > 0 && sf !== 1 ? sf : null;
-        resolved.push({ product_name: name, quantity: qty, unit_price: unitPrice, line_total: lineTotal, pantry_item_id: pantryItemId, stock_factor: stockFactor, ...(noPrice ? { no_price: true } : {}), ...(it.deposit === "keg" || it.deposit === "bottle" ? { deposit: it.deposit } : {}) });
+        resolved.push({ product_name: name, quantity: qty, unit_price: unitPrice, line_total: lineTotal, pantry_item_id: pantryItemId, stock_factor: stockFactor, ...(noPrice ? { no_price: true } : {}), ...(it.deposit === "keg" || it.deposit === "bottle" ? { deposit: it.deposit } : {}), ...(it.promo ? { promo: true } : {}) });
     }
     return {
         supplier_id: supplierId, invoice_date: invoiceDate, document_type: documentType, items: resolved, total: Math.round(total * 100) / 100,
@@ -244,7 +244,7 @@ export async function listSupplierProducts(supplierId) {
     const groups = new Map();
     for (const it of await dbGetAll("invoiceItems")) {
         const inv = byId.get(it.invoice_id);
-        if (!inv || it.deposit) continue;
+        if (!inv || it.deposit || it.promo) continue;
         const key = it.pantry_item_id ? `p${it.pantry_item_id}` : `n${String(it.product_name || "").trim().toLowerCase()}`;
         if (key === "n") continue;
         const g = groups.get(key) || { key, pantry_item_id: it.pantry_item_id || null, name: String(it.product_name || "").trim(), count: 0, last_date: "", last_qty: null, last_price: null };
