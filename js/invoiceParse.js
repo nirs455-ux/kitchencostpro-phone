@@ -6,7 +6,8 @@ export const INVOICE_SCAN_PROMPT =
     "אתה מערכת לניתוח חשבוניות וקבלות של מסעדה. נתח את התמונה הזו וחלץ ממנה מידע.\n" +
     "החזר אך ורק JSON תקין, בדיוק בפורמט הזה, בלי שום טקסט נוסף לפני או אחרי:\n" +
     "{\n" +
-    '  "supplier_name": "שם הספק אם מופיע בבירור, אחרת null",\n' +
+    '  "supplier_name": "שם הספק (העסק שהוציא את המסמך) אם מופיע בבירור, אחרת null",\n' +
+    '  "customer_name": "שם הלקוח (מי שמקבל את המסמך) אם מופיע, אחרת null",\n' +
     '  "invoice_date": "תאריך בפורמט YYYY-MM-DD אם מופיע, אחרת null",\n' +
     '  "invoice_total": 123.45,\n' +
     '  "totals": {"taxable": 75.75, "exempt": 77.6, "subtotal": 153.35, "vat": 13.64, "total": 166.99},\n' +
@@ -14,6 +15,8 @@ export const INVOICE_SCAN_PROMPT =
     '    {"name": "שם המוצר בעברית", "quantity": 1.0, "unit_price": 10.0, "line_total": 10.0, "is_discount": false, "category_guess": "ירקניה", "unit_guess": "weight"}\n' +
     "  ]\n" +
     "}\n" +
+    "הספק הוא מי שהוציא את המסמך: השם והלוגו בראשו, ליד המילים חשבונית / תעודת משלוח / קבלה. מי שכתוב אחרי 'לכבוד', 'לקוח' או 'קוד לקוח' הוא הלקוח (הקונה) ולא הספק: את שמו החזר רק ב-customer_name. " +
+    "name הוא שם המוצר כפי שמודפס בשורה, בלי להחליף אותו במוצר דומה ובלי להוסיף מוצרים שלא מופיעים. אם בסוגריים כתוב שם הספק או היצרן (למשל '(מהדרין)'), השמט אותו מהשם. " +
     "quantity חייב להיות מספר: הכמות או המשקל שנקנו, מעמודת הכמות בלבד (לא מעמודת תכולה או יחידות באריזה). unit_price הוא מספר, או null אם בשורה לא מודפס מחיר ולא סכום: אל תעתיק לשדה המחיר את הכמות או המשקל, ואל תמציא מחיר. line_total הוא הסכום שמודפס בשורה (יכול להיות שלילי). " +
     "אם לא ניתן לקרוא שורה בבירור - דלג עליה. אל תמציא נתונים שלא מופיעים בתמונה.\n" +
     "שורת מבצע/הנחה נפרדת (למשל 'מבצע 3 ב-50', שורה עם סכום שלילי מתחת למוצר, או הנחה כללית על כל החשבונית): " +
@@ -32,7 +35,7 @@ export function invoicePromptWithPantry(names) {
     const list = [...new Set((names || []).map((n) => String(n).trim()).filter(Boolean))].slice(0, 700);
     if (!list.length) return INVOICE_SCAN_PROMPT;
     return INVOICE_SCAN_PROMPT + "\n" +
-        "בנוסף, בכל פריט הוסף שדה pantry_match: השם המדויק, תו אחר תו, של המוצר מהרשימה שלמטה שהשורה מתייחסת אליו, או null אם אין ברשימה מוצר כזה. " +
+        "בנוסף, בכל פריט הוסף שדה pantry_match: השם המדויק, תו אחר תו, של המוצר מהרשימה שלמטה שהשורה מתייחסת אליו, או null אם אין ברשימה מוצר כזה. הרשימה היא רק לצורך התאמה: אל תוסיף שורות בגללה, ואל תשנה את name לפיה - name נשאר כפי שמודפס בחשבונית. " +
         "התאם לפי משמעות המוצר ולא לפי דמיון אותיות: תפוז ותפוח הם מוצרים שונים. ריבוי או יחיד, מותג, מקור וגודל אריזה לא משנים את המוצר. אם יש ספק, החזר null.\n" +
         "רשימת המוצרים במזווה:\n" + list.join("\n");
 }
@@ -128,15 +131,19 @@ export function mergeDiscountLines(items) {
         if (price === null && lineTotal !== null && qty > 0) price = round(lineTotal / qty, 4);
         // כמות לא מתאימה לסכום השורה (למשל נקראה עמודת התכולה): אם הסכום חלקי המחיר הוא מספר שלם גדול מהכמות, הכמות מתוקנת
         let qtyFixed = false;
+        let lineMismatch = false;
         if (price !== null && price > 0 && lineTotal !== null && lineTotal > 0 && qty > 0) {
             const ratio = lineTotal / price;
-            if (Math.abs(qty * price - lineTotal) > Math.max(0.02 * lineTotal, 0.05) && ratio >= 2 && ratio > qty && Math.abs(ratio - Math.round(ratio)) <= Math.max(0.005 * ratio, 0.005 * Math.round(ratio) / price) + 0.01) { qty = Math.round(ratio); qtyFixed = true; }
+            const mismatch = Math.abs(qty * price - lineTotal) > Math.max(0.02 * lineTotal, 0.05);
+            if (mismatch && ratio >= 1 && Math.round(ratio) !== qty && Math.abs(ratio - Math.round(ratio)) <= Math.max(0.005 * ratio, 0.005 * Math.round(ratio) / price) + 0.01) { qty = Math.round(ratio); qtyFixed = true; }
+            else if (mismatch) lineMismatch = true; // הכמות, המחיר והסכום לא מתאימים ואין תיקון בטוח: מסמנים לבדיקה
         }
         const cat = String(it.category_guess ?? "").trim();
         const unit = String(it.unit_guess ?? "").trim();
         merged.push({
             name, quantity: qty, unit_price: price, discount_applied: 0,
             ...(qtyFixed ? { qty_fixed: true } : {}),
+            ...(lineMismatch ? { line_mismatch: true } : {}),
             category_guess: cat in CATEGORY_GROUPS ? cat : null,
             unit_guess: UNIT_TYPES.includes(unit) ? unit : null,
             ...(typeof it.pantry_match === "string" && it.pantry_match.trim() ? { pantry_match: it.pantry_match.trim() } : {}),

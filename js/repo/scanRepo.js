@@ -49,17 +49,20 @@ const estYieldFields = (name, unitType, frozen) => {
     return est ? { yield_pct: est, yield_est: true } : {};
 };
 
+// שם הספק זהה לשם הלקוח = ה-AI לקח את הלקוח ("לכבוד") בטעות: לא מציעים אותו כספק
+const sameName = (a, b) => { const n = (x) => String(x || "").replace(/[^\p{L}\p{N}]/gu, "").toLowerCase(); return !!n(a) && !!n(b) && (n(a) === n(b) || n(a).includes(n(b)) || n(b).includes(n(a))); };
+
 export async function scanInvoiceImage(apiKey, file, onRetry) {
     if (!apiKey) throw new Error("עוזר AI לא זמין כרגע.");
     // הכנת הקובץ: תמונה (מכווצת) / PDF נשלחים כמו שהם; Word / Excel / טקסט וכו' - חילוץ טקסט
-    const prepared = await prepareParts(file, "תוכן החשבונית");
+    const prepared = await prepareParts(file, "תוכן החשבונית", { maxSide: 2400, quality: 0.88 }); // טבלה בהדפסה קטנה: רזולוציה גבוהה
 
     // Gemini לפעמים עמוס (503/429): ניסיון חוזר קצר, ואז מודל גיבוי (js/repo/gemini.js). בלי לבקש מהמשתמש לצלם מחדש.
     let response;
     try {
         const pantryAll = (await dbGetAll("pantryItems")).filter((r) => !r.parent_id);
         response = await geminiFetch(apiKey, { contents: [{ parts: [{ text: invoicePromptWithPantry(pantryAll.map((r) => r.name)) }, ...prepared.parts] }] }, {
-            fast: true,
+            fast: false, // חשבוניות: חשיבה מופעלת לדיוק בטבלאות (לא מצב מהיר)
             onRetry: (i) => { if (onRetry) onRetry(i.attempt, 3, i.model); },
         });
     } catch (e) {
@@ -131,7 +134,7 @@ export async function scanInvoiceImage(apiKey, file, onRetry) {
         const { match, auto } = matchPantryName(name, pantryRows, aliases, it.pantry_match);
 
         enrichedItems.push({
-            name, orig_name: name, quantity, unit_price: unitPrice, qty_fixed: !!it.qty_fixed, deposit: detectDeposit(name),
+            name, orig_name: name, quantity, unit_price: unitPrice, qty_fixed: !!it.qty_fixed, line_mismatch: !!it.line_mismatch, deposit: detectDeposit(name),
             guess_category: it.category_guess || null, guess_unit: it.unit_guess || null,
             default_factor: match ? lastFactor.get(match.id) || null : null,
             discount_applied: it.discount_applied || 0, list_unit_price: it.list_unit_price ?? null,
@@ -145,7 +148,7 @@ export async function scanInvoiceImage(apiKey, file, onRetry) {
         });
     }
 
-    return { skipped_lines: skippedLines, returns: items.returns || [], supplier_name: parsed.supplier_name || null, invoice_date: parsed.invoice_date || null, invoice_total: toFloat(parsed.invoice_total), vat: cleanVatTotals(parsed.totals), items: enrichedItems, attachment: prepared.attachment, partial: !!prepared.partial };
+    return { skipped_lines: skippedLines, returns: items.returns || [], supplier_name: sameName(parsed.supplier_name, parsed.customer_name) ? null : (parsed.supplier_name || null), invoice_date: parsed.invoice_date || null, invoice_total: toFloat(parsed.invoice_total), vat: cleanVatTotals(parsed.totals), items: enrichedItems, attachment: prepared.attachment, partial: !!prepared.partial };
 }
 
 // מחיל את שורות הסריקה על חומרי הגלם (ואופציונלית שומר כחשבונית מקושרת לספק). מקביל ל-apply_scanned_invoice.
