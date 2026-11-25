@@ -11,8 +11,6 @@ import { renderInventoryPage } from "./inventoryPage.js";
 import { renderWastePage } from "./wastePage.js";
 import { findDuplicatePairs, buildUsageCounts } from "../pantryDuplicates.js";
 import { mergePantryItems } from "../repo/pantryMerge.js";
-import { applyYieldEstimates, undoYieldEstimates } from "../repo/pantryRepo.js";
-import { planYieldFill, estimatedYieldItems } from "../yieldKb.js";
 import { isStaffMode } from "../staff.js";
 import { EGG_SIZES, isEggName, guessEggSize } from "../eggs.js";
 import { textToGrams, gramsToKgText, describeQty, qtyWarning, isGramMode } from "../qty.js";
@@ -211,32 +209,6 @@ export async function renderPantryProducts(container) {
         renderPantryProducts(container);
     };
     draw();
-}
-
-// ניצולת מוערכת למוצרים קיימים: רשימה לפני החלה, ואפשר להוריד סימון. הערכה קיימת אפשר להחזיר ל-100
-export async function openYieldModal(onChange) {
-    const pantry = await dbGetAll("pantryItems");
-    const plan = planYieldFill(pantry);
-    const est = estimatedYieldItems(pantry);
-    const overlay = openModal("");
-    const box = overlay.querySelector(".modal");
-    box.innerHTML = `<h2>ניצולת מוערכת</h2>
-        <div class="muted">${plan.length ? "מוצרים שאין להם ניצולת. הערכה לפי טבלה מקצועית, ועיבוד אמיתי יחליף אותה. עלויות המתכונים והמנות יתעדכנו." : "אין מוצרים שאפשר למלא להם ניצולת."}</div>
-        ${plan.map((p) => `<label class="card-row" style="display:flex;gap:8px;align-items:center;margin:6px 0;"><input type="checkbox" data-id="${p.id}" data-to="${p.to}" checked><span style="flex:1;">${escapeHtml(p.name)}</span><b>${p.to}%</b></label>`).join("")}
-        ${est.length ? `<div class="muted" style="margin-top:10px;">${est.length} מוצרים עם ניצולת מוערכת</div>` : ""}
-        <div class="modal-actions">${plan.length ? '<button type="button" class="btn btn-primary" id="yf-apply">החל על המסומנים</button>' : ""}${est.length ? '<button type="button" class="btn btn-secondary" id="yf-undo">בטל הערכות</button>' : ""}<button type="button" class="btn btn-secondary" id="yf-close">סגור</button></div>`;
-    box.querySelector("#yf-close").onclick = () => closeModal();
-    const apply = box.querySelector("#yf-apply");
-    if (apply) apply.onclick = async () => {
-        const rows = [...box.querySelectorAll("input[data-id]:checked")].map((c) => ({ id: Number(c.dataset.id), to: Number(c.dataset.to) }));
-        const n = await applyYieldEstimates(rows);
-        closeModal(); toast(`עודכנה ניצולת ל-${n} מוצרים`); if (onChange) onChange();
-    };
-    const undo = box.querySelector("#yf-undo");
-    if (undo) undo.onclick = async () => {
-        const n = await undoYieldEstimates();
-        closeModal(); toast(`הוחזרו ${n} מוצרים ל-100%`); if (onChange) onChange();
-    };
 }
 
 // כפילויות במזווה: כל זוג מוצג בנפרד, ושום דבר לא מתאחד בלי לחיצה על הזוג עצמו
