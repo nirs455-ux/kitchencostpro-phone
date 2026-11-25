@@ -97,6 +97,13 @@ export async function scanInvoiceImage(apiKey, file, onRetry) {
         throw new Error(unreadableMessage(e));
     }
 
+    // ספק לא זוהה: שם שחוזר בסוגריים ברוב שורות המוצר (למשל "בצל ירוק (מהדרין) יחידה") הוא שם הספק
+    if (!parsed.supplier_name || sameName(parsed.supplier_name, parsed.customer_name)) {
+        const cnt = new Map();
+        for (const it of parsed.items || []) { const m = it && typeof it.name === "string" ? it.name.match(/\(([^()]{2,25})\)/) : null; if (m && !/\d/.test(m[1])) cnt.set(m[1].trim(), (cnt.get(m[1].trim()) || 0) + 1); }
+        const top = [...cnt.entries()].sort((a, b) => b[1] - a[1])[0];
+        if (top && top[1] >= 2 && !sameName(top[0], parsed.customer_name)) parsed.supplier_name = top[0];
+    }
     const pantryRows = (await dbGetAll("pantryItems")).filter((r) => !r.parent_id);
     const items = mergeDiscountLines(parsed.items || []);
     const skippedLines = items.skipped || 0;
