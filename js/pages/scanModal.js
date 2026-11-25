@@ -355,9 +355,7 @@ export async function openScanModal({ supplierAware, onDone, initialFile = null 
                         <div class="btn-row" style="margin:4px 0;"><button type="button" class="btn ${it._sup === "add" ? "btn-primary" : "btn-secondary"} btn-small" data-sup="${idx}:add">כן, ספק נוסף</button><button type="button" class="btn ${it._sup === "add" ? "btn-secondary" : "btn-primary"} btn-small" data-sup="${idx}:replace">לא, במקום</button></div>
                         ${it._sup === "add" ? `<div class="hint">מחיר חדש לפריט: ממוצע של ${cur()}${Number(it.matched_price || 0).toFixed(2)} (${escapeHtml(supplierName(it.known_suppliers[0]))}) ו-${cur()}${cmpPrice.toFixed(2)} (${escapeHtml(supplierName(askSupplier(it).current))}) = ${cur()}${((Number(it.matched_price || 0) + cmpPrice) / 2).toFixed(2)}</div>` : ""}` : ""}
                     ${it._manual ? `<div class="hint">חובר ל-"${escapeHtml(it._manual)}" לפי בחירתך. השם יישמר לפעם הבאה. <button type="button" class="btn btn-secondary btn-small" data-unlink="${idx}">זה מוצר חדש</button></div>` : ""}
-                    <div class="field"><label>סוג שורה</label><select id="scan-dep-${idx}"><option value="">מוצר רגיל</option><option value="keg" ${it.deposit === "keg" ? "selected" : ""}>פיקדון חבית (חוזר לספק)</option><option value="bottle" ${it.deposit === "bottle" ? "selected" : ""}>פיקדון בקבוקים (לא חוזר)</option><option value="promo" ${it.promo ? "selected" : ""}>מבצע / הנחה</option></select></div>
-                    ${it.promo ? '<div class="hint">מבצע / הנחה: נשמר בחשבונית כשורה נפרדת ומופחת מהסכום. לא משנה מחיר של מוצר.</div>' : ""}
-                    ${it.deposit === "keg" ? '<div class="hint">פיקדון חבית: נשמר בחשבונית ונספר במכלים שאצלך, לא נכנס לחומרי גלם.</div>' : it.deposit === "bottle" ? '<div class="hint">פיקדון בקבוקים: נשמר בחשבונית כהוצאה, לא נכנס לחומרי גלם.</div>' : ""}
+                    ${it.promo ? '<div class="hint">מבצע / הנחה</div>' : it.deposit === "keg" ? '<div class="hint">פיקדון חבית</div>' : it.deposit === "bottle" ? '<div class="hint">פיקדון בקבוקים</div>' : ""}
                     ${!it.matched_pantry_item_id && !it.deposit && !it.promo && it.suggestions && it.suggestions.length ? `<div class="hint">אולי זה אחד מחומרי הגלם האלה? לחיצה מחברת אליו:</div><div class="pk-chips" style="flex-wrap:wrap;">${it.suggestions.map((s, k) => `<button type="button" class="chip" data-sug="${idx}:${k}">${escapeHtml(s.name)}${s.unpriced ? " (בלי מחיר)" : ` (${cur()}${Number(s.price).toFixed(2)})`}</button>`).join("")}</div>` : ""}
                     <div class="field"><label>כמות</label><input type="number" step="any" id="scan-qty-${idx}" value="${it.quantity}"></div>
                     <div class="field">
@@ -468,7 +466,6 @@ export async function openScanModal({ supplierAware, onDone, initialFile = null 
                 if (looksPromo) toast('הסרת שורה שנראית כמו מבצע - ההנחה לא נחשבה. להפחתה מהמוצר השתמש ב"זו שורת מבצע"');
             };
             updatePreview();
-            row.querySelector(`#scan-dep-${idx}`).onchange = (e) => { captureInputs(); it.deposit = e.target.value === "keg" || e.target.value === "bottle" ? e.target.value : null; it.promo = e.target.value === "promo"; renderResults(); };
 
             const unitSel = row.querySelector(`#scan-unit-${idx}`);
             if (unitSel) {
@@ -527,8 +524,8 @@ export async function openScanModal({ supplierAware, onDone, initialFile = null 
             category: it.matched_pantry_item_id ? it.matched_category : overlay.querySelector(`#scan-cat-${idx}`).value,
             is_frozen: overlay.querySelector(`#scan-frozen-${idx}`).checked,
             pantry_item_id: it.matched_pantry_item_id,
-            deposit: ["keg", "bottle"].includes(overlay.querySelector(`#scan-dep-${idx}`).value) ? overlay.querySelector(`#scan-dep-${idx}`).value : null,
-            promo: overlay.querySelector(`#scan-dep-${idx}`).value === "promo",
+            deposit: it.deposit === "keg" || it.deposit === "bottle" ? it.deposit : null,
+            promo: !!it.promo,
             supplier_mode: askSupplier(it) && it._sup === "add" ? "add" : null,
             known_suppliers: it.known_suppliers || [],
             unit_type: it.matched_pantry_item_id ? undefined : overlay.querySelector(`#scan-unit-${idx}`).value,
