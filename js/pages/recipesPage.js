@@ -11,12 +11,13 @@ import { ALLERGENS, allergenLabels } from "../allergens.js";
 import { RECIPE_CATEGORIES, NON_FOOD_CATEGORIES, CATEGORY_GROUPS, UNIT_TYPES, UNIT_TYPE_LABELS } from "../constants.js";
 import { pricePerGram, itemCost as calcItemCost, effectivePrice, isCountItem } from "../formulas.js";
 import { rowForLine, yieldApplies, estimateYield } from "../yieldKb.js";
-import { h, openModal, closeModal, confirmDialog, toast, escapeHtml, money, busy, attemptClose, info, cur, curLabel, takeFlag, layerOpened, layerClosed } from "../ui.js";
+import { h, openModal, closeModal, confirmDialog, toast, escapeHtml, money, busy, attemptClose, info, cur, curLabel, takeFlag, layerOpened, layerClosed, markDirty } from "../ui.js";
 import { openImagePicker } from "../imagePicker.js";
 import { scanRecipeImage, scanRecipeBatch, suggestRecipeBase } from "../repo/scanRepo.js";
 import { openBatchReview } from "./recipesBatchPage.js";
 import { getSetting, setSetting } from "../repo/settingsRepo.js";
 import { LINE_YIELD_FLAG } from "../repo/lineYieldMigration.js";
+import { getLastYields, rememberYield } from "../repo/lineYieldMemory.js";
 import { getAgentKey } from "../agent.js";
 import { dbGetAll, dbGet } from "../db.js";
 import { buildLabel } from "../recipeLabel.js";
@@ -800,10 +801,12 @@ function askMissingIngredients(todo, srcBlob = null, readInfo = {}) {
 
 // ניצולת בשורה: אחרי ההעברה (דגל done) כל שורה של מוצר רגיל נושאת ניצולת משלה, ובלי הגדרה היא 100 (בלי ניצולת)
 let lineYieldReady = false;
+let lastYields = {};
 const lineYieldOf = (s, meta) => (meta.prep === "raw" ? 100 : Number(meta.lineYield) > 0 && Number(meta.lineYield) < 100 ? Number(meta.lineYield) : lineYieldReady ? 100 : (Number(s.item.yield_pct) > 0 && Number(s.item.yield_pct) < 100 ? Number(s.item.yield_pct) : 100));
 
 async function openRecipeModal(existing, container, draft = null) {
     lineYieldReady = (await getSetting(LINE_YIELD_FLAG, "")) === "done";
+    lastYields = await getLastYields();
     resetPickerMemory();
     setLearnedDensities(await getSetting("unit_density", {})); // כוס/כף של מוצר שנקבע בממיר
     const sources = await ingredientSources();
@@ -899,7 +902,7 @@ async function openRecipeModal(existing, container, draft = null) {
                 </div>
                 ${um ? "" : `<select id="ing-mode-${id}" style="width:auto;font-size:12px;padding:2px 6px;margin:2px 0;">${modeOptionsHtml((prefill && (prefill.pct_mode || prefill.est_mode)) || "", (sources.find((x) => String(x.id) === String(prefill && prefill.pantry_item_id)) || {}).item)}</select><input type="text" inputmode="decimal" id="ing-pw-${id}" placeholder="גרם ליחידה" style="display:none;width:100px;font-size:12px;margin:2px 4px;">`}
                 <div class="line-total" id="ing-line-${id}"></div>
-                <button type="button" class="chip" id="ing-prep-${id}" style="display:none;margin:2px 0;"></button><div class="hint" id="ing-ng-${id}" style="display:none;margin:2px 0;"></div>
+                <button type="button" class="chip" id="ing-prep-${id}" style="display:none;margin:2px 0;"></button> <button type="button" class="chip" id="ing-last-${id}" style="display:none;margin:2px 0;"></button><div class="hint" id="ing-ng-${id}" style="display:none;margin:2px 0;"></div>
                 <div id="ing-wbox-${id}" style="display:none;background:var(--accent-soft);color:var(--text);border-radius:8px;padding:8px;margin:4px 0;"><div class="hint" style="margin:0 0 6px;">הכמות בשורה היא המשקל אחרי ניקוי. העלות מחושבת לפי מחיר הקנייה, והאחוז נשמר בשורה.</div><div class="form-row"><div class="field"><label>ניצולת באחוזים</label><input type="text" inputmode="decimal" id="ing-wp-${id}"></div></div><div class="hint" style="margin:0 0 4px;">או משקל המוצר לפני ואחרי ניקוי, בגרמים</div><div class="form-row"><div class="field"><label>לפני</label><input type="text" inputmode="decimal" id="ing-wb-${id}"></div><div class="field"><label>אחרי</label><input type="text" inputmode="decimal" id="ing-wa-${id}"></div></div><div class="error-msg" id="ing-we-${id}"></div><div style="display:flex;gap:6px;flex-wrap:wrap;"><button type="button" class="btn btn-primary btn-small" id="ing-ws-${id}">שמירה</button><button type="button" class="btn btn-secondary btn-small" id="ing-wn-${id}">ללא ניצולת בשורה זו</button></div></div>
                 <div class="hint" id="ing-echo-${id}" style="margin:2px 0;"></div>
                 <div id="ing-egg-${id}" style="display:none;margin:6px 0;">
@@ -954,6 +957,14 @@ async function openRecipeModal(existing, container, draft = null) {
                 werr.style.display = "none";
                 wbox.style.display = "";
             });
+            row.querySelector(`#ing-last-${id}`).addEventListener("click", () => {
+                const sel = selNow(), v = sel ? Number(lastYields[sel.item.id]) : 0;
+                if (!(v > 0)) return;
+                const m = rowMeta.get(id); m.lineYield = v; m.prep = "proc";
+                wbox.style.display = "none";
+                markDirty(overlay);
+                recalc();
+            });
             // האחוז והמשקלים הם שתי דרכים לאותו נתון: עריכה של אחד מנקה את השני
             row.querySelector(`#ing-wp-${id}`).addEventListener("input", () => { row.querySelector(`#ing-wb-${id}`).value = ""; row.querySelector(`#ing-wa-${id}`).value = ""; });
             [`#ing-wb-${id}`, `#ing-wa-${id}`].forEach((sel) => row.querySelector(sel).addEventListener("input", () => { row.querySelector(`#ing-wp-${id}`).value = ""; }));
@@ -976,6 +987,7 @@ async function openRecipeModal(existing, container, draft = null) {
                     wbox.style.display = "none";
                     toast("הניצולת נשמרה בשורה");
                     recalc();
+                    await rememberYield(lastYields, sel.item.id, yieldPct);
                     return;
                 }
                 try {
@@ -1263,6 +1275,10 @@ async function openRecipeModal(existing, container, draft = null) {
                 prepEl.style.display = show ? "" : "none";
                 if (!show) { const wb = overlay.querySelector(`#ing-wbox-${id}`); if (wb) wb.style.display = "none"; }
                 if (show) { const y = lineYieldOf(s, meta); prepEl.textContent = y > 0 && y < 100 ? `ניצולת ${+y.toFixed(1)}%` : "ניצולת"; }
+                const lastEl = overlay.querySelector(`#ing-last-${id}`);
+                const last = show && lineYieldReady && lineYieldOf(s, meta) === 100 ? Number(lastYields[s.item.id]) : 0;
+                lastEl.style.display = last > 0 ? "" : "none";
+                if (last > 0) lastEl.textContent = `פעם אחרונה: ${+last.toFixed(1)}%`;
             }
             { // משקל יחידה: מוצג כשבוחרים "יחידות לפי משקל יחידה", ממולא ממה ששמור במוצר או מהטבלה, ונשמר במוצר כשמשנים
                 const pwEl = overlay.querySelector(`#ing-pw-${id}`);

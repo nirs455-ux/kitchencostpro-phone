@@ -4,7 +4,7 @@
 import { ICE_GLAZE_DEDUCTION } from "./formulas.js";
 import { flattenRecipeItems } from "./repo/subRecipes.js";
 import { isEggProduct, eggSizeOf, partGrams } from "./eggs.js";
-import { rowForLine } from "./yieldKb.js";
+import { rowForLine, dishLineRow } from "./yieldKb.js";
 
 export const SALES_LINE_TYPES = ["sold", "staff_meal", "cancelled_returned", "cancelled_consumed"];
 export const SALES_LINE_LABELS = { sold: "נמכר", staff_meal: "ארוחת צוות", cancelled_returned: "בוטל - חזר למלאי", cancelled_consumed: "בוטל - נצרך/נזרק" };
@@ -77,7 +77,7 @@ export function explodeSale(line, ctx) {
             const grams = (Number(it.quantity_g) || 0) * qty;
             if (it.source_type === "pantry") {
                 const row = ctx.pantry.get(it.source_id);
-                if (row) addUnits(pantry, topId(row), gramsToPurchaseUnits(row, grams));
+                if (row) addUnits(pantry, topId(row), gramsToPurchaseUnits(dishLineRow(row, it.line_yield), grams));
             } else if (it.source_type === "recipe") {
                 recipes[it.source_id] = (recipes[it.source_id] || 0) + grams;
                 explodeRecipe(ctx, it.source_id, grams, pantry);

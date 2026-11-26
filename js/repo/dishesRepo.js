@@ -1,6 +1,7 @@
 // לוגיקת מנות - תרגום מדויק של _resolve_dish_items / _parse_dish_payload / add_dish / update_dish / delete_dish.
 import { dbGetAll, dbGet, dbPut, dbDelete, dbGetByIndex, dbDeleteWhere, dbAtomic, txReplaceChildren } from "../db.js";
 import { pricePerGram, itemCost as calcItemCost, computeDishPricing, isCountItem } from "../formulas.js";
+import { dishLineRow, dishLineEligible } from "../yieldKb.js";
 
 export async function listDishesWithItems() {
     const dishes = await dbGetAll("dishes");
@@ -23,11 +24,13 @@ export async function resolveDishItems(items, { cache = null } = {}) {
         if (Number.isNaN(sourceId) || Number.isNaN(qty)) throw new Error("מרכיב עם נתונים לא תקינים");
         if (qty <= 0) throw new Error("כמות חייבת להיות גדולה מ-0");
 
-        let ppg, sourceName, countLine = false;
+        let ppg, sourceName, countLine = false, lineYield = null;
         if (sourceType === "pantry") {
             const row = cache ? cache.pantry.get(sourceId) : await dbGet("pantryItems", sourceId);
             if (!row) throw new Error("מרכיב לא נמצא בחומרי הגלם");
-            ppg = pricePerGram(row);
+            const y = Number(it.line_yield);
+            if (dishLineEligible(row) && y > 0 && y < 100) lineYield = y;
+            ppg = pricePerGram(dishLineRow(row, lineYield));
             sourceName = row.name;
             if (isCountItem(row)) countLine = true;
         } else if (sourceType === "recipe") {
@@ -41,7 +44,7 @@ export async function resolveDishItems(items, { cache = null } = {}) {
         }
         const cost = calcItemCost(ppg, qty);
         totalCost += cost;
-        resolved.push({ source_type: sourceType, source_id: sourceId, source_name: sourceName, quantity_g: qty, price_per_gram: ppg, item_cost: cost, ...(countLine ? { unit_count: true } : {}) });
+        resolved.push({ source_type: sourceType, source_id: sourceId, source_name: sourceName, quantity_g: qty, price_per_gram: ppg, item_cost: cost, ...(countLine ? { unit_count: true } : {}), ...(lineYield ? { line_yield: lineYield } : {}) });
     }
     return { resolved, totalCost };
 }

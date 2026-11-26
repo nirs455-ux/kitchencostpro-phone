@@ -89,4 +89,7 @@ export const estimatedYieldItems = (pantry) => (pantry || []).filter((r) => r.yi
 // ניצולת המוצר, שנשקלה או מוערכת, חלה תמיד על שורה, אלא אם סימנו בה "בלי ניצולת"
 export const yieldApplies = (row, prep) => prep !== "raw";
 // lineYield: ניצולת של השורה עצמה (אם הוגדרה, גוברת על ניצולת המוצר). בלי ערך: ניצולת המוצר, כמו עד היום
+// שורת מנה עם חומר גלם ישיר: הניצולת של השורה בלבד, בלי ניצולת מוצר. מוצר מפורק, קפוא ויחידות בלי משקל נשארים כמו שהם
+export const dishLineEligible = (row) => !!row && !row.parent_id && !row.is_frozen && !(row.unit_type === "unit" && !(Number(row.unit_amount) > 0));
+export const dishLineRow = (row, lineYield) => (!dishLineEligible(row) ? row : { ...row, yield_pct: Number(lineYield) > 0 && Number(lineYield) < 100 ? Number(lineYield) : 100 });
 export const rowForLine = (row, prep, lineYield) => (!yieldApplies(row, prep) ? { ...row, yield_pct: 100 } : Number(lineYield) > 0 && Number(lineYield) <= 100 ? { ...row, yield_pct: Number(lineYield) } : row);

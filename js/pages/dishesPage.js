@@ -1,4 +1,6 @@
 import { listDishesWithItems, saveDish, deleteDish } from "../repo/dishesRepo.js";
+import { dishLineRow, dishLineEligible } from "../yieldKb.js";
+import { getLastYields, rememberYield } from "../repo/lineYieldMemory.js";
 import { listAllPantryItems } from "../repo/pantryRepo.js";
 import { dbGetAll } from "../db.js";
 import { NON_FOOD_CATEGORIES } from "../constants.js";
@@ -32,9 +34,10 @@ async function allSources() {
 
 // מוצר חומרי גלם ביחידות בלי משקל: הכמות במנה היא מספר יחידות
 const isCountSrc = (src) => !!src && src.source_type === "pantry" && isCountItem(src.ppgSource);
-function ppgFor(src) {
-    return src.source_type === "recipe" ? src.recipeCostPerGram : pricePerGram(src.ppgSource);
+function ppgFor(src, lineYield) {
+    return src.source_type === "recipe" ? src.recipeCostPerGram : pricePerGram(dishLineRow(src.ppgSource, lineYield));
 }
+const weightText = (g) => (g >= 1000 ? `${+(g / 1000).toFixed(2)} ק"ג` : `${g < 100 ? +g.toFixed(1) : Math.round(g)} גרם`);
 
 // לשוניות הדף: מנות | מכירות | דוח סטיות
 let dishTab = "dishes";
@@ -97,7 +100,7 @@ export function showUnderpricedDialog(list, onDone) {
         const d = x.dish;
         await saveDish(d.id, {
             name: d.name,
-            items: d.items.map((it) => ({ source_type: it.source_type, source_id: it.source_id, quantity_g: it.quantity_g })),
+            items: d.items.map((it) => ({ source_type: it.source_type, source_id: it.source_id, quantity_g: it.quantity_g, line_yield: it.line_yield })),
             selling_price: x.suggested * (1 + (Number(d.vat_pct) || 0) / 100),
             vat_pct: d.vat_pct, multiplier: d.multiplier, target_profit_pct: d.target_profit_pct,
         });
@@ -127,6 +130,8 @@ export function showUnderpricedDialog(list, onDone) {
 async function openDishModal(existing, container) {
     resetPickerMemory();
     const sources = await allSources();
+    const lastYields = await getLastYields();
+    const rowYield = new Map(); // שורה -> { pct, src }: הניצולת שייכת למוצר שנבחר בשורה, והחלפת מוצר מאפסת אותה
     let rowCounter = 0;
 
     const overlay = openModal(`
@@ -171,6 +176,7 @@ async function openDishModal(existing, container) {
     function addRow(prefill) {
         const id = rowCounter++;
         const selected = prefill ? sources.find((s) => s.source_type === prefill.source_type && s.source_id === prefill.source_id) : null;
+        if (selected && prefill && Number(prefill.line_yield) > 0) rowYield.set(String(id), { pct: Number(prefill.line_yield), src: String(sources.indexOf(selected)) });
         const row = h(`
             <div class="item-row-inputs" id="dish-row-${id}">
                 <div class="top-line">
@@ -183,6 +189,8 @@ async function openDishModal(existing, container) {
                     <button type="button" class="remove-row-btn" data-remove="${id}" aria-label="הסר שורה">✕</button>
                 </div>
                 <div class="line-total" id="dish-line-${id}"></div>
+                <button type="button" class="chip" id="dish-prep-${id}" style="display:none;margin:2px 0;"></button> <button type="button" class="chip" id="dish-last-${id}" style="display:none;margin:2px 0;"></button><div class="hint" id="dish-ng-${id}" style="display:none;margin:2px 0;"></div>
+                <div id="dish-wbox-${id}" style="display:none;background:var(--accent-soft);color:var(--text);border-radius:8px;padding:8px;margin:4px 0;"><div class="hint" style="margin:0 0 6px;">הכמות בשורה היא המשקל אחרי ניקוי. העלות מחושבת לפי מחיר הקנייה, והאחוז נשמר בשורה.</div><div class="form-row"><div class="field"><label>ניצולת באחוזים</label><input type="text" inputmode="decimal" id="dish-wp-${id}"></div></div><div class="hint" style="margin:0 0 4px;">או משקל המוצר לפני ואחרי ניקוי, בגרמים</div><div class="form-row"><div class="field"><label>לפני</label><input type="text" inputmode="decimal" id="dish-wb-${id}"></div><div class="field"><label>אחרי</label><input type="text" inputmode="decimal" id="dish-wa-${id}"></div></div><div class="error-msg" id="dish-we-${id}"></div><div style="display:flex;gap:6px;flex-wrap:wrap;"><button type="button" class="btn btn-primary btn-small" id="dish-ws-${id}">שמירה</button><button type="button" class="btn btn-secondary btn-small" id="dish-wn-${id}">ללא ניצולת בשורה זו</button></div></div>
                 <div class="hint" id="dish-echo-${id}" style="margin:2px 0;"></div>
             </div>
         `);
@@ -204,7 +212,43 @@ async function openDishModal(existing, container) {
         });
         row.querySelector(`#dish-source-${id}`).addEventListener("change", recalc);
         row.querySelector(`#dish-qty-${id}`).addEventListener("input", recalc);
-        row.querySelector("[data-remove]").onclick = () => { row.remove(); recalc(); };
+        row.querySelector("[data-remove]").onclick = () => { row.remove(); rowYield.delete(String(id)); recalc(); };
+        bindYield(row, String(id));
+    }
+
+    function bindYield(row, id) {
+        const q = (p) => row.querySelector(`#dish-${p}-${id}`);
+        const wbox = q("wbox"), err = q("we");
+        const num = (p) => { const t = String(q(p).value || "").trim().replace(",", "."); return t === "" ? null : Number(t); };
+        const fail = (msg) => { err.textContent = msg; err.style.display = "block"; };
+        const apply = (pct) => { rowYield.set(id, { pct, src: q("source").value }); wbox.style.display = "none"; markDirty(overlay); recalc(); };
+        q("prep").onclick = () => {
+            if (wbox.style.display !== "none") { wbox.style.display = "none"; return; }
+            const y = rowYield.get(id);
+            q("wp").value = y ? String(+y.pct.toFixed(1)) : "";
+            q("wb").value = ""; q("wa").value = ""; err.style.display = "none";
+            wbox.style.display = "";
+        };
+        q("last").onclick = () => { const src = sources[q("source").value]; if (src && lastYields[src.source_id]) apply(Number(lastYields[src.source_id])); };
+        q("wp").addEventListener("input", () => { q("wb").value = ""; q("wa").value = ""; });
+        ["wb", "wa"].forEach((p) => q(p).addEventListener("input", () => { q("wp").value = ""; }));
+        q("wn").onclick = () => { rowYield.delete(id); wbox.style.display = "none"; markDirty(overlay); recalc(); };
+        q("ws").onclick = async () => {
+            const src = sources[q("source").value];
+            if (!src) return;
+            const before = num("wb"), after = num("wa"), pct = num("wp");
+            let y;
+            if (before != null || after != null) {
+                if (!(before > 0) || !(after > 0)) return fail("יש להזין גם משקל לפני וגם משקל אחרי");
+                if (after >= before) return fail("המשקל אחרי חייב להיות קטן מהמשקל לפני");
+                y = Math.round((after / before) * 10000) / 100;
+            } else {
+                if (!(pct > 0 && pct < 100)) return fail("יש להזין ניצולת באחוזים, בין 0 ל-100");
+                y = Math.round(pct * 100) / 100;
+            }
+            apply(y);
+            await rememberYield(lastYields, src.source_id, y);
+        };
     }
 
     // source === "pricing": המשתמש שינה מכפיל/יעד - רק אז המחיר מתמלא. בפתיחה או בשינוי מרכיבים המחיר השמור נשאר ומוצע מחיר חדש.
@@ -222,9 +266,25 @@ async function openDishModal(existing, container) {
             const echoEl = overlay.querySelector(`#dish-echo-${id}`);
             const warn = countSrc ? countWarning(rawText) : qtyWarning(rawText);
             echoEl.innerHTML = warn ? `<span style="color:var(--danger);">${escapeHtml(warn)}</span>` : escapeHtml(countSrc ? describeCount(rawText) : describeQty(rawText));
+            let ly = rowYield.get(id);
+            if (ly && ly.src !== idx) { rowYield.delete(id); ly = null; }
+            const picked = idx !== "" ? sources[idx] : null;
+            const elig = !!(picked && picked.source_type === "pantry" && dishLineEligible(picked.ppgSource));
+            const prepEl = overlay.querySelector(`#dish-prep-${id}`);
+            prepEl.style.display = elig ? "" : "none";
+            prepEl.textContent = ly ? `ניצולת ${+ly.pct.toFixed(1)}%` : "ניצולת";
+            const last = elig && !ly ? Number(lastYields[picked.source_id]) : 0;
+            const lastEl = overlay.querySelector(`#dish-last-${id}`);
+            lastEl.style.display = last > 0 ? "" : "none";
+            if (last > 0) lastEl.textContent = `פעם אחרונה: ${+last.toFixed(1)}%`;
+            if (!elig) overlay.querySelector(`#dish-wbox-${id}`).style.display = "none";
+            const ngEl = overlay.querySelector(`#dish-ng-${id}`);
+            const showNet = !!(elig && ly && qty > 0);
+            ngEl.style.display = showNet ? "" : "none";
+            if (showNet) ngEl.textContent = `נטו ${weightText(qty)}, ברוטו ${weightText(qty / (ly.pct / 100))}`;
             if (idx !== "" && qty > 0) {
                 const src = sources[idx];
-                const cost = calcItemCost(ppgFor(src), qty);
+                const cost = calcItemCost(ppgFor(src, ly ? ly.pct : null), qty);
                 lineEl.textContent = money(cost);
                 total += cost;
             } else {
@@ -300,7 +360,8 @@ async function openDishModal(existing, container) {
             const qty = (idx !== "" && isCountSrc(sources[idx]) ? textToCount(rawQ) : textToGrams(rawQ)) || "";
             if (idx !== "" && qty) {
                 const src = sources[idx];
-                items.push({ source_type: src.source_type, source_id: src.source_id, quantity_g: qty });
+                const ly = rowYield.get(id);
+                items.push({ source_type: src.source_type, source_id: src.source_id, quantity_g: qty, ...(ly && ly.src === idx ? { line_yield: ly.pct } : {}) });
             }
         });
         const priceBeforeVat = parseFloat(overlay.querySelector("#f-price").value) || 0;
