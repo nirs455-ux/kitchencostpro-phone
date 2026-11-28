@@ -2,6 +2,7 @@
 import { dbGetAll, dbGet, dbPut, dbDelete, dbGetByIndex, dbDeleteWhere, dbAtomic, txReplaceChildren } from "../db.js";
 import { pricePerGram, itemCost as calcItemCost, computeDishPricing, isCountItem } from "../formulas.js";
 import { dishLineRow, dishLineEligible } from "../yieldKb.js";
+import { dealPrices, withDeal } from "../deals.js";
 
 export async function listDishesWithItems() {
     const dishes = await dbGetAll("dishes");
@@ -17,6 +18,8 @@ export async function listDishesWithItems() {
 export async function resolveDishItems(items, { cache = null } = {}) {
     const resolved = [];
     let totalCost = 0;
+    // מחיר לאחר הנחה: נטען רק כששורה בחרה בו
+    const deals = cache && cache.deals ? cache.deals : items.some((x) => x.use_deal) ? dealPrices(await dbGetAll("invoices"), await dbGetAll("invoiceItems")) : null;
     for (const it of items) {
         const sourceType = it.source_type;
         const sourceId = parseInt(it.source_id, 10);
@@ -30,7 +33,7 @@ export async function resolveDishItems(items, { cache = null } = {}) {
             if (!row) throw new Error("מרכיב לא נמצא בחומרי הגלם");
             const y = Number(it.line_yield);
             if (dishLineEligible(row) && y > 0 && y < 100) lineYield = y;
-            ppg = pricePerGram(dishLineRow(row, lineYield));
+            ppg = pricePerGram(dishLineRow(withDeal(row, it.use_deal, deals), lineYield));
             sourceName = row.name;
             if (isCountItem(row)) countLine = true;
         } else if (sourceType === "recipe") {
@@ -44,7 +47,7 @@ export async function resolveDishItems(items, { cache = null } = {}) {
         }
         const cost = calcItemCost(ppg, qty);
         totalCost += cost;
-        resolved.push({ source_type: sourceType, source_id: sourceId, source_name: sourceName, quantity_g: qty, price_per_gram: ppg, item_cost: cost, ...(countLine ? { unit_count: true } : {}), ...(lineYield ? { line_yield: lineYield } : {}) });
+        resolved.push({ source_type: sourceType, source_id: sourceId, source_name: sourceName, quantity_g: qty, price_per_gram: ppg, item_cost: cost, ...(countLine ? { unit_count: true } : {}), ...(lineYield ? { line_yield: lineYield } : {}), ...(sourceType === "pantry" && it.use_deal ? { use_deal: true } : {}) });
     }
     return { resolved, totalCost };
 }

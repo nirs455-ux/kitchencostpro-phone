@@ -96,7 +96,7 @@ async function recalcDishes(cache) {
         }
         let resolved = { resolved: [], totalCost: 0 };
         try {
-            if (live.length) resolved = await resolveDishItems(live.map((r) => ({ source_type: r.source_type, source_id: r.source_id, quantity_g: r.quantity_g, line_yield: r.line_yield })), { cache });
+            if (live.length) resolved = await resolveDishItems(live.map((r) => ({ source_type: r.source_type, source_id: r.source_id, quantity_g: r.quantity_g, line_yield: r.line_yield, use_deal: r.use_deal })), { cache });
         } catch (e) { continue; } // מתכון שחזר להיות טיוטה וכו': משאירים
         const total = resolved.totalCost + ghosts.reduce((n, r) => n + (Number(r.item_cost) || 0), 0);
         const pricing = computeDishPricing(total, dish.selling_price, dish.vat_pct);
