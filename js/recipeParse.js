@@ -7,7 +7,9 @@ import { RECIPE_CATEGORIES } from "./constants.js";
 import { isEggProduct, eggSizeOf, partGrams } from "./eggs.js";
 
 // נוזלים: 1 מ"ל = 1 גרם (כמו בממשק המתכונים הקיים)
-export const RECIPE_UNIT_GRAMS = { g: 1, kg: 1000, ml: 1, l: 1000, tbsp: 15, tsp: 5, cup: 240 };
+// pinch = קורט / קמצוץ: הערכה של חצי גרם, כדי לא לעצור את הזרימה
+export const RECIPE_UNIT_GRAMS = { g: 1, kg: 1000, ml: 1, l: 1000, tbsp: 15, tsp: 5, cup: 240, pinch: 0.5 };
+const PINCH_WORD = /(^|\s)(קורט|קמצוץ)(\s+של)?(?=\s|$)/;
 
 export const recipeScanPrompt = (categories = RECIPE_CATEGORIES) =>
     "אתה מערכת לקריאת מתכונים למסעדה. נתח את התמונה/הקובץ וחלץ ממנו את המתכון.\n" +
@@ -23,12 +25,12 @@ export const recipeScanPrompt = (categories = RECIPE_CATEGORIES) =>
     "  ]\n" +
     "}\n" +
     'unit חייב להיות אחד מ: "g" (גרם), "kg" (ק"ג), "ml" (מ"ל), "l" (ליטר), "tbsp" (כף), ' +
-    '"tsp" (כפית), "cup" (כוס), "unit" (יחידות, למשל 2 ביצים), או null אם לא כתוב. ' +
+    '"tsp" (כפית), "cup" (כוס), "pinch" (קורט או קמצוץ), "unit" (יחידות, למשל 2 ביצים), או null אם לא כתוב. ' +
     "quantity מספר עשרוני (שברים כמו חצי -> 0.5), או null אם לא כתובה כמות. " +
     "אל תמציא מרכיבים או כמויות שלא מופיעים. אם לא ניתן לקרוא שורה בבירור - דלג עליה. " +
     "החזר תמיד אובייקט אחד ולא רשימה. אם בדף כמה חלקים (למשל מתכון ואחריו מסה או רוטב), שים את כל המרכיבים של כל החלקים ברשימה אחת לפי הסדר, " +
     'ובשדה method כתוב כל חלק עם כותרת שלו ("שלב 1: ...", "שלב 2: ..."). שורה עם שני מרכיבים (למשל "300 גרם בצל +100 שומן אווז") פצל לשתי שורות. ' +
-    '"קילו" = kg, "קורט" ושאר כמויות לא מספריות: quantity null. ' +
+    '"קילו" = kg. "קורט" או "קמצוץ": unit "pinch" ו-quantity מספר הקורטים (1 אם לא כתוב). שאר כמויות לא מספריות: quantity null. ' +
     "התמונה עלולה להיות מסובבת: קרא אותה כאילו היא זקופה. קודם העתק את הטקסט כפי שהוא לשדה transcript, בלי לנחש ובלי לתקן, ורק אחר כך בנה את רשימת המרכיבים מתוך ההעתקה. אם מילה לא ברורה, כתוב אותה כפי שהיא נראית.";
 export const RECIPE_SCAN_PROMPT = recipeScanPrompt();
 
@@ -83,6 +85,13 @@ export function buildRecipeDraft(parsed, pantryItems, categories = RECIPE_CATEGO
         // כמות שנכתבה בתוך השם ("עגבניות 200"): השם הוא "עגבניות", והכמות 200
         const inName = qty === null ? quantityInName(ingName) : null;
         if (inName) { qty = inName.qty; unit = unit || inName.unit; ingName = cleanName(ingName); }
+        // "קורט מלח": גם כשהעוזר לא סימן יחידה
+        if (PINCH_WORD.test(ingName) && (!unit || unit === "unit" || unit === "pinch")) {
+            unit = "pinch";
+            qty = qty > 0 ? qty : 1;
+            ingName = ingName.replace(PINCH_WORD, " ").replace(/\s+/g, " ").trim() || ingName;
+        }
+        if (unit === "pinch" && !(qty > 0)) qty = 1;
 
         const key = ingName.toLowerCase();
         let match = byName.get(key) || null;
@@ -134,6 +143,8 @@ export function buildRecipeDraft(parsed, pantryItems, categories = RECIPE_CATEGO
             const w = unitWeightG(String((ing && ing.name) || ingName), size) || unitWeightG(match.name, size); // קודם השם שנכתב (שן שום 4 גרם), ואחריו שם המוצר (שום 50 גרם)
             if (w) est = { est_mode: "est_" + size, est_n: qty, grams: round2(qty * w) };
         }
+        // קורט במוצר מחומרי הגלם: נשמר כ"קורטים (הערכה)", כך שרואים שזו הערכה ואפשר לשנות
+        if (!est && unit === "pinch" && match && !(match.unit_type === "unit" && !(Number(match.unit_amount) > 0))) est = { est_mode: "pinch", est_n: qty, grams: round2(qty * RECIPE_UNIT_GRAMS.pinch) };
         if (est) quantityG = est.grams;
 
         ingredients.push({

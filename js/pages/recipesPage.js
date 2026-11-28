@@ -61,7 +61,7 @@ async function ingredientSources() {
     return out;
 }
 
-const UNIT_HE = { g: "גרם", kg: 'ק"ג', ml: 'מ"ל', l: "ליטר", tbsp: "כף", tsp: "כפית", cup: "כוס", unit: "יחידות" };
+const UNIT_HE = { g: "גרם", kg: 'ק"ג', ml: 'מ"ל', l: "ליטר", tbsp: "כף", tsp: "כפית", cup: "כוס", pinch: "קורט", unit: "יחידות" };
 // כמה גרם זה הכמות שכתובה במסמך (אם אפשר לדעת): יחידות מידה קבועות, או "יחידות" x משקל ליחידה של המוצר שנבחר
 function gramsFromOriginal(um, item) {
     if (!um || !(Number(um.quantity) > 0)) return null;
@@ -838,6 +838,7 @@ async function openRecipeModal(existing, container, draft = null) {
             opts.push(["est_p", "יחידות לפי משקל יחידה"]);
             if (juiceInfo(item.name)) opts.push(["juice", 'מ"ל מיץ (כמה פירות)']);
         }
+        if (selected === "pinch") opts.push(["pinch", "קורטים (הערכה)"]);
         return opts.map(([v, l]) => `<option value="${v}" ${v === (selected || "") ? "selected" : ""}>${l}</option>`).join("");
     };
 
@@ -1204,12 +1205,12 @@ async function openRecipeModal(existing, container, draft = null) {
     // אחוזים: שורה במצב אחוז מחושבת מהשורות שהוקלדו בגרמים (הבסיס). base = אחוז מהבסיס. total = אחוז מהמסה הסופית כולל השורה עצמה.
     function rowEst(id) {
         const meta = rowMeta.get(Number(id));
-        if (!meta || !/^(est_[smlp]|juice)$/.test(meta.pct || "")) return null;
+        if (!meta || !/^(est_[smlp]|juice|pinch)$/.test(meta.pct || "")) return null;
         const rawSel = overlay.querySelector(`#ing-source-${id}`).value;
         if (!rawSel || rawSel.startsWith("r")) return null;
         const s = sources.find((x) => String(x.id) === rawSel);
         if (!s || isCountItem(s.item) || isEggProduct(s.item)) return null;
-        if (meta.pct === "juice" ? !juiceInfo(s.item.name) : meta.pct === "est_p" ? false : !unitWeightG(s.item.name)) return null;
+        if (meta.pct === "juice" ? !juiceInfo(s.item.name) : meta.pct === "est_p" || meta.pct === "pinch" ? false : !unitWeightG(s.item.name)) return null;
         return meta.pct;
     }
     // גרמים מהערכה: יחידות x משקל ממוצע, או מ"ל מיץ -> גרם פרי
@@ -1219,6 +1220,7 @@ async function openRecipeModal(existing, container, draft = null) {
         const s = sources.find((x) => String(x.id) === overlay.querySelector(`#ing-source-${id}`).value);
         const n = textToCount(overlay.querySelector(`#ing-qty-${id}`).value) || 0;
         if (mode === "juice") return { mode, n, g: Math.round((gramsFromJuiceMl(s.item.name, n) || 0) * 100) / 100, fruits: fruitsFromJuiceMl(s.item.name, n) || 0 };
+        if (mode === "pinch") return { mode, n, w: RECIPE_UNIT_GRAMS.pinch, g: Math.round(n * RECIPE_UNIT_GRAMS.pinch * 100) / 100 };
         if (mode === "est_p") {
             const typed = Number(String(overlay.querySelector(`#ing-pw-${id}`).value).replace(",", "."));
             const w = typed > 0 ? typed : Number(s.item.piece_g) > 0 ? Number(s.item.piece_g) : unitWeightG(s.item.name) || 0;
