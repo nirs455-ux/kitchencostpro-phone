@@ -180,6 +180,9 @@ h2 { font-size: 16px; margin: 18px 16px 8px; font-family: var(--font-heading); }
     border: 1px solid var(--input-border); background: var(--surface); color: var(--text-2); padding: 7px 13px;
     border-radius: 16px; font-size: 13px; cursor: pointer; font-family: inherit;
 }
+.promo-badge { border: 1px solid #e0a43a; background: #fdf0d5; color: #6b4300; border-radius: 12px; padding: 1px 9px; font-size: 12px; font-family: inherit; font-weight: 700; cursor: pointer; white-space: nowrap; }
+.promo-details { margin: 6px 0; padding: 6px 8px; border: 1px solid #e0a43a; border-radius: 8px; background: #fdf0d5; color: #6b4300; font-size: 13px; font-weight: 400; }
+.promo-details[hidden] { display: none; }
 .chip.active { background: var(--brand); color: var(--on-brand); border-color: var(--brand); }
 
 .modal-overlay {

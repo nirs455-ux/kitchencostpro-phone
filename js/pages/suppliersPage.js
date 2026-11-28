@@ -1,3 +1,5 @@
+import { linkPromos } from "../deals.js";
+import { promoBadge, promoDetails, bindPromoBadges } from "./promoBadge.js";
 import { listSuppliers, addSupplier, renameSupplier, deleteSupplier, getSupplierDeleteInfo, listInvoicesWithItems, saveInvoice, validateInvoicePayload, deleteInvoice, monthlySummaryBySupplier,
     priceChanges, monthlyReport, invoicesToCsv, pettyCashOwed, markAllPettyCashReimbursed, setPettyReimbursed, findDuplicateInvoice, kegBalances } from "../repo/suppliersRepo.js";
 import { listTopLevelPantryItems } from "../repo/pantryRepo.js";
@@ -180,13 +182,14 @@ export async function renderSuppliersPage(container) {
 
     // ---- פרטי חשבונית (לחיצה על שורה): תוכן + פעולות במקום אחד ----
     function openInvoiceDetails(inv) {
+        const links = linkPromos(inv.items.map((it) => ({ name: it.product_name, quantity: it.quantity, unitPrice: it.unit_price, promo: !!it.promo, deposit: it.deposit })));
         const overlay = openModal(`
             <h2>${escapeHtml(inv.supplier_name)}</h2>
             <div class="card-row" style="margin:-8px 0 10px;"><span>${shortDate(inv.invoice_date)}${inv.purchaser ? " · " + escapeHtml(inv.purchaser) : ""}</span>
                 <span>${inv.document_type === "credit" ? '<span class="tag tag-danger">זיכוי</span>' : ""}${inv.petty_cash ? `<span class="petty-tag ${inv.reimbursed ? "paid" : "owed"}">קופה קטנה · ${inv.reimbursed ? "הוחזר" : "ממתין להחזר"}</span>` : ""}</span></div>
             <table class="simple">
                 <thead><tr><th>מוצר</th><th>כמות</th><th>סה"כ</th></tr></thead>
-                <tbody>${inv.items.map((it) => `<tr><td>${escapeHtml(it.product_name)}</td><td>${+Number(it.quantity).toFixed(3)}</td><td>${it.no_price ? "בלי מחיר" : money(it.line_total ?? it.quantity * it.unit_price)}</td></tr>`).join("")}</tbody>
+                <tbody>${inv.items.map((it, i) => `<tr><td>${escapeHtml(it.product_name)}${links.has(i) ? ` ${promoBadge()}${promoDetails(links.get(i))}` : ""}</td><td>${+Number(it.quantity).toFixed(3)}</td><td>${it.no_price ? "בלי מחיר" : money(it.line_total ?? it.quantity * it.unit_price)}</td></tr>`).join("")}</tbody>
             </table>
             ${vatLines(inv.vat).length ? `<div style="margin:10px 0;">${vatLines(inv.vat).map(([label, v]) => `<div class="card-row"><span>${escapeHtml(label)}</span><span>${money(v)}</span></div>`).join("")}</div>` : `<div class="card-row" style="font-weight:700;margin:10px 0;"><span>סה"כ</span><span>${money(inv.total_amount)}</span></div>`}
             <div class="modal-actions" style="flex-wrap:wrap;">
@@ -196,6 +199,7 @@ export async function renderSuppliersPage(container) {
             </div>
             <div class="modal-actions"><button type="button" class="btn btn-secondary" id="d-close">סגור</button></div>
         `);
+        bindPromoBadges(overlay);
         overlay.querySelector("#d-close").onclick = closeModal;
         const img = overlay.querySelector("#d-image");
         if (img) img.onclick = () => showImageFullscreen(inv.image, `${inv.supplier_name} - ${inv.invoice_date}`);

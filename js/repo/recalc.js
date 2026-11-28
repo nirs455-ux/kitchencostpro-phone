@@ -6,6 +6,7 @@ import { isSubRow } from "./subRecipes.js";
 import { recipeCostPerGram, computeDishPricing } from "../formulas.js";
 import { resolveRecipeItems } from "./recipesRepo.js";
 import { resolveDishItems } from "./dishesRepo.js";
+import { dealPrices } from "../deals.js";
 
 const r2 = (n) => Math.round(n * 100) / 100;
 // כותב רק את שדות העלות על השורה העדכנית במסד (לא על עותק שנטען קודם): עריכה שנשמרה בזמן החישוב לא נדרסת
@@ -39,10 +40,10 @@ async function recipesInDependencyOrder() {
 
 // טוענים מוצרים, מתכונים ושורות פעם אחת (במקום קריאה למסד לכל רכיב): חישוב מחדש של מאות מתכונים הופך מכמה שניות לחלקיק שנייה.
 async function loadCache() {
-    const [pantry, recipes, recipeItems] = await Promise.all([dbGetAll("pantryItems"), dbGetAll("recipes"), dbGetAll("recipeItems")]);
+    const [pantry, recipes, recipeItems, invoices, invoiceItems] = await Promise.all([dbGetAll("pantryItems"), dbGetAll("recipes"), dbGetAll("recipeItems"), dbGetAll("invoices"), dbGetAll("invoiceItems")]);
     const byRecipe = new Map();
     for (const row of recipeItems) { if (!byRecipe.has(row.recipe_id)) byRecipe.set(row.recipe_id, []); byRecipe.get(row.recipe_id).push(row); }
-    return { pantry: new Map(pantry.map((p) => [p.id, p])), recipes: new Map(recipes.map((r) => [r.id, r])), recipeItems, byRecipe };
+    return { pantry: new Map(pantry.map((p) => [p.id, p])), recipes: new Map(recipes.map((r) => [r.id, r])), recipeItems, byRecipe, deals: dealPrices(invoices, invoiceItems) };
 }
 
 async function recalcRecipes(cache) {
@@ -55,7 +56,7 @@ async function recalcRecipes(cache) {
         for (const r of rows) ((isSubRow(r) ? cache.recipes.get(r.sub_recipe_id) : cache.pantry.get(r.pantry_item_id)) ? live : ghosts).push(r);
         let resolved = { resolved: [], totalCost: 0, rawWeight: 0 };
         try {
-            if (live.length) resolved = await resolveRecipeItems(live.map((r) => ({ pantry_item_id: r.pantry_item_id, sub_recipe_id: r.sub_recipe_id, quantity_g: r.quantity_g, egg_part: r.egg_part, egg_unit: r.egg_unit, prep: r.prep, line_yield: r.line_yield })), { selfId: recipe.id, cache });
+            if (live.length) resolved = await resolveRecipeItems(live.map((r) => ({ pantry_item_id: r.pantry_item_id, sub_recipe_id: r.sub_recipe_id, quantity_g: r.quantity_g, egg_part: r.egg_part, egg_unit: r.egg_unit, prep: r.prep, line_yield: r.line_yield, use_deal: r.use_deal })), { selfId: recipe.id, cache });
         } catch (e) { continue; } // למשל מוצר ביחידות שאיבד משקל ליחידה: משאירים כמו שהיה
         const ghostCost = ghosts.reduce((n, r) => n + (Number(r.item_cost) || 0), 0);
         const ghostGrams = ghosts.reduce((n, r) => n + (r.unit_count ? 0 : Number(r.quantity_g) || 0), 0);
@@ -150,5 +151,5 @@ export async function ensureCostsFresh() {
 export function startAutoRecalc() {
     if (started) return;
     started = true;
-    onDbChange((store) => { if (store === "pantryItems" || store === "recipes") schedule(); }); // שינוי במתכון מעדכן גם מתכונים ומנות שמשתמשים בו
+    onDbChange((store) => { if (store === "pantryItems" || store === "recipes" || store === "invoices" || store === "invoiceItems") schedule(); }); // שינוי במתכון מעדכן גם מתכונים ומנות שמשתמשים בו
 }

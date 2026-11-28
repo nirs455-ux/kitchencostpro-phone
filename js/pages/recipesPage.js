@@ -1,3 +1,4 @@
+import { dealPrices, withDeal } from "../deals.js";
 import { bindUnitChoice } from "../unitChoice.js";
 // ספר מתכונים: מתכון נשמר גם כשחסרים רכיבים (טיוטה שאפשר להשלים אחר כך), המסמך המקורי נשמר איתו,
 // ויש תצוגת פרטים עם רשימת רכיבים לתווית והצהרת אלרגנים.
@@ -802,11 +803,13 @@ function askMissingIngredients(todo, srcBlob = null, readInfo = {}) {
 // ניצולת בשורה: אחרי ההעברה (דגל done) כל שורה של מוצר רגיל נושאת ניצולת משלה, ובלי הגדרה היא 100 (בלי ניצולת)
 let lineYieldReady = false;
 let lastYields = {};
+let deals = new Map(); // מחיר לאחר הנחה לכל חומר גלם, לפי החשבונית האחרונה
 const lineYieldOf = (s, meta) => (meta.prep === "raw" ? 100 : Number(meta.lineYield) > 0 && Number(meta.lineYield) < 100 ? Number(meta.lineYield) : lineYieldReady ? 100 : (Number(s.item.yield_pct) > 0 && Number(s.item.yield_pct) < 100 ? Number(s.item.yield_pct) : 100));
 
 async function openRecipeModal(existing, container, draft = null) {
     lineYieldReady = (await getSetting(LINE_YIELD_FLAG, "")) === "done";
     lastYields = await getLastYields();
+    deals = dealPrices(await dbGetAll("invoices"), await dbGetAll("invoiceItems"));
     resetPickerMemory();
     setLearnedDensities(await getSetting("unit_density", {})); // כוס/כף של מוצר שנקבע בממיר
     const sources = await ingredientSources();
@@ -883,7 +886,7 @@ async function openRecipeModal(existing, container, draft = null) {
     function addRow(prefill) {
         const id = rowCounter++;
         const um = prefill && prefill.um ? prefill.um : null;
-        rowMeta.set(id, { um, lineYield: prefill && Number(prefill.line_yield) > 0 ? Number(prefill.line_yield) : null, eggPart: (prefill && prefill.egg_part) || "whole", eggSize: null, eggUnit: prefill && prefill.egg_unit === "unit" ? "unit" : "g", pct: (prefill && (prefill.pct_mode || prefill.est_mode)) || null, prep: prefill && (prefill.prep === "raw" || prefill.prep === "proc") ? prefill.prep : null });
+        rowMeta.set(id, { um, useDeal: !!(prefill && prefill.use_deal), dealFor: prefill && prefill.use_deal ? String(prefill.pantry_item_id) : null, lineYield: prefill && Number(prefill.line_yield) > 0 ? Number(prefill.line_yield) : null, eggPart: (prefill && prefill.egg_part) || "whole", eggSize: null, eggUnit: prefill && prefill.egg_unit === "unit" ? "unit" : "g", pct: (prefill && (prefill.pct_mode || prefill.est_mode)) || null, prep: prefill && (prefill.prep === "raw" || prefill.prep === "proc") ? prefill.prep : null });
         const row = h(`
             <div class="item-row-inputs" id="ing-row-${id}">
                 ${um && um.manual ? `<div class="field" style="margin:0 0 6px;"><input type="text" id="ing-name-${id}" placeholder="שם הרכיב, לא במערכת" value="${escapeHtml(um.name || "")}"></div>` : um ? `<div class="hint-warn" id="ing-um-${id}" style="margin-top:0;">
@@ -902,7 +905,7 @@ async function openRecipeModal(existing, container, draft = null) {
                 </div>
                 ${um ? "" : `<select id="ing-mode-${id}" style="width:auto;font-size:12px;padding:2px 6px;margin:2px 0;">${modeOptionsHtml((prefill && (prefill.pct_mode || prefill.est_mode)) || "", (sources.find((x) => String(x.id) === String(prefill && prefill.pantry_item_id)) || {}).item)}</select><input type="text" inputmode="decimal" id="ing-pw-${id}" placeholder="גרם ליחידה" style="display:none;width:100px;font-size:12px;margin:2px 4px;">`}
                 <div class="line-total" id="ing-line-${id}"></div>
-                <button type="button" class="chip" id="ing-prep-${id}" style="display:none;margin:2px 0;"></button> <button type="button" class="chip" id="ing-last-${id}" style="display:none;margin:2px 0;"></button><div class="hint" id="ing-ng-${id}" style="display:none;margin:2px 0;"></div>
+                <button type="button" class="chip" id="ing-prep-${id}" style="display:none;margin:2px 0;"></button> <button type="button" class="chip" id="ing-last-${id}" style="display:none;margin:2px 0;"></button> <button type="button" class="chip" id="ing-deal-${id}" style="display:none;margin:2px 0;"></button><div class="hint" id="ing-ng-${id}" style="display:none;margin:2px 0;"></div>
                 <div id="ing-wbox-${id}" style="display:none;background:var(--accent-soft);color:var(--text);border-radius:8px;padding:8px;margin:4px 0;"><div class="hint" style="margin:0 0 6px;">הכמות בשורה היא המשקל אחרי ניקוי. העלות מחושבת לפי מחיר הקנייה, והאחוז נשמר בשורה.</div><div class="form-row"><div class="field"><label>ניצולת באחוזים</label><input type="text" inputmode="decimal" id="ing-wp-${id}"></div></div><div class="hint" style="margin:0 0 4px;">או משקל המוצר לפני ואחרי ניקוי, בגרמים</div><div class="form-row"><div class="field"><label>לפני</label><input type="text" inputmode="decimal" id="ing-wb-${id}"></div><div class="field"><label>אחרי</label><input type="text" inputmode="decimal" id="ing-wa-${id}"></div></div><div class="error-msg" id="ing-we-${id}"></div><div style="display:flex;gap:6px;flex-wrap:wrap;"><button type="button" class="btn btn-primary btn-small" id="ing-ws-${id}">שמירה</button><button type="button" class="btn btn-secondary btn-small" id="ing-wn-${id}">ללא ניצולת בשורה זו</button></div></div>
                 <div class="hint" id="ing-echo-${id}" style="margin:2px 0;"></div>
                 <div id="ing-egg-${id}" style="display:none;margin:6px 0;">
@@ -941,6 +944,13 @@ async function openRecipeModal(existing, container, draft = null) {
                 });
             }
         }
+        row.querySelector(`#ing-deal-${id}`).addEventListener("click", () => {
+            const m = rowMeta.get(id);
+            m.useDeal = !m.useDeal;
+            m.dealFor = row.querySelector(`#ing-source-${id}`).value;
+            markDirty(overlay);
+            recalc();
+        });
         { // כפתור ניצולת: האחוז נשמר במוצר, ובפעם הבאה לחיצה אחת מחילה אותו. הבחירה בשורה נשמרת בנפרד (prep)
             const wbox = row.querySelector(`#ing-wbox-${id}`), werr = row.querySelector(`#ing-we-${id}`);
             const selNow = () => sources.find((x) => String(x.id) === row.querySelector(`#ing-source-${id}`).value);
@@ -1280,6 +1290,16 @@ async function openRecipeModal(existing, container, draft = null) {
                 lastEl.style.display = last > 0 ? "" : "none";
                 if (last > 0) lastEl.textContent = `פעם אחרונה: ${+last.toFixed(1)}%`;
             }
+            { // מחיר לאחר הנחה: מוצג רק למוצר שבחשבונית האחרונה שלו היה מבצע. החלפת מוצר מבטלת את הבחירה
+                if (meta.useDeal && meta.dealFor !== rawSel) meta.useDeal = false;
+                const dealEl = overlay.querySelector(`#ing-deal-${id}`);
+                const price = s && !subRec && !egg ? deals.get(s.item.id) : 0;
+                const show = price > 0 && price < Number(s.item.price);
+                dealEl.style.display = show ? "" : "none";
+                dealEl.classList.toggle("active", !!(show && meta.useDeal));
+                dealEl.setAttribute("aria-pressed", String(!!(show && meta.useDeal)));
+                if (show) dealEl.textContent = `מחיר לאחר הנחה ${cur()}${price.toFixed(2)}`;
+            }
             { // משקל יחידה: מוצג כשבוחרים "יחידות לפי משקל יחידה", ממולא ממה ששמור במוצר או מהטבלה, ונשמר במוצר כשמשנים
                 const pwEl = overlay.querySelector(`#ing-pw-${id}`);
                 if (pwEl) {
@@ -1325,7 +1345,7 @@ async function openRecipeModal(existing, container, draft = null) {
                     lineEl.textContent = "";
                 } else {
                     const eligLine = !count && !s.item.parent_id && !s.item.is_frozen;
-                    const cost = calcItemCost(pricePerGram(rowForLine(s.item, meta.prep, eligLine ? lineYieldOf(s, meta) : undefined)), qty);
+                    const cost = calcItemCost(pricePerGram(rowForLine(withDeal(s.item, meta.useDeal, deals), meta.prep, eligLine ? lineYieldOf(s, meta) : undefined)), qty);
                     lineEl.innerHTML = money(cost) + (s.item.price_missing ? ' <span class="muted">אין מחיר</span>' : "");
                     total += cost;
                 }
@@ -1485,7 +1505,7 @@ async function openRecipeModal(existing, container, draft = null) {
             const rawPrep = meta && meta.prep && ss && !egg && !countRow && Number(ss.item.yield_pct) !== 100 ? { prep: meta.prep } : {};
             const lineY = lineYieldReady && meta && ss && !egg && !countRow && !ss.item.parent_id && !ss.item.is_frozen ? { line_yield: lineYieldOf(ss, meta) } : {};
             if (pantry_item_id.startsWith("r") && quantity_g) items.push({ sub_recipe_id: Number(pantry_item_id.slice(1)), quantity_g, ...pctPart, ...(technique ? { technique } : {}) });
-            else if (pantry_item_id && quantity_g) items.push({ pantry_item_id, quantity_g, ...(egg ? { egg_part: egg.part, ...(meta && meta.eggUnit === "unit" ? { egg_unit: "unit" } : {}) } : {}), ...rawPrep, ...lineY, ...pctPart, ...(technique ? { technique } : {}) });
+            else if (pantry_item_id && quantity_g) items.push({ pantry_item_id, quantity_g, ...(egg ? { egg_part: egg.part, ...(meta && meta.eggUnit === "unit" ? { egg_unit: "unit" } : {}) } : {}), ...rawPrep, ...lineY, ...(meta && meta.useDeal && !egg ? { use_deal: true } : {}), ...pctPart, ...(technique ? { technique } : {}) });
             else if (meta && meta.um && meta.um.manual) {
                 // רכיב שהוקלד ידנית ועדיין לא בחומרי הגלם: נשמר בטיוטה עם הכמות בגרמים (אם הוזנה)
                 const nm = String(meta.um.name || "").trim();

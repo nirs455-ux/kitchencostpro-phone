@@ -4,6 +4,7 @@ import { ensureRecipeCategory } from "./recipeCategories.js";
 import { pricePerGram, itemCost as calcItemCost, recipeCostPerGram, effectivePrice, isCountItem } from "../formulas.js";
 import { ensureEggDefaults } from "./pantryRepo.js";
 import { rowForLine } from "../yieldKb.js";
+import { dealPrices, withDeal } from "../deals.js";
 import { isEggProduct, eggSizeOf, allocateEggCosts } from "../eggs.js";
 import { isSubRow, includesRecipe, expandToParents, flattenRecipeItems } from "./subRecipes.js";
 
@@ -65,6 +66,8 @@ export async function resolveRecipeItems(items, { selfId = null, cache = null } 
     let totalCost = 0;
     let rawWeight = 0;
     let allRecipeItems = null;
+    // מחיר לאחר הנחה: נטען רק כששורה בחרה בו
+    const deals = cache && cache.deals ? cache.deals : items.some((x) => x.use_deal) ? dealPrices(await dbGetAll("invoices"), await dbGetAll("invoiceItems")) : null;
     for (const it of items) {
         if (it.sub_recipe_id != null && it.sub_recipe_id !== "") {
             const subId = parseInt(it.sub_recipe_id, 10);
@@ -96,11 +99,11 @@ export async function resolveRecipeItems(items, { selfId = null, cache = null } 
         if (eggPart) row = await ensureEggDefaults(row); // גודל ומשקל ללא קליפה אוטומטיים אם חסרים
         if (isCountItem(row) && isEggProduct(row)) throw new Error(`'${row.name}' חסר משקל ליחידה - השלם אותו בחומרי הגלם לפני השימוש במתכון`);
         const count = isCountItem(row);
-        const ppg = pricePerGram(rowForLine(row, it.prep, it.line_yield));
+        const ppg = pricePerGram(rowForLine(withDeal(row, it.use_deal && !eggPart, deals), it.prep, it.line_yield));
         const cost = calcItemCost(ppg, qty);
         totalCost += cost;
         if (!count) rawWeight += qty; // מוצר ספירה (יחידות בלי משקל): הכמות היא יחידות ולא גרמים
-        resolved.push({ pantry_item_id: pantryId, ingredient_name: row.name, quantity_g: qty, price_per_gram: ppg, item_cost: cost, ...(count ? { unit_count: true } : {}), ...(eggPart ? { egg_part: eggPart } : {}), ...(eggUnit ? { egg_unit: "unit" } : {}), ...(count || eggPart ? {} : prepField(it)), ...pctFields(it), ...techField(it) });
+        resolved.push({ pantry_item_id: pantryId, ingredient_name: row.name, quantity_g: qty, price_per_gram: ppg, item_cost: cost, ...(count ? { unit_count: true } : {}), ...(eggPart ? { egg_part: eggPart } : {}), ...(eggUnit ? { egg_unit: "unit" } : {}), ...(count || eggPart ? {} : prepField(it)), ...(it.use_deal && !eggPart ? { use_deal: true } : {}), ...pctFields(it), ...techField(it) });
         if (eggPart) eggRows.push({ idx: resolved.length - 1, row });
     }
     // ביצים: משלמים על כל הביצים ששוברים (לא רק על הגרמים שבשימוש). העלות מתחלקת בין שורות הביצים של אותו מוצר
@@ -192,7 +195,7 @@ export async function replaceIngredientWithSubRecipe(recipeId, pantryItemId, sub
     const items = rows.map((row) => {
         if (row.sub_recipe_id != null) return { sub_recipe_id: row.sub_recipe_id, quantity_g: row.quantity_g, ...techField(row) };
         if (row.pantry_item_id === pantryItemId) { replaced++; return { sub_recipe_id: subId, quantity_g: row.quantity_g }; }
-        return { pantry_item_id: row.pantry_item_id, quantity_g: row.quantity_g, ...(row.egg_part ? { egg_part: row.egg_part } : {}), ...(row.egg_unit ? { egg_unit: row.egg_unit } : {}), ...prepField(row), ...techField(row) };
+        return { pantry_item_id: row.pantry_item_id, quantity_g: row.quantity_g, ...(row.egg_part ? { egg_part: row.egg_part } : {}), ...(row.egg_unit ? { egg_unit: row.egg_unit } : {}), ...prepField(row), ...(row.use_deal ? { use_deal: true } : {}), ...techField(row) };
     });
     if (!replaced) throw new Error("הרכיב לא נמצא במתכון");
     await saveRecipe(recipeId, {

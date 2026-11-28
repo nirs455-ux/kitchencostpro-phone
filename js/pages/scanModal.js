@@ -12,6 +12,8 @@ import { logError } from "../errorLog.js";
 import { priceChanges } from "../repo/suppliersRepo.js";
 import { totalsReference, vatLines } from "../invoiceParse.js";
 import { showPriceChangesDialog } from "./priceAlerts.js";
+import { linkPromos } from "../deals.js";
+import { promoBadge, promoDetails, bindPromoBadges } from "./promoBadge.js";
 
 // שורה שנראית כמו מבצע/הנחה: שם עם "מבצע"/"הנחה"/"3 ב-50", או כמות/מחיר שליליים. רק לשורות כאלה מוצג כפתור "זו שורת מבצע".
 const promoLike = (it) => /מבצע|הנחה|\d\s*ב[-־\s]*\d/.test(String(it.name || "")) || parseFloat(it.unit_price) < 0 || parseFloat(it.quantity) < 0;
@@ -309,6 +311,8 @@ export async function openScanModal({ supplierAware, onDone, initialFile = null 
         };
         box.oninput = updateTotal;
 
+        // שיוך שורות מבצע למוצר שמעליהן, לפי מה שמוקלד כרגע
+        const links = linkPromos(scannedItems.map((si) => ({ name: si.name, quantity: si.quantity, unitPrice: si.unit_price, promo: !!si.promo, deposit: si.deposit })));
         let attentionCount = 0, okCount = 0;
         scannedItems.forEach((it, idx) => {
             const unitPriceNum = parseFloat(it.unit_price) || 0;
@@ -334,15 +338,18 @@ export async function openScanModal({ supplierAware, onDone, initialFile = null 
             }
             // שורה "תקינה" = מוכרת בחומרי הגלם, בלי חריגות ובלי שינוי מחיר מעל 5% - מוסתרת, ורק מה שדורש תשומת לב מוצג
             const needsAttention = (!it.matched_pantry_item_id && !it.deposit && !it.promo) || nameEmpty || noPrice || it.qty_fixed || it.line_mismatch || flags.length > 0 || relChange >= 0.05;
-            if (needsAttention) attentionCount++; else okCount++;
+            const promo = links.get(idx);
+            // שורה עם מבצע מוצגת תמיד, כדי שהתג ייראה
+            if (needsAttention) attentionCount++; else if (!promo) okCount++;
             const row = h(`
-                <div class="item-row-inputs" data-ok="${needsAttention ? 0 : 1}" style="${needsAttention ? "" : "display:none;"}${priceChanged ? "border-color:var(--danger);background:#fdecea;" : ""}">
+                <div class="item-row-inputs" data-ok="${needsAttention || promo ? 0 : 1}" style="${needsAttention || promo ? "" : "display:none;"}${priceChanged ? "border-color:var(--danger);background:#fdecea;" : ""}">
                     <div class="top-line">
-                        <strong>שורה ${idx + 1}</strong>
+                        <span><strong>שורה ${idx + 1}</strong>${promo ? ` ${promoBadge()}` : ""}</span>
                         <div class="btn-row">
                             <button type="button" class="btn btn-secondary btn-small" data-remove="${idx}">✕ הסר שורה</button>
                         </div>
                     </div>
+                    ${promo ? promoDetails(promo) : ""}
                     ${it.discount_applied ? `<div class="hint">כולל מבצע: הנחה ${cur()}${it.discount_applied.toFixed(2)} שולבה במחיר (מחיר מחירון ${cur()}${Number(it.list_unit_price).toFixed(2)} ליחידה)</div>` : ""}
                     ${flags.map((f) => `<div class="hint-warn">⚠ ${escapeHtml(f)}</div>`).join("")}
                     ${nameEmpty ? '<div class="hint-warn">חסר שם מוצר - הזן שם, או לחץ "הסר שורה" אם זו לא שורת מוצר (למשל מבצע).</div>' : ""}
@@ -401,6 +408,7 @@ export async function openScanModal({ supplierAware, onDone, initialFile = null 
                 </div>
             `);
             box.appendChild(row);
+            bindPromoBadges(row);
 
             const updatePreview = () => {
                 const price = parseFloat(row.querySelector(`#scan-price-${idx}`).value) || 0;
