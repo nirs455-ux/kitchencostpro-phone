@@ -290,7 +290,7 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
     let lastDrawnTab = null; // כדי לשמור את מיקום הגלילה כשמציירים מחדש באותה לשונית
     let scaleGrams = null; // כמות בסיס מבוקשת (להגדלה)
     let gen = { mode: "factor", value: 2, round: true, ingIdx: 0 }; // מחולל: הגדלה/הקטנה (mode: factor | weight | ingredient)
-    // התאמת כמויות עובדת גם בטיוטה: רכיבים שעוד לא במערכת נכנסים לפי מה שכתוב במסמך. משקל ונפח בגרמים, כל יחידה אחרת נשארת כמו שהיא. בלי עלות.
+    // התאמת כמויות עובדת גם בטיוטה: רכיבים שעוד לא במערכת נכנסים לפי מה שכתוב במסמך. משקל ונפח בגרמים, כל יחידה אחרת נשארת כמו שהיא. כלי לטבח: כמויות בלבד, בלי עלויות.
     const genItems = r.items.concat(missing.map((m) => {
         const q = Number(m.quantity) > 0 ? Number(m.quantity) : 0;
         const weighed = q > 0 && ["g", "kg", "ml", "l"].includes(m.unit);
@@ -481,7 +481,7 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
             const sc = f ? scaleRecipe(genItems, f, rows, { round: gen.round }) : null;
             body = `
             <div class="card">
-                <div class="card-title">הגדלה / הקטנה ${info("מכפילים את כל המתכון. עיגול נוח מעגל כמויות קטנות לערכים שקל לשקול (ביצים לא מעוגלות, כי הן נספרות בנפרד). העלות מחושבת מחדש, כולל מספר הביצים לשבירה.")}</div>
+                <div class="card-title">הגדלה / הקטנה ${info("מכפילים את כל המתכון. עיגול נוח מעגל כמויות קטנות לערכים שקל לשקול (ביצים לא מעוגלות, כי הן נספרות בנפרד). מספר הביצים לשבירה מחושב מחדש.")}</div>
                 <div class="chips" id="g-quick">${[[0.5, "÷2"], [2, "×2"]].map(([v, l]) => `<button type="button" class="chip ${gen.mode === "factor" && Math.abs(Number(gen.value) - v) < 1e-6 ? "active" : ""}" data-q="${v}">${l}</button>`).join("")}</div>
                 <div class="form-row">
                     <div class="field"><label>לפי</label><select id="g-mode"><option value="have" ${gen.mode === "have" ? "selected" : ""}>כמות זמינה מכל רכיב</option><option value="factor" ${gen.mode === "factor" ? "selected" : ""}>פי כמה</option><option value="weight" ${gen.mode === "weight" ? "selected" : ""}>${isGramMode() ? "משקל סופי (גרם)" : 'משקל סופי (ק"ג)'}</option></select></div>
@@ -507,10 +507,10 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
             </details>`;
             })()}
             ${sc ? `
-            <table class="simple"><thead><tr><th>רכיב</th><th>כמות</th><th class="cost-only">עלות</th></tr></thead><tbody>
-                ${[...sc.rows].sort((a, b) => b.grams - a.grams).map((o) => `<tr><td>${escapeHtml(nameOf(o))}${o.egg_part && o.egg_part !== "whole" ? " (" + EGG_PART_UI[o.egg_part] + ")" : ""}</td><td>${o.unit_count ? countHtml(o) : fmtQty(o.grams)}${o.egg_part ? `<br><span class="muted">= ${o.eggUnits} ${o.egg_part === "white" ? "חלבונים" : o.egg_part === "yolk" ? "חלמונים" : "ביצים"}</span>` : ""}</td><td class="cost-only">${o.not_in_system ? "—" : money(o.cost)}</td></tr>`).join("")}
+            <table class="simple"><thead><tr><th>רכיב</th><th>כמות</th></tr></thead><tbody>
+                ${[...sc.rows].sort((a, b) => b.grams - a.grams).map((o) => `<tr><td>${escapeHtml(nameOf(o))}${o.egg_part && o.egg_part !== "whole" ? " (" + EGG_PART_UI[o.egg_part] + ")" : ""}</td><td>${o.unit_count ? countHtml(o) : fmtQty(o.grams)}${o.egg_part ? `<br><span class="muted">= ${o.eggUnits} ${o.egg_part === "white" ? "חלבונים" : o.egg_part === "yolk" ? "חלמונים" : "ביצים"}</span>` : ""}</td></tr>`).join("")}
             </tbody></table>
-            <div class="card-row" style="font-weight:700;margin:8px 0;"><span>סה"כ ${fmtQty(sc.totalGrams)}</span><span class="cost-only">${missing.length ? "<span>חלקי</span> " : ""}${money(sc.totalCost)}</span></div>
+            <div class="card-row" style="font-weight:700;margin:8px 0;"><span>סה"כ ${fmtQty(sc.totalGrams)}</span></div>
             ${sc.eggs.map((e) => `<div class="hint-warn" style="background:var(--brand-soft);color:var(--text);">${escapeHtml(eggSummaryText(e))}</div>`).join("")}
             <div class="btn-row">
                 <button type="button" class="btn btn-secondary btn-small" id="g-copy">📋 העתק</button>
