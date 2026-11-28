@@ -285,14 +285,22 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
     } catch (e) { /* הזיכרון הוא רק עזר */ }
     let servingG = 0; // גודל מנה לתצוגה (לא נשמר)
     const missing = r.draft_ingredients || [];
-    let tab = r.status === "draft" && startTab === "gen" ? "recipe" : startTab;
+    let tab = startTab;
     let showPercent = false;
     let lastDrawnTab = null; // כדי לשמור את מיקום הגלילה כשמציירים מחדש באותה לשונית
     let scaleGrams = null; // כמות בסיס מבוקשת (להגדלה)
     let gen = { mode: "factor", value: 2, round: true, ingIdx: 0 }; // מחולל: הגדלה/הקטנה (mode: factor | weight | ingredient)
-    const genWeight = () => r.items.reduce((n, i) => n + (i.unit_count ? 0 : Number(i.quantity_g) || 0), 0);
+    // התאמת כמויות עובדת גם בטיוטה: רכיבים שעוד לא במערכת נכנסים לפי מה שכתוב במסמך. משקל ונפח בגרמים, כל יחידה אחרת נשארת כמו שהיא. בלי עלות.
+    const genItems = r.items.concat(missing.map((m) => {
+        const q = Number(m.quantity) > 0 ? Number(m.quantity) : 0;
+        const weighed = q > 0 && ["g", "kg", "ml", "l"].includes(m.unit);
+        return { ingredient_name: m.name, quantity_g: weighed ? q * RECIPE_UNIT_GRAMS[m.unit] : q, unit_count: !weighed, unit_label: weighed ? "" : m.unit ? UNIT_HE[m.unit] || m.unit : "", not_in_system: true };
+    }));
+    const countText = (o) => (o.not_in_system ? (o.grams > 0 ? `${o.grams} ${o.unit_label}`.trim() : "—") : `${o.grams} יחידות`);
+    const countHtml = (o) => (o.not_in_system ? (o.grams > 0 ? `${o.grams}${o.unit_label ? ` <span>${escapeHtml(o.unit_label)}</span>` : ""}` : "—") : `${o.grams} <span>יחידות</span>`);
+    const genWeight = () => genItems.reduce((n, i) => n + (i.unit_count ? 0 : Number(i.quantity_g) || 0), 0);
     // רכיבים שאפשר לבסס עליהם את ההגדלה: עם כמות במשקל (לא יחידות בלי משקל)
-    const genIngs = () => r.items.map((i, idx) => ({ i, idx })).filter((x) => !x.i.unit_count && Number(x.i.quantity_g) > 0);
+    const genIngs = () => genItems.map((i, idx) => ({ i, idx })).filter((x) => !x.i.unit_count && Number(x.i.quantity_g) > 0);
     // המקדם: לפי "כמה יש לי" (המגביל ביותר מבין הרכיבים שמולאו), או לפי מספר או משקל סופי
     const genFactor = () => {
         if (gen.mode === "have") {
@@ -310,7 +318,7 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
     const conv = { idx: null, qty: "", unit: "cup", open: false }; // ממיר כמות (חלק מהמחולל)
     const CONV_UNITS = ["cup", "tbsp", "tsp", "ml", "l", "oz", "lb", "floz"];
     const convView = () => {
-        const list = r.items.map((i, idx) => ({ i, idx })).filter((x) => !x.i.unit_count);
+        const list = genItems.map((i, idx) => ({ i, idx })).filter((x) => !x.i.unit_count);
         const sel = list.find((x) => x.idx === conv.idx) || null;
         const name = sel ? nameOf(sel.i) : "";
         const qty = parseFloat(String(conv.qty).replace(",", "."));
@@ -470,7 +478,7 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
             const curWeight = genWeight();
             const gf = genFactor();
             const f = gf.f;
-            const sc = f ? scaleRecipe(r.items, f, rows, { round: gen.round }) : null;
+            const sc = f ? scaleRecipe(genItems, f, rows, { round: gen.round }) : null;
             body = `
             <div class="card">
                 <div class="card-title">הגדלה / הקטנה ${info("מכפילים את כל המתכון. עיגול נוח מעגל כמויות קטנות לערכים שקל לשקול (ביצים לא מעוגלות, כי הן נספרות בנפרד). העלות מחושבת מחדש, כולל מספר הביצים לשבירה.")}</div>
@@ -500,9 +508,9 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
             })()}
             ${sc ? `
             <table class="simple"><thead><tr><th>רכיב</th><th>כמות</th><th class="cost-only">עלות</th></tr></thead><tbody>
-                ${[...sc.rows].sort((a, b) => b.grams - a.grams).map((o) => `<tr><td>${escapeHtml(nameOf(o))}${o.egg_part && o.egg_part !== "whole" ? " (" + EGG_PART_UI[o.egg_part] + ")" : ""}</td><td>${o.unit_count ? `${o.grams} <span>יחידות</span>` : fmtQty(o.grams)}${o.egg_part ? `<br><span class="muted">= ${o.eggUnits} ${o.egg_part === "white" ? "חלבונים" : o.egg_part === "yolk" ? "חלמונים" : "ביצים"}</span>` : ""}</td><td class="cost-only">${money(o.cost)}</td></tr>`).join("")}
+                ${[...sc.rows].sort((a, b) => b.grams - a.grams).map((o) => `<tr><td>${escapeHtml(nameOf(o))}${o.egg_part && o.egg_part !== "whole" ? " (" + EGG_PART_UI[o.egg_part] + ")" : ""}</td><td>${o.unit_count ? countHtml(o) : fmtQty(o.grams)}${o.egg_part ? `<br><span class="muted">= ${o.eggUnits} ${o.egg_part === "white" ? "חלבונים" : o.egg_part === "yolk" ? "חלמונים" : "ביצים"}</span>` : ""}</td><td class="cost-only">${o.not_in_system ? "—" : money(o.cost)}</td></tr>`).join("")}
             </tbody></table>
-            <div class="card-row" style="font-weight:700;margin:8px 0;"><span>סה"כ ${fmtQty(sc.totalGrams)}</span><span class="cost-only">${money(sc.totalCost)}</span></div>
+            <div class="card-row" style="font-weight:700;margin:8px 0;"><span>סה"כ ${fmtQty(sc.totalGrams)}</span><span class="cost-only">${missing.length ? "<span>חלקי</span> " : ""}${money(sc.totalCost)}</span></div>
             ${sc.eggs.map((e) => `<div class="hint-warn" style="background:var(--brand-soft);color:var(--text);">${escapeHtml(eggSummaryText(e))}</div>`).join("")}
             <div class="btn-row">
                 <button type="button" class="btn btn-secondary btn-small" id="g-copy">📋 העתק</button>
@@ -533,7 +541,7 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
                 <button type="button" data-t="percent" class="${tab === "percent" ? "active" : ""}">באחוזים</button>
                 ${addonOn("nutrition") ? `<button type="button" data-t="label" class="${tab === "label" ? "active" : ""}">אלרגנים</button>
                 <button type="button" data-t="nutri" class="${tab === "nutri" ? "active" : ""}">תזונה</button>` : ""}
-                ${r.status === "draft" ? "" : `<button type="button" data-t="gen" class="${tab === "gen" ? "active" : ""}">התאמת כמויות</button>`}
+                <button type="button" data-t="gen" class="${tab === "gen" ? "active" : ""}">התאמת כמויות</button>
             </div>
             ${body}
             <div class="modal-actions"><button type="button" class="btn btn-secondary" id="d-close">סגור</button>
@@ -657,8 +665,8 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
         }));
         if (tab === "gen") {
             const f = genFactor().f;
-            const sc = f ? scaleRecipe(r.items, f, rows, { round: gen.round }) : null;
-            const genText = () => [`${r.name} (פי ${+f.toFixed(3)})`, ...[...sc.rows].sort((a, b) => b.grams - a.grams).map((o) => `${nameOf(o)}${o.egg_part && o.egg_part !== "whole" ? " (" + EGG_PART_UI[o.egg_part] + ")" : ""}: ${o.unit_count ? o.grams + " יחידות" : fmtQty(o.grams)}`), `סה"כ: ${fmtQty(sc.totalGrams)}`, ...sc.eggs.map(eggSummaryText)].join("\n");
+            const sc = f ? scaleRecipe(genItems, f, rows, { round: gen.round }) : null;
+            const genText = () => [`${r.name} (פי ${+f.toFixed(3)})`, ...[...sc.rows].sort((a, b) => b.grams - a.grams).map((o) => `${nameOf(o)}${o.egg_part && o.egg_part !== "whole" ? " (" + EGG_PART_UI[o.egg_part] + ")" : ""}: ${o.unit_count ? countText(o) : fmtQty(o.grams)}`), `סה"כ: ${fmtQty(sc.totalGrams)}`, ...sc.eggs.map(eggSummaryText)].join("\n");
             bind("#g-copy", "onclick", async () => { try { await navigator.clipboard.writeText(genText()); toast("הועתק"); } catch (e) { toast("לא הצלחתי להעתיק"); } });
             bind("#g-wa", "onclick", () => { if (!window.open(whatsappUrl(genText()), "_blank", "noopener")) toast("הדפדפן חסם את פתיחת הדף. אפשר חלונות קופצים לאתר ונסה שוב."); });
             bind("#g-print", "onclick", () => printLabel(r.name + " - מוגדל", genText()));
