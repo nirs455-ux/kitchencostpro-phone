@@ -487,8 +487,8 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
                     <div class="field"><label>לפי</label><select id="g-mode"><option value="have" ${gen.mode === "have" ? "selected" : ""}>כמות זמינה מכל רכיב</option><option value="factor" ${gen.mode === "factor" ? "selected" : ""}>פי כמה</option><option value="weight" ${gen.mode === "weight" ? "selected" : ""}>${isGramMode() ? "משקל סופי (גרם)" : 'משקל סופי (ק"ג)'}</option></select></div>
                     ${gen.mode === "have" ? "" : `<div class="field"><label>${gen.mode === "weight" ? (isGramMode() ? `גרם (עכשיו ${gramsToKgText(curWeight)})` : `ק"ג (עכשיו ${gramsToKgText(curWeight)})`) : "מקדם"}</label>${gen.mode === "factor" ? `<div style="display:flex;gap:6px;"><select id="g-op" style="width:64px;flex:none;"><option value="mul">×</option><option value="div" ${Number(gen.value) > 0 && Number(gen.value) < 1 ? "selected" : ""}>÷</option></select><input type="text" id="g-val" value="${Number(gen.value) > 0 && Number(gen.value) < 1 ? +(1 / Number(gen.value)).toFixed(4) : +Number(gen.value).toFixed(4)}" inputmode="decimal"></div>` : `<input type="text" id="g-val" value="${gen.mode === "weight" ? gramsToKgText(gen.value) : +Number(gen.value).toFixed(4)}" inputmode="decimal">`}</div>`}
                 </div>
-                ${gen.mode === "have" ? `<div class="hint">רשום כמה יש לך מרכיב אחד או יותר. המערכת לוקחת את המגביל ביותר ומחשבת את כל השאר.</div>
-                ${genIngs().map((x) => `<div class="form-row"><div class="field"><label>${escapeHtml(nameOf(x.i))} <span class="muted">${gramsToKgText(x.i.quantity_g)}</span></label><input type="text" inputmode="decimal" class="g-have" data-idx="${x.idx}" value="${escapeHtml(gen.have[x.idx] || "")}" placeholder="${isGramMode() ? "גרם" : 'ק"ג'}"></div></div>`).join("")}
+                ${gen.mode === "have" ? `${gf.lim ? "" : `<div class="hint">רשום כמה יש לך מרכיב אחד או יותר. המערכת לוקחת את המגביל ביותר ומחשבת את כל השאר.</div>`}
+                ${genIngs().filter((x) => !gf.lim || textToGrams(gen.have[x.idx] || "") > 0).map((x) => `<div class="form-row"><div class="field"><label>${escapeHtml(nameOf(x.i))} <span class="muted">${gramsToKgText(x.i.quantity_g)}</span></label><input type="text" inputmode="decimal" class="g-have" data-idx="${x.idx}" value="${escapeHtml(gen.have[x.idx] || "")}" placeholder="${isGramMode() ? "גרם" : 'ק"ג'}"></div></div>`).join("")}
                 ${gf.lim ? `<div class="hint"><b>המגביל: ${escapeHtml(nameOf(gf.lim.i))}</b> · פי ${+f.toFixed(3)}</div>` : ""}` : ""}
                 <div class="checkbox-field"><input type="checkbox" id="g-round" ${gen.round ? "checked" : ""}><label for="g-round">עיגול נוח</label></div>
             </div>
@@ -632,7 +632,8 @@ async function openRecipeDetails(r, container, startTab = "recipe") {
             if (gen.mode !== "have") gen.value = gen.mode === "weight" ? Math.round(genWeight() * 2) : 2;
             draw();
         });
-        overlay.querySelectorAll(".g-have").forEach((inp) => { inp.onchange = () => { gen.have[inp.dataset.idx] = inp.value; draw(); }; });
+        // אחרי שהוזנה כמות שאר השדות מתקפלים והמתכון המחודש עולה למעלה; מחיקת המספר מחזירה את כל הרשימה
+        overlay.querySelectorAll(".g-have").forEach((inp) => { inp.onchange = () => { gen.have[inp.dataset.idx] = inp.value; lastDrawnTab = null; draw(); }; });
         bind("#g-val", "onchange", (e) => {
             if (gen.mode === "weight") gen.value = textToGrams(e.target.value);
             else if (gen.mode === "factor") { const n = parseFloat(String(e.target.value).replace(",", ".")); const div = overlay.querySelector("#g-op") && overlay.querySelector("#g-op").value === "div"; gen.value = n > 0 ? (div ? 1 / n : n) : NaN; }
